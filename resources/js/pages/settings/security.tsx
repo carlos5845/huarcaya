@@ -12,8 +12,12 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { edit } from '@/routes/security';
 
+import BrowserSessions from '@/components/browser-sessions';
+import type { Session } from '@/components/browser-sessions';
+
 type Props = {
     passwordRules: string;
+    sessions: Session[];
 } & ManagePasskeysProps &
     ManageTwoFactorProps;
 
@@ -122,6 +126,8 @@ export default function Security(props: Props) {
                     )}
                 </Form>
             </div>
+
+            <BrowserSessions sessions={props.sessions} />
 
             <ManageTwoFactor
                 canManageTwoFactor={props.canManageTwoFactor}

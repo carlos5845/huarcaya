@@ -2,13 +2,13 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
-use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Hash;
-use App\Models\User;
-use App\Models\Company;
 use App\Models\Branch;
+use App\Models\Company;
+use App\Models\User;
 use App\Models\UserBranch;
+use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class AdminUserSeeder extends Seeder
 {
@@ -20,7 +20,7 @@ class AdminUserSeeder extends Seeder
             [
                 'uuid' => Str::uuid(),
                 'name' => 'Mi Empresa Principal',
-                'status' => 'ACTIVE'
+                'status' => 'ACTIVE',
             ]
         );
 
@@ -44,12 +44,12 @@ class AdminUserSeeder extends Seeder
                 'default_branch_id' => $branch->id,
                 'name' => 'Super Administrador',
                 'password' => Hash::make('password123'),
-                'status' => 'ACTIVE'
+                'status' => 'ACTIVE',
             ]
         );
 
         // 4. Assign Role
-        if (!$user->hasRole('Super Admin')) {
+        if (! $user->hasRole('Super Admin')) {
             $user->assignRole('Super Admin');
         }
 

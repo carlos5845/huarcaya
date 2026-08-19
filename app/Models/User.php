@@ -34,7 +34,7 @@ use Spatie\Permission\Traits\HasRoles;
 #[Fillable([
     'uuid', 'company_id', 'default_branch_id', 'name', 'username', 'dni',
     'phone', 'email', 'password', 'status', 'must_change_password',
-    'last_login_at',
+    'last_login_at', 'dni_ubigeo', 'dni_expiration_date',
 ])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable implements PasskeyUser
@@ -55,6 +55,7 @@ class User extends Authenticatable implements PasskeyUser
             'two_factor_confirmed_at' => 'datetime',
             'last_login_at' => 'datetime',
             'must_change_password' => 'boolean',
+            'dni_expiration_date' => 'date',
         ];
     }
 

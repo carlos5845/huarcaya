@@ -15,11 +15,13 @@ export default function AuthSimpleLayout({
                     <div className="flex flex-col items-center gap-4">
                         <Link
                             href={home.url()}
-                            className="flex flex-col items-center gap-2 font-medium"
+                            className="flex items-center justify-center gap-3 font-medium w-full"
                         >
-                            <div className="mb-1 flex h-9 w-9 items-center justify-center rounded-md">
-                                <AppLogoIcon className="size-9 fill-current text-[var(--foreground)] dark:text-white" />
+                            <div className="flex h-12 items-center justify-center rounded-md">
+                                <AppLogoIcon className="h-12 w-auto" />
                             </div>
+                            <img src="/logo-text.png" alt="Huarcaya" className="h-8 w-auto object-contain block dark:hidden" />
+                            <img src="/logo-dark-text.png" alt="Huarcaya" className="h-8 w-auto object-contain hidden dark:block" />
                             <span className="sr-only">{title}</span>
                         </Link>
 

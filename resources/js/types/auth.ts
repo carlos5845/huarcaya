@@ -5,6 +5,8 @@ export type User = {
     avatar?: string;
     email_verified_at: string | null;
     two_factor_enabled?: boolean;
+    dni_ubigeo?: string | null;
+    dni_expiration_date?: string | null;
     created_at: string;
     updated_at: string;
     [key: string]: unknown;

@@ -16,6 +16,7 @@ return new class extends Migration
             $table->uuid('uuid')->unique();
             $table->foreignId('branch_id')->constrained()->cascadeOnDelete();
             $table->foreignId('product_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('warehouse_location_id')->nullable()->constrained()->nullOnDelete();
             $table->string('lot_number', 50);
             $table->foreignId('inventory_entry_line_id')->nullable()->constrained()->nullOnDelete();
             $table->date('manufacturing_date')->nullable();

@@ -20,6 +20,8 @@ trait ProfileValidationRules
             'dni' => $this->dniRules($userId),
             'phone' => ['nullable', 'string', 'max:20'],
             'email' => ['nullable', 'string', 'email', 'max:255', Rule::unique(User::class)->ignore($userId)],
+            'dni_ubigeo' => ['nullable', 'string', 'size:6'],
+            'dni_expiration_date' => ['nullable', 'date'],
         ];
     }
 

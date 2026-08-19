@@ -19,6 +19,8 @@ type User = {
     role: string | null;
     branch_id: number;
     branch_name: string | null;
+    dni_ubigeo: string | null;
+    dni_expiration_date: string | null;
     last_login_at: string | null;
 };
 
@@ -115,12 +117,6 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
                         Nuevo Usuario
                     </Button>
                 </div>
-
-                {flash?.success && (
-                    <div className="rounded-md bg-green-50 p-4 border border-green-200 dark:bg-green-900/20 dark:border-green-900">
-                        <p className="text-sm font-medium text-green-800 dark:text-green-400">{flash.success}</p>
-                    </div>
-                )}
 
                 <div className="rounded-xl border bg-card text-card-foreground shadow overflow-hidden">
                     <div className="overflow-x-auto">

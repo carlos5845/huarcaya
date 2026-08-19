@@ -23,7 +23,7 @@ return new class extends Migration
             $table->foreignId('closed_by')->nullable()->constrained('users')->nullOnDelete();
             $table->text('notes')->nullable();
             $table->timestamps();
-            
+
             $table->unique(['branch_id', 'closing_date']);
         });
     }

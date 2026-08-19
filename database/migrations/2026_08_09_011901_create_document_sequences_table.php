@@ -20,7 +20,7 @@ return new class extends Migration
             $table->bigInteger('current_number')->default(0);
             $table->integer('padding')->default(6);
             $table->timestamps();
-            
+
             $table->unique(['company_id', 'branch_id', 'document_type'], 'doc_seq_unique');
         });
     }

@@ -18,7 +18,7 @@ return new class extends Migration
             $table->foreignId('setting_id')->constrained()->cascadeOnDelete();
             $table->text('value')->nullable();
             $table->timestamps();
-            
+
             $table->unique(['company_id', 'branch_id', 'setting_id'], 'setting_val_unique');
         });
     }

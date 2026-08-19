@@ -12,7 +12,7 @@ class Lot extends Model
     use HasFactory;
 
     protected $fillable = [
-        'uuid', 'branch_id', 'product_id', 'lot_number',
+        'uuid', 'branch_id', 'product_id', 'warehouse_location_id', 'lot_number',
         'inventory_entry_line_id', 'manufacturing_date', 'expiration_date',
         'original_quantity', 'current_quantity', 'unit_cost', 'status',
     ];
@@ -46,5 +46,10 @@ class Lot extends Model
     public function allocations(): HasMany
     {
         return $this->hasMany(LotAllocation::class);
+    }
+
+    public function location(): BelongsTo
+    {
+        return $this->belongsTo(WarehouseLocation::class, 'warehouse_location_id');
     }
 }

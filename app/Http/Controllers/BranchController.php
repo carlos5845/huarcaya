@@ -16,8 +16,9 @@ class BranchController extends Controller
     public function index()
     {
         $branches = Branch::orderBy('id', 'asc')->get();
+
         return Inertia::render('branches/index', [
-            'branches' => $branches
+            'branches' => $branches,
         ]);
     }
 
@@ -37,7 +38,7 @@ class BranchController extends Controller
         $data = $request->validated();
         $data['uuid'] = Str::uuid()->toString();
         $data['company_id'] = auth()->user()->company_id;
-        
+
         Branch::create($data);
 
         return redirect()->route('branches.index')->with('success', 'Sucursal creada exitosamente.');
@@ -77,6 +78,7 @@ class BranchController extends Controller
         $branch->update(['status' => $branch->status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE']);
 
         $message = $branch->status === 'ACTIVE' ? 'Sucursal reactivada exitosamente.' : 'Sucursal desactivada exitosamente.';
+
         return redirect()->route('branches.index')->with('success', $message);
     }
 }

@@ -41,6 +41,15 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $request->user(),
                 'roles' => $request->user() ? $request->user()->getRoleNames() : [],
+                'requires_setup' => $request->user() ? (
+                    $request->user()->must_change_password ||
+                    empty($request->user()->dni_ubigeo) ||
+                    empty($request->user()->dni_expiration_date)
+                ) : false,
+            ],
+            'flash' => [
+                'success' => $request->session()->get('success'),
+                'error' => $request->session()->get('error'),
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];

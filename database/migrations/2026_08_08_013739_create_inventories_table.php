@@ -16,7 +16,6 @@ return new class extends Migration
             $table->uuid('uuid')->unique();
             $table->foreignId('branch_id')->constrained()->cascadeOnDelete();
             $table->foreignId('product_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('warehouse_location_id')->nullable()->constrained()->nullOnDelete();
             $table->decimal('physical_quantity', 15, 6)->default(0);
             $table->decimal('available_quantity', 15, 6)->default(0);
             $table->decimal('average_cost', 15, 6)->default(0);
@@ -24,7 +23,7 @@ return new class extends Migration
             $table->timestamp('last_counted_at')->nullable();
             $table->timestamps();
 
-            $table->unique(['branch_id', 'product_id', 'warehouse_location_id'], 'inv_unique');
+            $table->unique(['branch_id', 'product_id'], 'inv_unique');
         });
     }
 

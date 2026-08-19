@@ -1,28 +1,82 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\CheckUserController;
 use App\Http\Controllers\Auth\OtpPasswordResetController;
+use App\Http\Controllers\BranchController;
+use App\Http\Controllers\BrandController;
+use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\InventoryController;
+use App\Http\Controllers\ProductController;
+use App\Http\Controllers\ProductImportController;
+use App\Http\Controllers\ProductSettingsController;
+use App\Http\Controllers\UnitController;
+use App\Http\Controllers\UserController;
+use App\Http\Controllers\UserSessionController;
+use App\Http\Controllers\UserSetupController;
+use Illuminate\Support\Facades\Route;
+use Inertia\Inertia;
 
 Route::inertia('/', 'welcome')->name('home');
 
 Route::middleware(['auth'])->group(function () {
     Route::inertia('dashboard', 'dashboard')->name('dashboard');
 
+    // Ruta necesaria para la confirmación de contraseña (Fortify views=false)
+    Route::get('/user/confirm-password', function () {
+        return Inertia::render('auth/confirm-password');
+    })->name('password.confirm');
+
+    // Configuración forzada en primer login
+    Route::post('/user/setup-profile', [UserSetupController::class, 'store'])->name('user.setup-profile');
+
     Route::middleware(['role:Super Admin'])->group(function () {
-        Route::resource('branches', \App\Http\Controllers\BranchController::class)->except(['create', 'show', 'edit']);
-        Route::resource('users', \App\Http\Controllers\UserController::class)->except(['create', 'show', 'edit']);
-        Route::get('users/{user}/sessions', [\App\Http\Controllers\UserSessionController::class, 'index'])->name('users.sessions');
-        Route::delete('users/{user}/sessions/{session}', [\App\Http\Controllers\UserSessionController::class, 'destroy'])->name('users.sessions.destroy');
+        Route::resource('branches', BranchController::class)->except(['create', 'show', 'edit']);
+        Route::resource('users', UserController::class)->except(['create', 'show', 'edit']);
+        Route::get('users/{user}/sessions', [UserSessionController::class, 'index'])->name('users.sessions');
+        Route::delete('users/{user}/sessions/{session}', [UserSessionController::class, 'destroy'])->name('users.sessions.destroy');
+
+    });
+
+    Route::middleware(['role:Super Admin|Administrador de Tienda|Almacenero|Cajero'])->group(function () {
+        // Catalog Base Parameters
+        Route::resource('brands', BrandController::class)->except(['create', 'show', 'edit']);
+        Route::resource('categories', CategoryController::class)->except(['create', 'show', 'edit']);
+        Route::resource('units', UnitController::class)->except(['create', 'show', 'edit']);
+
+        // Products Catalog
+        Route::get('products/search', [ProductController::class, 'search'])->name('products.search');
+        Route::post('products/check-similarity', [ProductController::class, 'checkSimilarity'])->name('products.check-similarity');
+        Route::resource('products', ProductController::class);
+
+        Route::get('catalog/import', [ProductImportController::class, 'index'])->name('catalog.import');
+        Route::get('catalog/import/template', [ProductImportController::class, 'downloadTemplate'])->name('catalog.import.template');
+        Route::post('catalog/import', [ProductImportController::class, 'store'])->name('catalog.import.store');
+
+        Route::get('inventory', [InventoryController::class, 'index'])->name('inventory.index');
+        Route::get('kardex', [\App\Http\Controllers\KardexController::class, 'index'])->name('kardex.index');
+
+        // Product Settings
+        Route::post('products/{product}/prices', [ProductSettingsController::class, 'storePrice'])->name('products.prices.store');
+        Route::delete('products/{product}/prices/{price}', [ProductSettingsController::class, 'destroyPrice'])->name('products.prices.destroy');
+
+        Route::post('products/{product}/min-prices', [ProductSettingsController::class, 'storeMinPrice'])->name('products.min-prices.store');
+        Route::delete('products/{product}/min-prices/{price}', [ProductSettingsController::class, 'destroyMinPrice'])->name('products.min-prices.destroy');
+
+        Route::post('products/{product}/min-stocks', [ProductSettingsController::class, 'storeMinStock'])->name('products.min-stocks.store');
+        Route::delete('products/{product}/min-stocks/{stock}', [ProductSettingsController::class, 'destroyMinStock'])->name('products.min-stocks.destroy');
+
+        Route::post('products/{product}/kit-components', [ProductSettingsController::class, 'syncKitComponents'])->name('products.kit-components.sync');
     });
 });
 
 require __DIR__.'/settings.php';
 
 Route::post('/auth/check-dni', CheckUserController::class);
-Route::post('/auth/forgot-password-otp', [OtpPasswordResetController::class, 'requestOtp']);
+Route::post('/auth/forgot-password-question', [OtpPasswordResetController::class, 'requestQuestion']);
 Route::post('/auth/reset-password-otp', [OtpPasswordResetController::class, 'resetPassword']);
 
 Route::middleware('guest')->group(function () {
     Route::inertia('/login', 'auth/login')->name('login');
+    Route::inertia('/forgot-password', 'auth/forgot-password')->name('password.request');
+    Route::inertia('/two-factor-challenge', 'auth/two-factor-challenge')->name('two-factor.login');
 });

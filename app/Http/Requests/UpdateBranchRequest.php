@@ -18,7 +18,7 @@ class UpdateBranchRequest extends FormRequest
     /**
      * Get the validation rules that apply to the request.
      *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
@@ -26,7 +26,7 @@ class UpdateBranchRequest extends FormRequest
 
         return [
             'name' => 'required|string|max:255',
-            'code' => 'nullable|string|max:20|unique:branches,code,' . $branchId,
+            'code' => 'nullable|string|max:20|unique:branches,code,'.$branchId,
             'address' => 'nullable|string|max:255',
             'phone' => 'nullable|string|max:255',
             'type' => 'required|string|in:STORE,WAREHOUSE',

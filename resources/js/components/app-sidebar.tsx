@@ -1,5 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
-import { BookOpen, FolderGit2, LayoutGrid, Building, Users } from 'lucide-react';
+import { BookOpen, FolderGit2, LayoutGrid, Building, Users, Tags, LayoutList, Scale, PackageSearch, Box, FileSpreadsheet } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
@@ -39,20 +39,39 @@ export function AppSidebar() {
             href: dashboard.url(),
             icon: LayoutGrid,
         },
-        {
-            title: 'Usuarios',
-            href: '/users',
-            icon: Users,
-        },
     ];
 
     if (isSuperAdmin) {
+        mainNavItems.push({
+            title: 'Usuarios',
+            href: '/users',
+            icon: Users,
+        });
         mainNavItems.push({
             title: 'Sucursales',
             href: '/branches',
             icon: Building,
         });
     }
+
+    // Catalog items
+    mainNavItems.push(
+        {
+            title: 'Inventario',
+            href: '/inventory',
+            icon: PackageSearch,
+        },
+        {
+            title: 'Repuestos',
+            href: '/products',
+            icon: Box,
+        },
+        {
+            title: 'Importar Catálogo',
+            href: '/catalog/import',
+            icon: FileSpreadsheet,
+        }
+    );
 
     return (
         <Sidebar collapsible="icon" variant="inset">

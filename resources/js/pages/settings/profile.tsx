@@ -66,7 +66,42 @@ export default function Profile({
                             </div>
 
                             <div className="grid gap-2">
-                                <Label htmlFor="email">Email address</Label>
+                                <Label htmlFor="dni">DNI</Label>
+
+                                <Input
+                                    id="dni"
+                                    className="mt-1 block w-full bg-muted cursor-not-allowed"
+                                    defaultValue={auth.user.dni}
+                                    name="dni"
+                                    disabled
+                                    placeholder="DNI"
+                                />
+
+                                <InputError
+                                    className="mt-2"
+                                    message={errors.dni}
+                                />
+                            </div>
+
+                            <div className="grid gap-2">
+                                <Label htmlFor="phone">Teléfono (opcional)</Label>
+
+                                <Input
+                                    id="phone"
+                                    className="mt-1 block w-full"
+                                    defaultValue={auth.user.phone || ''}
+                                    name="phone"
+                                    placeholder="Teléfono"
+                                />
+
+                                <InputError
+                                    className="mt-2"
+                                    message={errors.phone}
+                                />
+                            </div>
+
+                            <div className="grid gap-2">
+                                <Label htmlFor="email">Email address (opcional)</Label>
 
                                 <Input
                                     id="email"
@@ -74,7 +109,6 @@ export default function Profile({
                                     className="mt-1 block w-full"
                                     defaultValue={auth.user.email}
                                     name="email"
-                                    required
                                     autoComplete="username"
                                     placeholder="Email address"
                                 />
@@ -82,6 +116,41 @@ export default function Profile({
                                 <InputError
                                     className="mt-2"
                                     message={errors.email}
+                                />
+                            </div>
+
+                            <div className="grid gap-2">
+                                <Label htmlFor="dni_ubigeo">Ubigeo DNI (6 dígitos, opcional)</Label>
+
+                                <Input
+                                    id="dni_ubigeo"
+                                    className="mt-1 block w-full"
+                                    defaultValue={auth.user.dni_ubigeo || ''}
+                                    name="dni_ubigeo"
+                                    maxLength={6}
+                                    placeholder="Ej: 150101"
+                                />
+
+                                <InputError
+                                    className="mt-2"
+                                    message={errors.dni_ubigeo}
+                                />
+                            </div>
+
+                            <div className="grid gap-2">
+                                <Label htmlFor="dni_expiration_date">Fecha de Caducidad DNI (opcional)</Label>
+
+                                <Input
+                                    id="dni_expiration_date"
+                                    type="date"
+                                    className="mt-1 block w-full"
+                                    defaultValue={auth.user.dni_expiration_date ? auth.user.dni_expiration_date.substring(0, 10) : ''}
+                                    name="dni_expiration_date"
+                                />
+
+                                <InputError
+                                    className="mt-2"
+                                    message={errors.dni_expiration_date}
                                 />
                             </div>
 

@@ -1,0 +1,1 @@
+<?php require 'vendor/autoload.php'; \ = require_once 'bootstrap/app.php'; \->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); \ = DB::select('PRAGMA table_info(users)'); foreach(\ as \) { if (in_array(\->name, ['email', 'dni_ubigeo', 'dni_expiration_date'])) var_dump([\->name, \->notnull]); }

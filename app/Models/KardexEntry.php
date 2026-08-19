@@ -12,16 +12,18 @@ class KardexEntry extends Model
 
     protected $fillable = [
         'uuid', 'branch_id', 'product_id', 'inventory_movement_line_id',
-        'date', 'operation_type', 'reference',
+        'sequence_number', 'user_id', 'device_id',
+        'operation_date', 'operation_type', 'reference',
         'input_quantity', 'input_unit_cost', 'input_total_cost',
         'output_quantity', 'output_unit_cost', 'output_total_cost',
         'balance_quantity', 'balance_unit_cost', 'balance_total_cost',
+        'original_entry_id', 'reversed_by_entry_id', 'sync_status', 'notes',
     ];
 
     protected function casts(): array
     {
         return [
-            'date' => 'datetime',
+            'operation_date' => 'datetime',
             'input_quantity' => 'decimal:6',
             'input_unit_cost' => 'decimal:6',
             'input_total_cost' => 'decimal:6',

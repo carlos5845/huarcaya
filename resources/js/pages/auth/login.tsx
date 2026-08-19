@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Form, Head, useForm, usePage } from '@inertiajs/react';
+import { Form, Head, useForm, usePage, Link } from '@inertiajs/react';
 import InputError from '@/components/input-error';
 import PasswordInput from '@/components/password-input';
 import TextLink from '@/components/text-link';
@@ -26,7 +26,7 @@ function getCookie(name: string) {
 }
 
 export default function Login() {
-    const [step, setStep] = useState<1 | 2 | 'forgot_password'>('1');
+    const [step, setStep] = useState<1 | 2>(1);
     const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
     const [dniError, setDniError] = useState<string>('');
     const [checkingDni, setCheckingDni] = useState(false);
@@ -38,16 +38,7 @@ export default function Login() {
         remember: false,
     });
 
-    // OTP Form
-    const [otpStep, setOtpStep] = useState<'request' | 'verify'>('request');
-    const { data: otpData, setData: setOtpData, post: postOtp, processing: otpProcessing, errors: otpErrors, reset: resetOtp } = useForm({
-        dni: '',
-        otp: '',
-        password: '',
-        password_confirmation: '',
-    });
-    
-    const [otpSuccess, setOtpSuccess] = useState('');
+
 
     const handleCheckDni = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -86,49 +77,29 @@ export default function Login() {
         postLogin('/login');
     };
 
-    const handleRequestOtp = (e: React.FormEvent) => {
-        e.preventDefault();
-        postOtp('/auth/forgot-password-otp', {
-            onSuccess: () => {
-                setOtpStep('verify');
-                setOtpSuccess('Código SMS enviado correctamente. Revisa los logs por ahora.');
-            }
-        });
-    };
 
-    const handleVerifyOtp = (e: React.FormEvent) => {
-        e.preventDefault();
-        postOtp('/auth/reset-password-otp', {
-            onSuccess: () => {
-                setStep('1');
-                setOtpSuccess('¡Contraseña restablecida exitosamente! Ya puedes iniciar sesión.');
-                setOtpStep('request');
-                resetOtp();
-            }
-        });
-    };
 
     return (
         <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
             <Head title="Iniciar Sesión" />
             <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 p-8">
                 
-                <div className="mb-8 text-center">
+                <div className="mb-8 flex flex-col items-center text-center">
+                    <div className="mb-6 flex items-center justify-center gap-3">
+                        <img src="/logo-huarcaya.webp" alt="Logo" className="h-12 w-auto object-contain block dark:hidden" />
+                        <img src="/logo-dark.png" alt="Logo" className="h-12 w-auto object-contain hidden dark:block" />
+                        <img src="/logo-text.png" alt="Huarcaya" className="h-8 w-auto object-contain block dark:hidden" />
+                        <img src="/logo-dark-text.png" alt="Huarcaya" className="h-8 w-auto object-contain hidden dark:block" />
+                    </div>
                     <h1 className="text-2xl font-bold text-primary mb-2">Bienvenido</h1>
                     <p className="text-muted-foreground text-sm">
                         Sistema de Gestión Integrado
                     </p>
                 </div>
 
-                {otpSuccess && step === '1' && (
-                    <Alert className="mb-6 border-green-500 bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                        <CheckCircle2 className="h-4 w-4 stroke-green-600 dark:stroke-green-400" />
-                        <AlertTitle>Éxito</AlertTitle>
-                        <AlertDescription>{otpSuccess}</AlertDescription>
-                    </Alert>
-                )}
 
-                {step === '1' && (
+
+                {step === 1 && (
                     <form onSubmit={handleCheckDni} className="flex flex-col gap-6">
                         <div className="grid gap-2">
                             <Label htmlFor="dni">Documento de Identidad (DNI)</Label>
@@ -153,17 +124,12 @@ export default function Login() {
                         </Button>
                         
                         <div className="text-center text-sm">
-                            <button 
-                                type="button"
-                                onClick={() => {
-                                    setStep('forgot_password');
-                                    setOtpData('dni', loginData.dni);
-                                    setOtpSuccess('');
-                                }} 
+                            <Link 
+                                href="/forgot-password"
                                 className="text-primary hover:underline"
                             >
                                 ¿Olvidaste tu contraseña?
-                            </button>
+                            </Link>
                         </div>
                     </form>
                 )}
@@ -208,7 +174,7 @@ export default function Login() {
                         </div>
 
                         <div className="flex gap-3">
-                            <Button type="button" variant="outline" className="w-full" onClick={() => { setStep('1'); setLoginData('password', ''); }}>
+                            <Button type="button" variant="outline" className="w-full" onClick={() => { setStep(1); setLoginData('password', ''); }}>
                                 Volver
                             </Button>
                             <Button type="submit" className="w-full" disabled={loginProcessing}>
@@ -217,95 +183,6 @@ export default function Login() {
                             </Button>
                         </div>
                     </form>
-                )}
-
-                {step === 'forgot_password' && (
-                    <div className="flex flex-col gap-6">
-                        <div className="text-center mb-2">
-                            <h2 className="text-xl font-semibold">Recuperar Contraseña</h2>
-                            <p className="text-sm text-muted-foreground mt-1">Te enviaremos un código SMS para restablecerla</p>
-                        </div>
-
-                        {otpSuccess && (
-                            <Alert className="border-green-500 bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                                <CheckCircle2 className="h-4 w-4 stroke-green-600 dark:stroke-green-400" />
-                                <AlertDescription>{otpSuccess}</AlertDescription>
-                            </Alert>
-                        )}
-
-                        {otpStep === 'request' ? (
-                            <form onSubmit={handleRequestOtp} className="grid gap-4">
-                                <div className="grid gap-2">
-                                    <Label htmlFor="otp_dni">DNI registrado</Label>
-                                    <Input
-                                        id="otp_dni"
-                                        type="text"
-                                        value={otpData.dni}
-                                        onChange={(e) => setOtpData('dni', e.target.value)}
-                                        required
-                                    />
-                                    <InputError message={otpErrors.dni} />
-                                </div>
-                                <div className="flex gap-3 mt-2">
-                                    <Button type="button" variant="outline" className="w-full" onClick={() => setStep('1')}>
-                                        Cancelar
-                                    </Button>
-                                    <Button type="submit" className="w-full" disabled={otpProcessing || !otpData.dni}>
-                                        {otpProcessing && <Spinner className="mr-2" />}
-                                        Enviar SMS
-                                    </Button>
-                                </div>
-                            </form>
-                        ) : (
-                            <form onSubmit={handleVerifyOtp} className="grid gap-4">
-                                <div className="grid gap-2">
-                                    <Label htmlFor="otp_code">Código OTP (6 dígitos)</Label>
-                                    <Input
-                                        id="otp_code"
-                                        type="text"
-                                        maxLength={6}
-                                        value={otpData.otp}
-                                        onChange={(e) => setOtpData('otp', e.target.value)}
-                                        required
-                                        className="tracking-widest text-center text-lg"
-                                        placeholder="000000"
-                                    />
-                                    <InputError message={otpErrors.otp} />
-                                </div>
-                                
-                                <div className="grid gap-2">
-                                    <Label htmlFor="new_password">Nueva Contraseña</Label>
-                                    <PasswordInput
-                                        id="new_password"
-                                        value={otpData.password}
-                                        onChange={(e) => setOtpData('password', e.target.value)}
-                                        required
-                                    />
-                                    <InputError message={otpErrors.password} />
-                                </div>
-
-                                <div className="grid gap-2">
-                                    <Label htmlFor="password_confirmation">Confirmar Contraseña</Label>
-                                    <PasswordInput
-                                        id="password_confirmation"
-                                        value={otpData.password_confirmation}
-                                        onChange={(e) => setOtpData('password_confirmation', e.target.value)}
-                                        required
-                                    />
-                                </div>
-
-                                <div className="flex gap-3 mt-2">
-                                    <Button type="button" variant="outline" className="w-full" onClick={() => setOtpStep('request')}>
-                                        Atrás
-                                    </Button>
-                                    <Button type="submit" className="w-full" disabled={otpProcessing || otpData.otp.length !== 6}>
-                                        {otpProcessing && <Spinner className="mr-2" />}
-                                        Restablecer
-                                    </Button>
-                                </div>
-                            </form>
-                        )}
-                    </div>
                 )}
             </div>
         </div>

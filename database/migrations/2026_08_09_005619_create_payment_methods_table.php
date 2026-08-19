@@ -20,7 +20,7 @@ return new class extends Migration
             $table->boolean('is_cash')->default(false);
             $table->boolean('is_active')->default(true);
             $table->timestamps();
-            
+
             $table->unique(['company_id', 'code']);
         });
     }

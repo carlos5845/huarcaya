@@ -2,48 +2,45 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\LoginHistory;
 use App\Models\User;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
-use Carbon\Carbon;
+use Jenssegers\Agent\Agent;
 
 class UserSessionController extends Controller
 {
     public function index(User $user)
     {
-        $sessions = DB::table('sessions')
+        $activeSessionIds = DB::table('sessions')
             ->where('user_id', $user->id)
-            ->get()
-            ->map(function ($session) {
-                // Simplified string matching for platform/browser
-                $ua = $session->user_agent;
-                $isDesktop = !preg_match('/(Mobile|Android|iPhone|iPad)/i', $ua);
-                $platform = 'Unknown';
-                if (preg_match('/windows/i', $ua)) $platform = 'Windows';
-                elseif (preg_match('/macintosh|mac os x/i', $ua)) $platform = 'Mac';
-                elseif (preg_match('/linux/i', $ua)) $platform = 'Linux';
-                elseif (preg_match('/android/i', $ua)) $platform = 'Android';
-                elseif (preg_match('/iphone|ipad/i', $ua)) $platform = 'iOS';
+            ->pluck('id')
+            ->toArray();
 
-                $browser = 'Unknown';
-                if (preg_match('/chrome|crios/i', $ua) && !preg_match('/edge|opr/i', $ua)) $browser = 'Chrome';
-                elseif (preg_match('/safari/i', $ua) && !preg_match('/chrome|crios/i', $ua)) $browser = 'Safari';
-                elseif (preg_match('/firefox|fxios/i', $ua)) $browser = 'Firefox';
-                elseif (preg_match('/edge/i', $ua)) $browser = 'Edge';
-                elseif (preg_match('/opr/i', $ua)) $browser = 'Opera';
+        $sessions = LoginHistory::where('user_id', $user->id)
+            ->orderBy('login_at', 'desc')
+            ->get()
+            ->map(function ($history) use ($activeSessionIds) {
+                $agent = tap(new Agent, function ($a) use ($history) {
+                    $a->setUserAgent($history->user_agent);
+                });
+
+                $isActive = in_array($history->session_id, $activeSessionIds) && is_null($history->logout_at);
 
                 return [
-                    'id' => $session->id,
-                    'ip_address' => $session->ip_address,
-                    'is_current_device' => $session->id === request()->session()->getId(),
+                    'id' => $history->id,
+                    'session_id' => $history->session_id,
+                    'ip_address' => $history->ip_address,
+                    'is_current_device' => $isActive && $history->session_id === request()->session()->getId(),
+                    'is_active' => $isActive,
                     'agent' => [
-                        'is_desktop' => $isDesktop,
-                        'platform' => $platform,
-                        'browser' => $browser,
-                        'raw' => $ua
+                        'is_desktop' => $agent->isDesktop(),
+                        'platform' => $agent->platform() ?: 'Desconocido',
+                        'browser' => $agent->browser() ?: 'Desconocido',
+                        'raw' => $history->user_agent,
                     ],
-                    'last_active' => Carbon::createFromTimestamp($session->last_activity)->diffForHumans(),
+                    'login_at' => $history->login_at->format('d/m/Y h:i A'),
+                    'logout_at' => $history->logout_at ? $history->logout_at->format('d/m/Y h:i A') : null,
                 ];
             });
 
@@ -59,10 +56,17 @@ class UserSessionController extends Controller
 
     public function destroy(User $user, $sessionId)
     {
+        // $sessionId aquí es el ID en la tabla sessions (el string), no el ID de login_histories
+        // porque el frontend enviará el session_id para cerrar la sesión activa.
+
         DB::table('sessions')
             ->where('user_id', $user->id)
             ->where('id', $sessionId)
             ->delete();
+
+        LoginHistory::where('user_id', $user->id)
+            ->where('session_id', $sessionId)
+            ->update(['logout_at' => now()]);
 
         return back()->with('success', 'Sesión cerrada exitosamente.');
     }

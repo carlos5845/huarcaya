@@ -72,4 +72,14 @@ class Product extends Model
     {
         return $this->hasMany(KitVersion::class);
     }
+
+    public function lots(): HasMany
+    {
+        return $this->hasMany(Lot::class);
+    }
+
+    public function inventories(): HasMany
+    {
+        return $this->hasMany(Inventory::class);
+    }
 }

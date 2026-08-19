@@ -18,7 +18,7 @@ return new class extends Migration
             $table->string('operation_type', 20); // CREATE, UPDATE, DELETE
             $table->timestamp('change_timestamp');
             $table->timestamps();
-            
+
             $table->index('change_timestamp');
             $table->index(['entity_type', 'entity_uuid']);
         });

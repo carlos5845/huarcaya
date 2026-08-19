@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 
 class CheckUserController extends Controller
 {
@@ -17,7 +16,7 @@ class CheckUserController extends Controller
 
         $user = User::with(['defaultBranch', 'roles'])->where('dni', $request->dni)->first();
 
-        if (!$user) {
+        if (! $user) {
             return response()->json([
                 'message' => 'Usuario no encontrado.',
             ], 404);
@@ -35,7 +34,7 @@ class CheckUserController extends Controller
                 'role' => $user->roles->first()?->name ?? 'Sin Rol',
                 'branch' => $user->defaultBranch?->name ?? 'Sin Sucursal',
                 'dni' => $user->dni,
-            ]
+            ],
         ]);
     }
 }

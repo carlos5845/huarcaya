@@ -5,8 +5,6 @@ import { Toaster as Sonner, type ToasterProps } from 'sonner';
 function Toaster({ ...props }: ToasterProps) {
     const { appearance } = useAppearance();
 
-    useFlashToast();
-
     return (
         <Sonner
             theme={appearance}

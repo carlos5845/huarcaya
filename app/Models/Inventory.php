@@ -11,7 +11,7 @@ class Inventory extends Model
     use HasFactory;
 
     protected $fillable = [
-        'uuid', 'branch_id', 'product_id', 'warehouse_location_id',
+        'uuid', 'branch_id', 'product_id',
         'physical_quantity', 'available_quantity', 'average_cost',
         'status', 'last_counted_at',
     ];
@@ -36,8 +36,8 @@ class Inventory extends Model
         return $this->belongsTo(Product::class);
     }
 
-    public function location(): BelongsTo
+    public function lots(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
-        return $this->belongsTo(WarehouseLocation::class, 'warehouse_location_id');
+        return $this->hasMany(Lot::class);
     }
 }

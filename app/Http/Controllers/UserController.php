@@ -2,16 +2,16 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
 use App\Models\Branch;
+use App\Models\User;
 use App\Models\UserBranch;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Spatie\Permission\Models\Role;
-use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
@@ -28,6 +28,8 @@ class UserController extends Controller
                 'role' => $user->roles->first()?->name,
                 'branch_id' => $user->default_branch_id,
                 'branch_name' => $user->defaultBranch?->name,
+                'dni_ubigeo' => $user->dni_ubigeo,
+                'dni_expiration_date' => $user->dni_expiration_date ? $user->dni_expiration_date->format('Y-m-d') : null,
                 'last_login_at' => $user->last_login_at,
             ];
         });
