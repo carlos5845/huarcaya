@@ -56,4 +56,9 @@ class Purchase extends Model
     {
         return $this->hasMany(InventoryEntry::class);
     }
+
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
 }

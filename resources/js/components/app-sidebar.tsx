@@ -67,6 +67,26 @@ export function AppSidebar() {
             icon: Box,
         },
         {
+            title: 'Kardex',
+            href: '/kardex',
+            icon: PackageSearch,
+        },
+        {
+            title: 'Compras',
+            href: '/purchases',
+            icon: FileSpreadsheet,
+        },
+        {
+            title: 'Clientes',
+            href: '/customers',
+            icon: Users,
+        },
+        {
+            title: 'Proveedores',
+            href: '/suppliers',
+            icon: Building,
+        },
+        {
             title: 'Importar Catálogo',
             href: '/catalog/import',
             icon: FileSpreadsheet,

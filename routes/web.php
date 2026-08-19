@@ -43,6 +43,12 @@ Route::middleware(['auth'])->group(function () {
         Route::resource('categories', CategoryController::class)->except(['create', 'show', 'edit']);
         Route::resource('units', UnitController::class)->except(['create', 'show', 'edit']);
 
+        Route::resource('customers', \App\Http\Controllers\CustomerController::class)->except(['create', 'show', 'edit']);
+        Route::resource('suppliers', \App\Http\Controllers\SupplierController::class)->except(['create', 'show', 'edit']);
+
+        Route::post('purchases/{purchase}/confirm', [\App\Http\Controllers\PurchaseController::class, 'confirm'])->name('purchases.confirm');
+        Route::resource('purchases', \App\Http\Controllers\PurchaseController::class);
+
         // Products Catalog
         Route::get('products/search', [ProductController::class, 'search'])->name('products.search');
         Route::post('products/check-similarity', [ProductController::class, 'checkSimilarity'])->name('products.check-similarity');

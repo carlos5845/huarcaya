@@ -50,4 +50,19 @@ class KardexEntry extends Model
     {
         return $this->belongsTo(InventoryMovementLine::class, 'inventory_movement_line_id');
     }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function originalEntry(): BelongsTo
+    {
+        return $this->belongsTo(KardexEntry::class, 'original_entry_id');
+    }
+
+    public function reversedByEntry(): BelongsTo
+    {
+        return $this->belongsTo(KardexEntry::class, 'reversed_by_entry_id');
+    }
 }
