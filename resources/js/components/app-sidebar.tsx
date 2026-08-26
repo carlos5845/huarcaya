@@ -87,13 +87,13 @@ export function AppSidebar() {
         });
     }
 
-    if (hasPerm('view_adjustments')) {
-        mainNavItems.push({
-            title: 'Ajustes',
-            href: '/inventory/adjustments',
-            icon: ClipboardList,
-        });
-    }
+    //     if (hasPerm('view_adjustments')) {
+    //         mainNavItems.push({
+    //             title: 'Ajustes',
+    //             href: '/inventory/adjustments',
+    //             icon: ClipboardList,
+    //         });
+    //     }
 
     if (hasPerm('view_purchases')) {
         mainNavItems.push({

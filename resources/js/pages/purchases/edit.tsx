@@ -236,7 +236,7 @@ return;
                                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                                     <Input
                                         type="search"
-                                        placeholder="Buscar producto por nombre o código..."
+                                        placeholder="Buscar por nombre, marca o código..."
                                         className="pl-8"
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}

@@ -14,23 +14,27 @@ import type { BreadcrumbItem } from '@/types';
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
     { title: 'Ventas', href: '/sales' },
-    { title: 'Nueva Venta', href: '#' },
+    { title: 'Editar Venta', href: '#' },
 ];
 
-export default function SaleCreate({ customers }: { customers: any[] }) {
-    const defaultCustomer = customers.length > 0 ? (customers.find(c => c.legal_name.toLowerCase().includes('public') || c.legal_name.toLowerCase().includes('general'))?.id?.toString() || customers[0].id.toString()) : '';
-
-    const { data, setData, post, processing, errors } = useForm({
-        customer_id: defaultCustomer,
-        sale_type: 'BOLETA',
-        operation_date: new Date().toISOString().split('T')[0],
-        external_document_series: '',
-        external_document_number: '',
-        currency_code: 'PEN',
-        exchange_rate: 1.0,
-        notes: '',
-        tax_mode: 'INCLUDED',
-        lines: [] as { product_id: number; product_name: string; internal_code: string; quantity: number; unit_price: number }[],
+export default function SaleEdit({ sale, customers }: { sale: any; customers: any[] }) {
+    const { data, setData, put, processing, errors } = useForm({
+        customer_id: sale.customer_id?.toString() || '',
+        sale_type: sale.sale_type || 'BOLETA',
+        operation_date: sale.operation_date ? sale.operation_date.split(' ')[0] : new Date().toISOString().split('T')[0],
+        external_document_series: sale.external_document_series || '',
+        external_document_number: sale.external_document_number || '',
+        currency_code: sale.currency_code || 'PEN',
+        exchange_rate: sale.exchange_rate || 1.0,
+        notes: sale.notes || '',
+        tax_mode: sale.lines?.[0]?.tax_amount > 0 ? (sale.total_amount > sale.subtotal_amount ? 'PLUS_TAX' : 'INCLUDED') : 'EXEMPT',
+        lines: (sale.lines || []).map((l: any) => ({
+            product_id: l.product_id,
+            product_name: l.product_name_snapshot,
+            internal_code: l.product_reference_snapshot,
+            quantity: Number(l.quantity),
+            unit_price: Number(l.unit_price)
+        })) as { product_id: number; product_name: string; internal_code: string; quantity: number; unit_price: number }[],
     });
 
     const [searchQuery, setSearchQuery] = useState('');
@@ -97,12 +101,12 @@ return;
 
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
-        post('/sales');
+        put(`/sales/${sale.id}`);
     };
 
     return (
         <>
-            <Head title="Nueva Venta" />
+            <Head title="Editar Venta" />
 
             <div className="flex h-full flex-1 flex-col gap-6 rounded-xl p-4 max-w-5xl mx-auto w-full">
                 <div className="flex items-center justify-between">
@@ -113,7 +117,7 @@ return;
                             </Button>
                         </Link>
                         <div>
-                            <h2 className="text-xl font-semibold leading-tight text-gray-800 dark:text-gray-200">Nueva Venta</h2>
+                            <h2 className="text-xl font-semibold leading-tight text-gray-800 dark:text-gray-200">Editar Venta</h2>
                             <p className="text-sm text-gray-500">Registra una nueva entrada de productos.</p>
                         </div>
                     </div>
@@ -357,7 +361,7 @@ return;
                             <Button type="button" variant="outline">Cancelar</Button>
                         </Link>
                         <Button type="submit" disabled={processing || data.lines.length === 0}>
-                            Guardar Venta
+                            Actualizar Venta
                         </Button>
                     </div>
                 </form>
@@ -367,6 +371,6 @@ return;
 }
 
 
-SaleCreate.layout = {
+SaleEdit.layout = {
     breadcrumbs,
 };

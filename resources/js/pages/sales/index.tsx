@@ -178,6 +178,13 @@ export default function SalesIndex({ sales, filters, branches = [], isSuperAdmin
                                                         <Eye className="h-4 w-4 mr-1" /> Ver
                                                     </Button>
                                                 </Link>
+                                                {p.status === 'DRAFT' && (
+                                                    <Link href={`/sales/${p.id}/edit`}>
+                                                        <Button variant="outline" size="sm">
+                                                            Editar
+                                                        </Button>
+                                                    </Link>
+                                                )}
                                             </div>
                                         </TableCell>
                                     </TableRow>

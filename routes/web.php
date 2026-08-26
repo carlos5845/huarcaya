@@ -20,7 +20,31 @@ use Inertia\Inertia;
 Route::inertia('/', 'welcome')->name('home');
 
 Route::middleware(['auth'])->group(function () {
-    Route::inertia('dashboard', 'dashboard')->name('dashboard');
+    Route::get('dashboard', function () {
+    $company_id = auth()->user()->company_id;
+    
+    $stats = [
+        'customers_count' => \App\Models\Customer::where('company_id', $company_id)->count(),
+        'products_count' => \App\Models\Product::where('company_id', $company_id)->count(),
+        'sales_count' => \App\Models\Sale::where('company_id', $company_id)->count(),
+        'purchases_count' => \App\Models\Purchase::where('company_id', $company_id)->count(),
+        'recent_sales' => \App\Models\Sale::where('company_id', $company_id)->with('customer')->orderBy('created_at', 'desc')->take(5)->get(),
+        'recent_purchases' => \App\Models\Purchase::where('company_id', $company_id)->with('supplier')->orderBy('created_at', 'desc')->take(5)->get(),
+    ];
+
+    // SQLite uses strftime for month formatting
+    $salesChart = \App\Models\Sale::where('company_id', $company_id)
+        ->selectRaw("strftime('%Y-%m', created_at) as month, sum(total_amount) as total")
+        ->where('created_at', '>=', now()->subMonths(6))
+        ->groupBy('month')
+        ->orderBy('month')
+        ->get();
+
+    return Inertia::render('dashboard', [
+        'stats' => $stats,
+        'salesChart' => $salesChart
+    ]);
+})->name('dashboard');
 
     // Ruta necesaria para la confirmación de contraseña (Fortify views=false)
     Route::get('/user/confirm-password', function () {

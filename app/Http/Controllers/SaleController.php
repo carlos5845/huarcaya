@@ -49,12 +49,18 @@ class SaleController extends Controller
                 $query->where(function ($q) use ($search) {
                     $q->where('sale_number', 'like', "%{$search}%")
                         ->orWhereHas('customer', function ($cq) use ($search) {
-                            $cq->where('legal_name', 'like', "%{$search}%");
+                            $cq->where('legal_name', 'like', "%{$search}%")
+                               ->orWhere('document_number', 'like', "%{$search}%");
                         })
                         ->orWhereHas('lines', function ($lq) use ($search) {
                             $lq->where('product_name_snapshot', 'like', "%{$search}%")
+                                ->orWhere('product_reference_snapshot', 'like', "%{$search}%")
                                 ->orWhereHas('product', function ($pq) use ($search) {
-                                    $pq->where('name', 'like', "%{$search}%");
+                                    $pq->where('name', 'like', "%{$search}%")
+                                       ->orWhere('primary_reference', 'like', "%{$search}%")
+                                       ->orWhereHas('brand', function($bq) use ($search) {
+                                           $bq->where('name', 'like', "%{$search}%");
+                                       });
                                 });
                         });
                 });
@@ -143,6 +149,7 @@ class SaleController extends Controller
             ]);
 
             $subtotal = 0;
+            $taxAmount = 0;
 
             foreach ($validated['lines'] as $lineData) {
                 $product = Product::with(['minPrices' => function ($q) use ($branchId) {
@@ -153,32 +160,43 @@ class SaleController extends Controller
 
                 $minPrice = $product->minPrices->first();
                 if ($minPrice && $lineData['unit_price'] < $minPrice->amount) {
-                    throw new \Exception("El precio de '{$product->name}' (S/ ".number_format($lineData['unit_price'], 2).') es menor al permitido (S/ '.number_format($minPrice->amount, 2).'). Autorización requerida.');
+                    throw new \Exception("El precio de '{$product->name}' (S/ ".number_format($lineData['unit_price'], 2).") es menor al permitido (S/ ".number_format($minPrice->amount, 2)."). Autorización requerida.");
                 }
 
                 $lineTotal = $lineData['quantity'] * $lineData['unit_price'];
+                $lineTax = 0;
+
+                if ($validated['tax_mode'] === 'INCLUDED') {
+                    $lineTax = $lineTotal - ($lineTotal / 1.18);
+                } elseif ($validated['tax_mode'] === 'PLUS_TAX') {
+                    $lineTax = $lineTotal * 0.18;
+                    $lineTotal += $lineTax;
+                }
+
                 $subtotal += $lineTotal;
+                $taxAmount += $lineTax;
 
                 SaleLine::create([
                     'uuid' => (string) Str::uuid(),
                     'sale_id' => $sale->id,
                     'product_id' => $lineData['product_id'],
                     'product_type_snapshot' => $product->product_type ?? 'STANDARD',
-                    'product_reference_snapshot' => $product->internal_code ?? 'N/A',
+                    'product_reference_snapshot' => $product->primary_reference ?? 'N/A',
                     'product_name_snapshot' => $product->name,
                     'quantity' => $lineData['quantity'],
                     'unit_price' => $lineData['unit_price'],
                     'unit_cost_base' => 0,
-                    'line_subtotal' => $lineTotal,
+                    'line_subtotal' => $lineTotal - $lineTax,
                     'discount_amount' => 0,
-                    'tax_amount' => 0,
+                    'tax_amount' => $lineTax,
                     'line_total' => $lineTotal,
                 ]);
             }
 
             $sale->update([
-                'subtotal_amount' => $subtotal,
-                'total_amount' => $subtotal, // simplified
+                'subtotal_amount' => $subtotal - $taxAmount,
+                'tax_amount' => $taxAmount,
+                'total_amount' => $subtotal,
             ]);
 
             DB::commit();
@@ -199,6 +217,141 @@ class SaleController extends Controller
         return Inertia::render('sales/show', [
             'sale' => $sale,
         ]);
+    }
+
+    
+    public function edit(Sale $sale)
+    {
+        if ($sale->status !== 'DRAFT') {
+            return redirect()->route('sales.index')->with('error', 'Solo se pueden editar ventas en estado borrador.');
+        }
+
+        $sale->load(['lines.product']);
+        $customers = Customer::where('company_id', \Illuminate\Support\Facades\Auth::user()->company_id)->orderBy('legal_name')->get();
+
+        return Inertia::render('sales/edit', [
+            'sale' => $sale,
+            'customers' => $customers,
+        ]);
+    }
+
+    public function update(Request $request, Sale $sale)
+    {
+        if ($sale->status !== 'DRAFT') {
+            return redirect()->back()->with('error', 'Solo se pueden editar ventas en estado borrador.');
+        }
+
+        $validated = $request->validate([
+            'customer_id' => ['required', 'exists:customers,id'],
+            'sale_type' => ['required', 'string', 'max:20'],
+            'operation_date' => ['required', 'date'],
+            'notes' => ['nullable', 'string'],
+            'lines' => ['required', 'array', 'min:1'],
+            'lines.*.product_id' => ['required', 'exists:products,id'],
+            'lines.*.quantity' => ['required', 'numeric', 'min:1'],
+            'lines.*.unit_price' => ['required', 'numeric', 'min:0'],
+            'tax_mode' => ['required', 'string', 'in:INCLUDED,PLUS_TAX,EXEMPT'],
+            'currency_code' => ['required', 'string', 'in:PEN,USD'],
+            'exchange_rate' => ['required_if:currency_code,USD', 'numeric', 'min:0.01'],
+            'external_document_series' => ['nullable', 'string', 'max:15'],
+            'external_document_number' => ['nullable', 'string', 'max:20'],
+        ]);
+
+        $companyId = \Illuminate\Support\Facades\Auth::user()->company_id;
+        $branchId = $sale->branch_id;
+
+        DB::beginTransaction();
+        try {
+            $customer = Customer::find($validated['customer_id']);
+
+            $sale->update([
+                'customer_id' => $validated['customer_id'],
+                'sale_type' => $validated['sale_type'],
+                'external_document_type' => $validated['sale_type'],
+                'external_document_series' => $validated['external_document_series'] ?? null,
+                'external_document_number' => $validated['external_document_number'] ?? null,
+                'operation_date' => $validated['operation_date'],
+                'currency_code' => $validated['currency_code'],
+                'exchange_rate' => $validated['currency_code'] === 'USD' ? $validated['exchange_rate'] : 1.0,
+                'customer_name_snapshot' => $customer->legal_name,
+                'customer_document_snapshot' => $customer->document_number,
+                'notes' => $validated['notes'] ?? null,
+            ]);
+
+            $sale->lines()->delete();
+
+            $subtotal = 0;
+            $taxAmount = 0;
+
+            foreach ($validated['lines'] as $lineData) {
+                $product = Product::with(['minPrices' => function ($q) use ($branchId) {
+                    $q->where(function ($query) use ($branchId) {
+                        $query->where('branch_id', $branchId)->orWhereNull('branch_id');
+                    })->orderBy('id', 'desc');
+                }])->find($lineData['product_id']);
+
+                $minPrice = $product->minPrices->first();
+                if ($minPrice && $lineData['unit_price'] < $minPrice->amount) {
+                    throw new \Exception("El precio de '{$product->name}' (S/ ".number_format($lineData['unit_price'], 2).") es menor al permitido (S/ ".number_format($minPrice->amount, 2)."). Autorización requerida.");
+                }
+
+                $lineTotal = $lineData['quantity'] * $lineData['unit_price'];
+                $lineTax = 0;
+
+                if ($validated['tax_mode'] === 'INCLUDED') {
+                    $lineTax = $lineTotal - ($lineTotal / 1.18);
+                } elseif ($validated['tax_mode'] === 'PLUS_TAX') {
+                    $lineTax = $lineTotal * 0.18;
+                    $lineTotal += $lineTax;
+                }
+
+                $subtotal += $lineTotal;
+                $taxAmount += $lineTax;
+
+                SaleLine::create([
+                    'uuid' => (string) Str::uuid(),
+                    'sale_id' => $sale->id,
+                    'product_id' => $lineData['product_id'],
+                    'product_type_snapshot' => $product->product_type ?? 'STANDARD',
+                    'product_reference_snapshot' => $product->primary_reference ?? 'N/A',
+                    'product_name_snapshot' => $product->name,
+                    'quantity' => $lineData['quantity'],
+                    'unit_price' => $lineData['unit_price'],
+                    'unit_cost_base' => 0,
+                    'line_subtotal' => $lineTotal - $lineTax,
+                    'discount_amount' => 0,
+                    'tax_amount' => $lineTax,
+                    'line_total' => $lineTotal,
+                ]);
+            }
+
+            $sale->update([
+                'subtotal_amount' => $subtotal - $taxAmount,
+                'tax_amount' => $taxAmount,
+                'total_amount' => $subtotal,
+            ]);
+
+            DB::commit();
+
+            return redirect()->route('sales.show', $sale->id)
+                ->with('success', 'Venta en borrador actualizada con éxito.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return back()->with('error', 'Error al actualizar la venta: '.$e->getMessage());
+        }
+    }
+
+    public function destroy(Sale $sale)
+    {
+        if ($sale->status !== 'DRAFT') {
+            return redirect()->back()->with('error', 'Solo se pueden eliminar ventas en estado borrador.');
+        }
+        
+        $sale->lines()->delete();
+        $sale->delete();
+
+        return redirect()->route('sales.index')->with('success', 'Venta eliminada.');
     }
 
     public function confirm(Sale $sale, KardexService $kardexService)
