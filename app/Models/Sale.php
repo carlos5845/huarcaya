@@ -57,4 +57,9 @@ class Sale extends Model
     {
         return $this->hasMany(SaleLine::class);
     }
+
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
 }

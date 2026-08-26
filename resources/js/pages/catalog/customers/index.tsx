@@ -1,15 +1,15 @@
-import { useState } from 'react';
 import { Head, useForm, router } from '@inertiajs/react';
-import { BreadcrumbItem } from '@/types';
+import { Search, Plus, Edit, Trash2, CheckCircle2 } from 'lucide-react';
+import { useState } from 'react';
+import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Search, Plus, Edit, Trash2, CheckCircle2 } from 'lucide-react';
-import InputError from '@/components/input-error';
+import { Textarea } from '@/components/ui/textarea';
+import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
@@ -63,12 +63,13 @@ export default function CustomersIndex({ customers }: { customers: any[] }) {
 
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
+
         if (editingId) {
-            put(route('customers.update', editingId), {
+            put(`/customers/${editingId}`, {
                 onSuccess: () => setIsOpen(false),
             });
         } else {
-            post(route('customers.store'), {
+            post('/customers', {
                 onSuccess: () => setIsOpen(false),
             });
         }
@@ -76,7 +77,7 @@ export default function CustomersIndex({ customers }: { customers: any[] }) {
 
     const toggleStatus = (id: number) => {
         if (confirm('¿Estás seguro de cambiar el estado de este cliente?')) {
-            router.delete(route('customers.destroy', id));
+            router.delete(`/customers/${id}`);
         }
     };
 

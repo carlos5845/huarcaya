@@ -1,9 +1,9 @@
-import React from 'react';
 import { Head, Link, router } from '@inertiajs/react';
+import { PackageOpen, Plus, Edit, Power, PowerOff, Search, Box, Layers, Hash, Settings } from 'lucide-react';
+import React from 'react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { PackageOpen, Plus, Edit, Power, PowerOff, Search, Box, Layers, Hash, Settings } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 
 type Brand = { id: number; name: string };
 type Category = { id: number; name: string };

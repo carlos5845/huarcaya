@@ -1,4 +1,4 @@
-__Plan de trabajo para desarrollar el sistema__
+            __Plan de trabajo para desarrollar el sistema__
 
 El desarrollo se organizará por etapas para construir primero la base del sistema, después el inventario y finalmente el funcionamiento offline mediante PWA\.
 

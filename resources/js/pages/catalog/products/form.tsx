@@ -1,15 +1,15 @@
-import React, { useState, useEffect } from 'react';
 import { Head, Link, useForm, router } from '@inertiajs/react';
+import { PackageOpen, ArrowLeft, Save, Plus, Trash2, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import InputError from '@/components/input-error';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from '@/components/ui/button';
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import InputError from '@/components/input-error';
-import { PackageOpen, ArrowLeft, Save, Plus, Trash2, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Textarea } from '@/components/ui/textarea';
 import { BrandManager } from './components/brand-manager';
 import { CategoryManager } from './components/category-manager';
 import { UnitManager } from './components/unit-manager';
@@ -66,6 +66,7 @@ export default function ProductForm({ brands, categories, units, product }: Prop
     useEffect(() => {
         if (!data.primary_reference || data.primary_reference.trim().length < 3) {
             setSimilarityStatus('idle');
+
             return;
         }
 
@@ -78,6 +79,7 @@ export default function ProductForm({ brands, categories, units, product }: Prop
 
     const checkSimilarity = async (reference: string) => {
         setSimilarityStatus('checking');
+
         try {
             const response = await fetch('/products/check-similarity', {
                 method: 'POST',

@@ -1,15 +1,15 @@
-import React, { useState } from 'react';
 import { useForm, router } from '@inertiajs/react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Plus, Settings2, Check, ChevronsUpDown, Trash2, Edit2, PackageSearch } from 'lucide-react';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import React, { useState } from 'react';
+import InputError from '@/components/input-error';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import InputError from '@/components/input-error';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
-import { Badge } from '@/components/ui/badge';
 
 type Unit = { id: number; name: string; code: string; status: string };
 
@@ -111,7 +111,11 @@ export function UnitManager({ units, value, onChange, error }: Props) {
                     <PopoverContent className="w-[300px] p-0" align="start">
                         <Command filter={(value, search, keywords) => {
                             const extendValue = value + ' ' + (keywords?.join(' ') || '');
-                            if (extendValue.toLowerCase().includes(search.toLowerCase())) return 1;
+
+                            if (extendValue.toLowerCase().includes(search.toLowerCase())) {
+return 1;
+}
+
                             return 0;
                         }}>
                             <CommandInput placeholder="Buscar unidad..." />

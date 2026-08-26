@@ -11,6 +11,7 @@ use App\Http\Controllers\ProductImportController;
 use App\Http\Controllers\ProductSettingsController;
 use App\Http\Controllers\UnitController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\RoleController;
 use App\Http\Controllers\UserSessionController;
 use App\Http\Controllers\UserSetupController;
 use Illuminate\Support\Facades\Route;
@@ -29,15 +30,22 @@ Route::middleware(['auth'])->group(function () {
     // Configuración forzada en primer login
     Route::post('/user/setup-profile', [UserSetupController::class, 'store'])->name('user.setup-profile');
 
-    Route::middleware(['role:Super Admin'])->group(function () {
+    // Branch Management
+    Route::middleware(['role_or_permission:Super Admin|view_branches'])->group(function () {
         Route::resource('branches', BranchController::class)->except(['create', 'show', 'edit']);
-        Route::resource('users', UserController::class)->except(['create', 'show', 'edit']);
-        Route::get('users/{user}/sessions', [UserSessionController::class, 'index'])->name('users.sessions');
-        Route::delete('users/{user}/sessions/{session}', [UserSessionController::class, 'destroy'])->name('users.sessions.destroy');
-
     });
 
-    Route::middleware(['role:Super Admin|Administrador de Tienda|Almacenero|Cajero'])->group(function () {
+    // User & Role Management
+    Route::middleware(['role_or_permission:Super Admin|view_users'])->group(function () {
+        Route::resource('users', UserController::class)->except(['create', 'show', 'edit']);
+        Route::post('roles', [RoleController::class, 'store'])->name('roles.store');
+        Route::put('roles/{role}', [RoleController::class, 'update'])->name('roles.update');
+        Route::delete('roles/{role}', [RoleController::class, 'destroy'])->name('roles.destroy');
+        Route::get('users/{user}/sessions', [UserSessionController::class, 'index'])->name('users.sessions');
+        Route::delete('users/{user}/sessions/{session}', [UserSessionController::class, 'destroy'])->name('users.sessions.destroy');
+    });
+
+    // Modules (Access controlled by Frontend and specific permissions if needed)
         // Catalog Base Parameters
         Route::resource('brands', BrandController::class)->except(['create', 'show', 'edit']);
         Route::resource('categories', CategoryController::class)->except(['create', 'show', 'edit']);
@@ -48,6 +56,9 @@ Route::middleware(['auth'])->group(function () {
 
         Route::post('purchases/{purchase}/confirm', [\App\Http\Controllers\PurchaseController::class, 'confirm'])->name('purchases.confirm');
         Route::resource('purchases', \App\Http\Controllers\PurchaseController::class);
+
+        Route::post('sales/{sale}/confirm', [\App\Http\Controllers\SaleController::class, 'confirm'])->name('sales.confirm');
+        Route::resource('sales', \App\Http\Controllers\SaleController::class);
 
         // Products Catalog
         Route::get('products/search', [ProductController::class, 'search'])->name('products.search');
@@ -60,6 +71,9 @@ Route::middleware(['auth'])->group(function () {
 
         Route::get('inventory', [InventoryController::class, 'index'])->name('inventory.index');
         Route::get('kardex', [\App\Http\Controllers\KardexController::class, 'index'])->name('kardex.index');
+        
+        Route::post('inventory/adjustments/{adjustment}/confirm', [\App\Http\Controllers\InventoryAdjustmentController::class, 'confirm'])->name('inventory.adjustments.confirm');
+        Route::resource('inventory/adjustments', \App\Http\Controllers\InventoryAdjustmentController::class)->names('inventory.adjustments');
 
         // Product Settings
         Route::post('products/{product}/prices', [ProductSettingsController::class, 'storePrice'])->name('products.prices.store');
@@ -72,7 +86,6 @@ Route::middleware(['auth'])->group(function () {
         Route::delete('products/{product}/min-stocks/{stock}', [ProductSettingsController::class, 'destroyMinStock'])->name('products.min-stocks.destroy');
 
         Route::post('products/{product}/kit-components', [ProductSettingsController::class, 'syncKitComponents'])->name('products.kit-components.sync');
-    });
 });
 
 require __DIR__.'/settings.php';

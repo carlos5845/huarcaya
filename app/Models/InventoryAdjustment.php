@@ -37,4 +37,14 @@ class InventoryAdjustment extends Model
     {
         return $this->hasMany(InventoryAdjustmentLine::class);
     }
+
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function confirmedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'confirmed_by');
+    }
 }

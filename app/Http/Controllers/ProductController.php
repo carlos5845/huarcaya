@@ -27,6 +27,9 @@ class ProductController extends Controller
                     ->orWhere('internal_code', 'like', "%{$search}%")
                     ->orWhereHas('aliases', function ($q) use ($search) {
                         $q->where('alias', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('brand', function ($bq) use ($search) {
+                        $bq->where('name', 'like', "%{$search}%");
                     });
             })
             ->orderBy('id', 'desc')
@@ -123,47 +126,119 @@ class ProductController extends Controller
     public function search(Request $request)
     {
         $search = $request->input('q');
+        $branchId = \Illuminate\Support\Facades\Auth::user()->default_branch_id 
+                    ?? \App\Models\Branch::where('company_id', \Illuminate\Support\Facades\Auth::user()->company_id)->first()->id;
 
-        $products = Product::where('status', 'ACTIVE')
+                $products = Product::with([
+            'brand',
+            'prices' => function($q) use ($branchId) {
+                $q->where('status', 'ACTIVE')
+                  ->where(function ($query) use ($branchId) {
+                      $query->where('branch_id', $branchId)->orWhereNull('branch_id');
+                  })
+                  ->orderBy('id', 'desc');
+            },
+            'inventories' => function($q) use ($branchId) {
+                $q->where('branch_id', $branchId);
+            }
+        ])
+            ->where('status', 'ACTIVE')
             ->when($search, function ($query, $search) {
-                $query->where('primary_reference', 'like', "%{$search}%")
-                    ->orWhere('normalized_reference', 'like', '%'.Str::upper(preg_replace('/[^A-Za-z0-9]/', '', $search)).'%')
-                    ->orWhere('name', 'like', "%{$search}%");
+                $query->where(function ($q) use ($search) {
+                    $q->where('primary_reference', 'like', "%{$search}%")
+                      ->orWhere('normalized_reference', 'like', '%'.Str::upper(preg_replace('/[^A-Za-z0-9]/', '', $search)).'%')
+                      ->orWhere('name', 'like', "%{$search}%")
+                      ->orWhereHas('brand', function ($brandQuery) use ($search) {
+                          $brandQuery->where('name', 'like', "%{$search}%");
+                      });
+                });
             })
             ->limit(20)
-            ->get(['id', 'primary_reference', 'name', 'internal_code']);
+            ->get(['id', 'primary_reference', 'name', 'internal_code', 'brand_id']);
+
+        $products->transform(function ($product) {
+            $price = $product->prices->first();
+            $inventory = $product->inventories->first();
+            
+            $suggestedPrice = $price ? $price->amount : ($inventory && $inventory->average_cost > 0 ? $inventory->average_cost * 1.30 : 0);
+            
+            return [
+                'id' => $product->id,
+                'primary_reference' => $product->primary_reference,
+                'name' => $product->name,
+                'internal_code' => $product->internal_code,
+                'suggested_price' => round($suggestedPrice, 2),
+                'brand' => $product->brand ? ['name' => $product->brand->name] : null,
+                'available_quantity' => $inventory ? (float) $inventory->available_quantity : 0,
+            ];
+        });
 
         return response()->json($products);
     }
 
     public function show(Product $product)
     {
+        $user = auth()->user();
+        $isSuperAdmin = $user->hasRole('Super Admin');
+        
+        $branches = $isSuperAdmin 
+            ? \App\Models\Branch::orderBy('name')->get() 
+            : $user->branches()->orderBy('name')->get();
+            
+        if ($branches->isEmpty() && $user->default_branch_id) {
+            $branches = \App\Models\Branch::where('id', $user->default_branch_id)->get();
+        }
+        
+        $allowedBranchIds = $branches->pluck('id')->toArray();
+
         $product->load([
             'brand',
             'category',
             'unit',
             'aliases',
-            'lots.location',
-            'prices' => function ($q) {
-                $q->with('branch')->orderBy('id', 'desc');
-            },
-            'minPrices' => function ($q) {
-                $q->with('branch')->orderBy('id', 'desc');
-            },
-            'minStocks' => function ($q) {
-                $q->with('branch')->orderBy('id', 'desc');
-            },
             'kitVersions' => function ($q) {
                 $q->with('components.product');
             },
-            'inventories' => function ($q) {
+            'lots' => function ($q) use ($allowedBranchIds, $isSuperAdmin) {
+                $q->with('location');
+                if (!$isSuperAdmin) {
+                    $q->whereIn('branch_id', $allowedBranchIds);
+                }
+            },
+            'prices' => function ($q) use ($allowedBranchIds, $isSuperAdmin) {
+                $q->with('branch')->orderBy('id', 'desc');
+                if (!$isSuperAdmin) {
+                    $q->where(function($sub) use ($allowedBranchIds) {
+                        $sub->whereIn('branch_id', $allowedBranchIds)->orWhereNull('branch_id');
+                    });
+                }
+            },
+            'minPrices' => function ($q) use ($allowedBranchIds, $isSuperAdmin) {
+                $q->with('branch')->orderBy('id', 'desc');
+                if (!$isSuperAdmin) {
+                    $q->where(function($sub) use ($allowedBranchIds) {
+                        $sub->whereIn('branch_id', $allowedBranchIds)->orWhereNull('branch_id');
+                    });
+                }
+            },
+            'minStocks' => function ($q) use ($allowedBranchIds, $isSuperAdmin) {
+                $q->with('branch')->orderBy('id', 'desc');
+                if (!$isSuperAdmin) {
+                    $q->whereIn('branch_id', $allowedBranchIds);
+                }
+            },
+            'inventories' => function ($q) use ($allowedBranchIds, $isSuperAdmin) {
                 $q->with(['branch']);
+                if (!$isSuperAdmin) {
+                    $q->whereIn('branch_id', $allowedBranchIds);
+                }
             },
         ]);
 
         return Inertia::render('catalog/products/show', [
             'product' => $product,
-            'branches' => Branch::orderBy('name')->get(),
+            'branches' => $branches,
+            'isSuperAdmin' => $isSuperAdmin,
         ]);
     }
 

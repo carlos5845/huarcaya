@@ -1,10 +1,10 @@
-import React from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
+import { PackageSearch, Search, Filter, Box } from 'lucide-react';
+import React from 'react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PackageSearch, Search, Filter, Box } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 
 type Props = {
     products: any;
@@ -27,8 +27,13 @@ export default function InventoryIndex({ products, branches, filters }: Props) {
         const search = formData.get('search');
         const branch_id = formData.get('branch_id');
         
-        if (search) url += `search=${search}&`;
-        if (branch_id && branch_id !== "ALL") url += `branch_id=${branch_id}`;
+        if (search) {
+url += `search=${search}&`;
+}
+
+        if (branch_id && branch_id !== "ALL") {
+url += `branch_id=${branch_id}`;
+}
 
         router.get(url, {}, { preserveState: true });
     };
@@ -60,21 +65,23 @@ export default function InventoryIndex({ products, branches, filters }: Props) {
                                 defaultValue={filters.search || ''}
                             />
                         </div>
-                        <div className="w-full sm:w-64">
-                            <Select name="branch_id" defaultValue={filters.branch_id || (isSuperAdmin ? 'ALL' : (branches[0]?.id.toString() || ''))}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder={isSuperAdmin ? "Todas las sucursales" : "Selecciona una sucursal"} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {isSuperAdmin && (
-                                        <SelectItem value="ALL">Todas las sucursales</SelectItem>
-                                    )}
-                                    {branches.map((b: any) => (
-                                        <SelectItem key={b.id} value={b.id.toString()}>{b.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
+                        {isSuperAdmin && (
+                            <div className="w-full sm:w-64">
+                                <Select name="branch_id" defaultValue={filters.branch_id || (isSuperAdmin ? 'ALL' : (branches[0]?.id.toString() || ''))}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder={isSuperAdmin ? "Todas las sucursales" : "Selecciona una sucursal"} />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {isSuperAdmin && (
+                                            <SelectItem value="ALL">Todas las sucursales</SelectItem>
+                                        )}
+                                        {branches.map((b: any) => (
+                                            <SelectItem key={b.id} value={b.id.toString()}>{b.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
                         <Button type="submit" variant="secondary" className="gap-2">
                             <Filter className="h-4 w-4" />
                             Filtrar
@@ -92,6 +99,8 @@ export default function InventoryIndex({ products, branches, filters }: Props) {
                                     <th className="px-4 py-3 font-medium text-right">Físico</th>
                                     <th className="px-4 py-3 font-medium text-right">Reservado</th>
                                     <th className="px-4 py-3 font-medium text-right">Disponible</th>
+                                    <th className="px-4 py-3 font-medium text-right">P. Compra</th>
+                                    <th className="px-4 py-3 font-medium text-right">P. Venta</th>
                                     <th className="px-4 py-3 font-medium text-center">Acciones</th>
                                 </tr>
                             </thead>
@@ -119,12 +128,18 @@ export default function InventoryIndex({ products, branches, filters }: Props) {
                                             </td>
                                             <td className="px-4 py-3">
                                                 <div className="flex flex-col">
-                                                    <span className="font-medium">{filters.branch_id && filters.branch_id !== 'ALL' ? branches.find(b => b.id.toString() === filters.branch_id)?.name : 'Global (Todas)'}</span>
+                                                    <span className="font-medium">{filters.branch_id && filters.branch_id !== 'ALL' ? branches.find(b => b.id.toString() === filters.branch_id?.toString())?.name : 'Global (Todas)'}</span>
                                                 </div>
                                             </td>
                                             <td className="px-4 py-3 text-right font-mono">{physical}</td>
                                             <td className="px-4 py-3 text-right font-mono text-orange-600 dark:text-orange-400">{reserved}</td>
                                             <td className="px-4 py-3 text-right font-mono font-medium text-green-600 dark:text-green-400">{available}</td>
+                                            <td className="px-4 py-3 text-right font-mono text-muted-foreground whitespace-nowrap">
+                                                {product.purchase_price > 0 ? `S/ ${Number(product.purchase_price).toFixed(2)}` : '-'}
+                                            </td>
+                                            <td className="px-4 py-3 text-right font-mono font-medium whitespace-nowrap">
+                                                {product.sale_price > 0 ? `S/ ${Number(product.sale_price).toFixed(2)}` : '-'}
+                                            </td>
                                             <td className="px-4 py-3 text-center">
                                                 <Button variant="ghost" size="sm" asChild>
                                                     <Link href={`/products/${product.id}?tab=stocks`} className="flex items-center text-xs">
@@ -138,7 +153,7 @@ export default function InventoryIndex({ products, branches, filters }: Props) {
                                 })}
                                 {products.data.length === 0 && (
                                     <tr>
-                                        <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                                        <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                                             No se encontraron registros de inventario.
                                         </td>
                                     </tr>

@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
 import { Head, Link, router } from '@inertiajs/react';
 import { Package, Search, Filter, History, ArrowDownRight, ArrowUpRight, Ban } from 'lucide-react';
+import React, { useState } from 'react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 
 interface KardexEntry {
     id: number;
@@ -41,7 +41,7 @@ interface PaginationData {
     links: { url: string | null; label: string; active: boolean }[];
 }
 
-export default function KardexIndex({ entries, branches, products, filters }: { 
+export default function KardexIndex({ entries, branches, products, filters, isSuperAdmin = false }: { isSuperAdmin?: boolean, 
     entries: PaginationData, 
     branches: any[], 
     products: any[], 
@@ -49,32 +49,59 @@ export default function KardexIndex({ entries, branches, products, filters }: {
 }) {
     const [branchId, setBranchId] = useState(filters.branch_id || '');
     const [productId, setProductId] = useState(filters.product_id || '');
+    const [search, setSearch] = useState(filters.search || '');
+    const [dateFrom, setDateFrom] = useState(filters.date_from || '');
+    const [dateTo, setDateTo] = useState(filters.date_to || '');
 
     const handleFilter = (e: React.FormEvent) => {
         e.preventDefault();
-        router.get('/kardex', { branch_id: branchId, product_id: productId }, { preserveState: true });
+        router.get('/kardex', { 
+            branch_id: branchId, 
+            product_id: productId,
+            search,
+            date_from: dateFrom,
+            date_to: dateTo
+        }, { preserveState: true });
+    };
+
+    const clearFilters = () => {
+        setBranchId('');
+        setProductId('');
+        setSearch('');
+        setDateFrom('');
+        setDateTo('');
+        router.get('/kardex');
     };
 
     const renderOperationType = (type: string, isReversed: boolean) => {
         if (type.includes('REVERSO')) {
             return <Badge variant="destructive" className="flex items-center gap-1 w-fit"><Ban className="h-3 w-3"/> {type}</Badge>;
         }
+
         if (type.includes('COMPRA') || type.includes('ENTRADA')) {
             return <Badge className="bg-emerald-500 hover:bg-emerald-600 flex items-center gap-1 w-fit"><ArrowDownRight className="h-3 w-3"/> {type}</Badge>;
         }
+
         if (type.includes('VENTA') || type.includes('SALIDA')) {
             return <Badge className="bg-orange-500 hover:bg-orange-600 flex items-center gap-1 w-fit"><ArrowUpRight className="h-3 w-3"/> {type}</Badge>;
         }
+
         return <Badge variant="secondary">{type}</Badge>;
     };
 
     const formatCurrency = (val: number | null | string) => {
-        if (val === null || val === undefined) return '-';
+        if (val === null || val === undefined) {
+return '-';
+}
+
         return `S/ ${Number(val).toFixed(2)}`;
     };
 
     const formatQty = (val: number | null | string) => {
-        if (val === null || val === undefined) return '-';
+        if (val === null || val === undefined) {
+return '-';
+}
+
         return Number(val).toFixed(2);
     };
 
@@ -95,9 +122,19 @@ export default function KardexIndex({ entries, branches, products, filters }: {
                     </div>
                 </div>
 
-                <div className="bg-card p-4 rounded-xl border shadow-sm">
-                    <form onSubmit={handleFilter} className="flex flex-col md:flex-row gap-4">
-                        <div className="flex-1">
+                <div className="bg-card p-4 rounded-xl border shadow-sm flex flex-col gap-4">
+                    <form onSubmit={handleFilter} className="flex flex-wrap gap-4 items-center">
+                        <div className="relative min-w-[200px] flex-1">
+                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                type="search"
+                                placeholder="Buscar usuario, prod, cód, ref..."
+                                className="pl-8"
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                            />
+                        </div>
+                        <div className="flex-1 min-w-[150px]">
                             <select 
                                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                 value={branchId}
@@ -109,7 +146,7 @@ export default function KardexIndex({ entries, branches, products, filters }: {
                                 ))}
                             </select>
                         </div>
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-[200px]">
                             <select 
                                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                 value={productId}
@@ -121,10 +158,18 @@ export default function KardexIndex({ entries, branches, products, filters }: {
                                 ))}
                             </select>
                         </div>
+                        <div className="flex items-center gap-2">
+                            <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-[130px]" />
+                            <span className="text-muted-foreground">-</span>
+                            <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-[130px]" />
+                        </div>
                         <Button type="submit" variant="default">
                             <Filter className="h-4 w-4 mr-2" />
                             Filtrar
                         </Button>
+                        {(branchId || productId || search || dateFrom || dateTo) && (
+                            <Button type="button" variant="ghost" onClick={clearFilters}>Limpiar</Button>
+                        )}
                     </form>
                 </div>
 

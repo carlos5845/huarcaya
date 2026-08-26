@@ -46,23 +46,42 @@ export default function Profile({
                 >
                     {({ processing, errors }) => (
                         <>
-                            <div className="grid gap-2">
-                                <Label htmlFor="name">Name</Label>
-
-                                <Input
-                                    id="name"
-                                    className="mt-1 block w-full"
-                                    defaultValue={auth.user.name}
-                                    name="name"
-                                    required
-                                    autoComplete="name"
-                                    placeholder="Full name"
-                                />
-
-                                <InputError
-                                    className="mt-2"
-                                    message={errors.name}
-                                />
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="grid gap-2">
+                                    <Label htmlFor="name">Nombre</Label>
+                                    <Input
+                                        id="name"
+                                        className="mt-1 block w-full"
+                                        defaultValue={auth.user.name}
+                                        name="name"
+                                        required
+                                        autoComplete="name"
+                                        placeholder="Nombre"
+                                    />
+                                    <InputError className="mt-2" message={errors.name} />
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="last_name">Apellido Paterno</Label>
+                                    <Input
+                                        id="last_name"
+                                        className="mt-1 block w-full"
+                                        defaultValue={auth.user.last_name || ''}
+                                        name="last_name"
+                                        placeholder="Apellido Paterno"
+                                    />
+                                    <InputError className="mt-2" message={errors.last_name} />
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="mother_last_name">Apellido Materno</Label>
+                                    <Input
+                                        id="mother_last_name"
+                                        className="mt-1 block w-full"
+                                        defaultValue={auth.user.mother_last_name || ''}
+                                        name="mother_last_name"
+                                        placeholder="Apellido Materno"
+                                    />
+                                    <InputError className="mt-2" message={errors.mother_last_name} />
+                                </div>
                             </div>
 
                             <div className="grid gap-2">

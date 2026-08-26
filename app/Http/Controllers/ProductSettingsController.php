@@ -14,6 +14,10 @@ class ProductSettingsController extends Controller
 {
     public function storePrice(Request $request, Product $product)
     {
+        if ($request->input('branch_id') === 'GLOBAL') {
+            $request->merge(['branch_id' => null]);
+        }
+
         $validated = $request->validate([
             'branch_id' => ['nullable', 'exists:branches,id'],
             'amount' => ['required', 'numeric', 'min:0'],
@@ -41,6 +45,10 @@ class ProductSettingsController extends Controller
 
     public function storeMinPrice(Request $request, Product $product)
     {
+        if ($request->input('branch_id') === 'GLOBAL') {
+            $request->merge(['branch_id' => null]);
+        }
+
         $validated = $request->validate([
             'branch_id' => ['nullable', 'exists:branches,id'],
             'amount' => ['required', 'numeric', 'min:0'],

@@ -1,9 +1,9 @@
-import React, { useRef, useState } from 'react';
 import { Head, useForm, usePage } from '@inertiajs/react';
+import { FileSpreadsheet, Upload, Download, AlertCircle, CheckCircle2 } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { FileSpreadsheet, Upload, Download, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 export default function ImportIndex() {
     const { flash } = usePage<any>().props;
@@ -20,7 +20,10 @@ export default function ImportIndex() {
         } else {
             alert('Por favor selecciona un archivo Excel (.xlsx, .csv)');
             setData('file', null);
-            if (fileInputRef.current) fileInputRef.current.value = '';
+
+            if (fileInputRef.current) {
+fileInputRef.current.value = '';
+}
         }
     };
 
@@ -29,7 +32,10 @@ export default function ImportIndex() {
         post('/catalog/import', {
             onSuccess: () => {
                 reset();
-                if (fileInputRef.current) fileInputRef.current.value = '';
+
+                if (fileInputRef.current) {
+fileInputRef.current.value = '';
+}
             },
         });
     };
@@ -37,6 +43,7 @@ export default function ImportIndex() {
     const handleDrag = (e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
+
         if (e.type === 'dragenter' || e.type === 'dragover') {
             setDragActive(true);
         } else if (e.type === 'dragleave') {

@@ -32,24 +32,24 @@ type Props = {
     flash: { success?: string };
 };
 
-export default function ProductSettings({ product, branches, flash }: Props) {
+export default function ProductSettings({ product, branches, flash, isSuperAdmin = false }: Props & { isSuperAdmin?: boolean }) {
     const activeKitVersion = product.kit_versions.find(v => v.status === 'ACTIVE') || { components: [] };
     
     // Price Form
     const { data: priceData, setData: setPriceData, post: postPrice, reset: resetPrice, errors: priceErrors, processing: priceProcessing } = useForm({
-        branch_id: 'GLOBAL',
+        branch_id: (!isSuperAdmin && branches.length === 1) ? branches[0].id.toString() : 'GLOBAL',
         amount: ''
     });
 
     // Min Price Form
     const { data: minPriceData, setData: setMinPriceData, post: postMinPrice, reset: resetMinPrice, errors: minPriceErrors, processing: minPriceProcessing } = useForm({
-        branch_id: 'GLOBAL',
+        branch_id: (!isSuperAdmin && branches.length === 1) ? branches[0].id.toString() : 'GLOBAL',
         amount: ''
     });
 
     // Min Stock Form
     const { data: stockData, setData: setStockData, post: postStock, reset: resetStock, errors: stockErrors, processing: stockProcessing } = useForm({
-        branch_id: '',
+        branch_id: (!isSuperAdmin && branches.length === 1) ? branches[0].id.toString() : '',
         quantity: ''
     });
 
@@ -189,7 +189,8 @@ export default function ProductSettings({ product, branches, flash }: Props) {
                                 </CardHeader>
                                 <CardContent>
                                     <form onSubmit={submitPrice} className="flex gap-2 items-end mb-6">
-                                        <div className="grid gap-2 flex-1">
+                                        {isSuperAdmin && (
+<div className="grid gap-2 flex-1">
                                             <Label>Sucursal (Excepción)</Label>
                                             <Select value={priceData.branch_id} onValueChange={v => setPriceData('branch_id', v)}>
                                                 <SelectTrigger>
@@ -203,6 +204,7 @@ export default function ProductSettings({ product, branches, flash }: Props) {
                                                 </SelectContent>
                                             </Select>
                                         </div>
+)}
                                         <div className="grid gap-2 w-32">
                                             <Label>Monto (PEN)</Label>
                                             <Input type="number" step="0.01" min="0" value={priceData.amount} onChange={e => setPriceData('amount', e.target.value)} required />
@@ -246,7 +248,8 @@ export default function ProductSettings({ product, branches, flash }: Props) {
                                 </CardHeader>
                                 <CardContent>
                                     <form onSubmit={submitMinPrice} className="flex gap-2 items-end mb-6">
-                                        <div className="grid gap-2 flex-1">
+                                        {isSuperAdmin && (
+<div className="grid gap-2 flex-1">
                                             <Label>Sucursal (Excepción)</Label>
                                             <Select value={minPriceData.branch_id} onValueChange={v => setMinPriceData('branch_id', v)}>
                                                 <SelectTrigger>
@@ -260,6 +263,7 @@ export default function ProductSettings({ product, branches, flash }: Props) {
                                                 </SelectContent>
                                             </Select>
                                         </div>
+)}
                                         <div className="grid gap-2 w-32">
                                             <Label>Monto (PEN)</Label>
                                             <Input type="number" step="0.01" min="0" value={minPriceData.amount} onChange={e => setMinPriceData('amount', e.target.value)} required />

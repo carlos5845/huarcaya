@@ -1,15 +1,15 @@
-import React, { useState } from 'react';
 import { Form, Head, useForm, usePage, Link } from '@inertiajs/react';
+import { AlertCircle, CheckCircle2 } from "lucide-react";
+import React, { useState } from 'react';
 import InputError from '@/components/input-error';
 import PasswordInput from '@/components/password-input';
 import TextLink from '@/components/text-link';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle, CheckCircle2 } from "lucide-react";
 
 type UserInfo = {
     name: string;
@@ -21,7 +21,11 @@ type UserInfo = {
 function getCookie(name: string) {
     const value = `; ${document.cookie}`;
     const parts = value.split(`; ${name}=`);
-    if (parts.length === 2) return decodeURIComponent(parts.pop()?.split(';').shift() || '');
+
+    if (parts.length === 2) {
+return decodeURIComponent(parts.pop()?.split(';').shift() || '');
+}
+
     return null;
 }
 
@@ -174,7 +178,9 @@ export default function Login() {
                         </div>
 
                         <div className="flex gap-3">
-                            <Button type="button" variant="outline" className="w-full" onClick={() => { setStep(1); setLoginData('password', ''); }}>
+                            <Button type="button" variant="outline" className="w-full" onClick={() => {
+ setStep(1); setLoginData('password', ''); 
+}}>
                                 Volver
                             </Button>
                             <Button type="submit" className="w-full" disabled={loginProcessing}>

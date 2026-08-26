@@ -17,6 +17,8 @@ trait ProfileValidationRules
     {
         return [
             'name' => $this->nameRules(),
+            'last_name' => ['nullable', 'string', 'max:255'],
+            'mother_last_name' => ['nullable', 'string', 'max:255'],
             'dni' => $this->dniRules($userId),
             'phone' => ['nullable', 'string', 'max:20'],
             'email' => ['nullable', 'string', 'email', 'max:255', Rule::unique(User::class)->ignore($userId)],

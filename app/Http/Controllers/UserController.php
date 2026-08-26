@@ -17,10 +17,19 @@ class UserController extends Controller
 {
     public function index()
     {
-        $users = User::with(['roles', 'defaultBranch'])->get()->map(function ($user) {
+        $activeSessionTime = now()->subMinutes(config('session.lifetime', 120))->getTimestamp();
+        $activeUserIds = \Illuminate\Support\Facades\DB::table('sessions')
+            ->whereNotNull('user_id')
+            ->where('last_activity', '>=', $activeSessionTime)
+            ->pluck('user_id')
+            ->toArray();
+
+        $users = User::with(['roles', 'defaultBranch'])->get()->map(function ($user) use ($activeUserIds) {
             return [
                 'id' => $user->id,
                 'name' => $user->name,
+                'last_name' => $user->last_name,
+                'mother_last_name' => $user->mother_last_name,
                 'dni' => $user->dni,
                 'phone' => $user->phone,
                 'email' => $user->email,
@@ -31,10 +40,17 @@ class UserController extends Controller
                 'dni_ubigeo' => $user->dni_ubigeo,
                 'dni_expiration_date' => $user->dni_expiration_date ? $user->dni_expiration_date->format('Y-m-d') : null,
                 'last_login_at' => $user->last_login_at,
+                'is_online' => in_array($user->id, $activeUserIds),
             ];
         });
 
-        $roles = Role::all()->pluck('name');
+        $roles = Role::with('permissions')->get()->map(function($role) {
+            return [
+                'id' => $role->id,
+                'name' => $role->name,
+                'permissions' => $role->permissions->pluck('name'),
+            ];
+        });
         $branches = Branch::where('status', 'ACTIVE')->get(['id', 'name']);
 
         return Inertia::render('users/index', [
@@ -63,6 +79,8 @@ class UserController extends Controller
             'company_id' => $companyId,
             'default_branch_id' => $validated['branch_id'],
             'name' => $validated['name'],
+            'last_name' => $validated['last_name'] ?? null,
+            'mother_last_name' => $validated['mother_last_name'] ?? null,
             'username' => $validated['dni'],
             'dni' => $validated['dni'],
             'phone' => $validated['phone'],
@@ -84,8 +102,15 @@ class UserController extends Controller
         return back()->with('success', 'Usuario creado correctamente.');
     }
 
-    public function update(Request $request, User $user)
+        public function update(Request $request, User $user)
     {
+        if ($user->hasRole('Super Admin') && $request->input('role') !== 'Super Admin') {
+            return back()->with('error', 'No se puede quitar el rol de Super Admin a este usuario.');
+        }
+
+        if ($user->hasRole('Super Admin') && $request->input('status') === 'INACTIVE') {
+            return back()->with('error', 'No se puede desactivar a un Super Admin.');
+        }
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'dni' => ['required', 'string', 'size:8', Rule::unique('users')->ignore($user->id)],
@@ -98,6 +123,8 @@ class UserController extends Controller
 
         $user->update([
             'name' => $validated['name'],
+            'last_name' => $validated['last_name'] ?? null,
+            'mother_last_name' => $validated['mother_last_name'] ?? null,
             'username' => $validated['dni'],
             'dni' => $validated['dni'],
             'phone' => $validated['phone'],
@@ -108,7 +135,12 @@ class UserController extends Controller
 
         $user->syncRoles([$validated['role']]);
 
-        UserBranch::updateOrCreate(
+        // Eliminar las otras sucursales asignadas anteriormente (el sistema actual permite 1 sucursal principal)
+        \App\Models\UserBranch::where('user_id', $user->id)
+            ->where('branch_id', '!=', $validated['branch_id'])
+            ->delete();
+
+        \App\Models\UserBranch::updateOrCreate(
             ['user_id' => $user->id, 'branch_id' => $validated['branch_id']],
             ['is_default' => true, 'status' => 'ACTIVE']
         );
@@ -116,8 +148,11 @@ class UserController extends Controller
         return back()->with('success', 'Usuario actualizado correctamente.');
     }
 
-    public function destroy(User $user)
+        public function destroy(User $user)
     {
+        if ($user->hasRole('Super Admin')) {
+            return back()->with('error', 'No se puede modificar el estado de un Super Admin.');
+        }
         $user->update([
             'status' => $user->status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE',
         ]);

@@ -38,12 +38,16 @@ class InventoryController extends Controller
             }
         }
 
-        $query = Product::with(['brand', 'category']);
+        $query = Product::with(['brand', 'category', 'prices', 'inventories']);
 
         if ($search) {
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                    ->orWhere('primary_reference', 'like', "%{$search}%");
+                    ->orWhere('primary_reference', 'like', "%{$search}%")
+                    ->orWhere('internal_code', 'like', "%{$search}%")
+                    ->orWhereHas('brand', function ($bq) use ($search) {
+                        $bq->where('name', 'like', "%{$search}%");
+                    });
             });
         }
 
@@ -58,9 +62,32 @@ class InventoryController extends Controller
 
         $products = $query->orderBy('id', 'desc')->paginate(20);
 
+        $products->getCollection()->transform(function ($product) use ($branchId) {
+            $inventory = null;
+            if ($branchId && $branchId !== 'ALL') {
+                $inventory = collect($product->inventories)->firstWhere('branch_id', (int) $branchId);
+            } else {
+                $inventory = collect($product->inventories)->sortByDesc('updated_at')->first();
+            }
+
+            $price = null;
+            if ($branchId && $branchId !== 'ALL') {
+                $price = collect($product->prices)->where('branch_id', (int) $branchId)->first() 
+                      ?? collect($product->prices)->whereNull('branch_id')->first();
+            } else {
+                $price = collect($product->prices)->whereNull('branch_id')->first() ?? collect($product->prices)->first();
+            }
+
+            $product->purchase_price = $inventory ? (float) $inventory->average_cost : 0;
+            $product->sale_price = $price ? (float) $price->amount : 0;
+
+            return $product;
+        });
+
         return Inertia::render('catalog/inventory/index', [
             'products' => $products,
             'branches' => $branches,
+            'isSuperAdmin' => $isSuperAdmin,
             'filters' => [
                 'branch_id' => $branchId,
                 'search' => $search,

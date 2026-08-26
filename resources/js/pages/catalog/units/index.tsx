@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
 import { Head, useForm, router } from '@inertiajs/react';
+import { Scale, Plus, Edit, Power, PowerOff, Hash } from 'lucide-react';
+import React, { useState } from 'react';
+import InputError from '@/components/input-error';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
-import InputError from '@/components/input-error';
-import { Scale, Plus, Edit, Power, PowerOff, Hash } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 
 type Unit = {
     id: number;
@@ -51,7 +51,11 @@ export default function UnitsIndex({ units, flash }: Props) {
 
     const handleEdit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!editingUnit) return;
+
+        if (!editingUnit) {
+return;
+}
+
         editPut(`/units/${editingUnit.id}`, {
             onSuccess: () => {
                 setIsEditOpen(false);

@@ -1,7 +1,7 @@
-import React from 'react';
-import { Head, router } from '@inertiajs/react';
-import { Button } from '@/components/ui/button';
+import { Head, router, usePoll } from '@inertiajs/react';
 import { Shield, PowerOff, Monitor, Smartphone, Globe, Clock, ArrowLeft } from 'lucide-react';
+import React from 'react';
+import { Button } from '@/components/ui/button';
 
 type Session = {
     id: number;
@@ -32,6 +32,8 @@ type Props = {
 };
 
 export default function UserSessions({ user, sessions, flash }: Props) {
+    usePoll(5000, { only: ['sessions'] });
+
     const handleCloseSession = (sessionId: string) => {
         if (confirm('¿Estás seguro de que deseas cerrar esta sesión remotamente? El usuario será desconectado inmediatamente.')) {
             router.delete(`/users/${user.id}/sessions/${sessionId}`);
@@ -79,9 +81,9 @@ export default function UserSessions({ user, sessions, flash }: Props) {
                                                 <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded-full font-medium">Este dispositivo</span>
                                             )}
                                             {session.is_active ? (
-                                                <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400 px-2 py-0.5 rounded-full font-medium">Activa</span>
+                                                <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400 px-2 py-0.5 rounded-full font-medium">En línea</span>
                                             ) : (
-                                                <span className="text-xs bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400 px-2 py-0.5 rounded-full font-medium">Finalizada</span>
+                                                <span className="text-xs bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400 px-2 py-0.5 rounded-full font-medium">Sesión finalizada</span>
                                             )}
                                         </h3>
                                         <div className="text-sm text-muted-foreground mt-1 space-y-1">

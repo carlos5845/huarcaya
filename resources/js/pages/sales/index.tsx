@@ -1,6 +1,6 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { Search, Plus, Eye, Filter } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,10 +10,10 @@ import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
-    { title: 'Compras', href: '/purchases' },
+    { title: 'Ventas', href: '/sales' },
 ];
 
-export default function PurchasesIndex({ purchases, filters, branches = [], isSuperAdmin = false }: { purchases: any, filters: any, branches?: any[], isSuperAdmin?: boolean }) {
+export default function SalesIndex({ sales, filters, branches = [], isSuperAdmin = false }: { sales: any, filters: any, branches?: any[], isSuperAdmin?: boolean }) {
     const [search, setSearch] = useState(filters?.search || '');
     const [status, setStatus] = useState(filters?.status || 'ALL');
     const [dateFrom, setDateFrom] = useState(filters?.date_from || '');
@@ -21,7 +21,7 @@ export default function PurchasesIndex({ purchases, filters, branches = [], isSu
     const [branchId, setBranchId] = useState(filters?.branch_id || '');
 
     const applyFilters = () => {
-        router.get('/purchases', { 
+        router.get('/sales', { 
             search, 
             status: status === 'ALL' ? '' : status,
             date_from: dateFrom,
@@ -41,22 +41,22 @@ export default function PurchasesIndex({ purchases, filters, branches = [], isSu
         setStatus('ALL');
         setDateFrom('');
         setDateTo('');
-        router.get('/purchases');
+        router.get('/sales');
     };
 
     return (
         <>
-            <Head title="Compras" />
+            <Head title="Ventas" />
 
             <div className="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
                 <div className="flex items-center justify-between">
                     <div>
-                        <h2 className="text-xl font-semibold leading-tight text-gray-800 dark:text-gray-200">Compras</h2>
-                        <p className="text-sm text-gray-500">Historial de compras y entradas de inventario.</p>
+                        <h2 className="text-xl font-semibold leading-tight text-gray-800 dark:text-gray-200">Ventas</h2>
+                        <p className="text-sm text-gray-500">Historial de ventas y salidas de inventario.</p>
                     </div>
-                    <Link href="/purchases/create">
+                    <Link href="/sales/create">
                         <Button className="gap-2">
-                            <Plus className="h-4 w-4" /> Nueva Compra
+                            <Plus className="h-4 w-4" /> Nueva Venta
                         </Button>
                     </Link>
                 </div>
@@ -66,7 +66,7 @@ export default function PurchasesIndex({ purchases, filters, branches = [], isSu
                         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input
                             type="search"
-                            placeholder="Buscar proveedor, producto o doc..."
+                            placeholder="Buscar cliente, producto o doc..."
                             className="pl-8"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
@@ -88,11 +88,10 @@ export default function PurchasesIndex({ purchases, filters, branches = [], isSu
                         </SelectContent>
                     </Select>
 
-                    <div className="flex items-center gap-2 bg-white dark:bg-zinc-950 p-1 rounded-md border">
-                        <span className="text-sm text-muted-foreground pl-2">Desde:</span>
-                        <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-[130px] border-none shadow-none h-8" />
-                        <span className="text-sm text-muted-foreground border-l pl-2">Hasta:</span>
-                        <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-[130px] border-none shadow-none h-8" />
+                    <div className="flex items-center gap-2">
+                        <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-[140px]" />
+                        <span className="text-muted-foreground">-</span>
+                        <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-[140px]" />
                     </div>
 
                     
@@ -120,9 +119,9 @@ export default function PurchasesIndex({ purchases, filters, branches = [], isSu
                         <TableHeader>
                             <TableRow>
                                 <TableHead>ID Interno</TableHead>
-                                <TableHead>Fecha</TableHead>
-                                <TableHead>Proveedor</TableHead>
-                                <TableHead>Documento</TableHead>
+                                <TableHead>Fecha y Hora</TableHead>
+                                <TableHead>Cliente</TableHead>
+                                <TableHead>Comprobante</TableHead>
                                 <TableHead>Serie</TableHead>
                                 <TableHead>Número</TableHead>
                                 <TableHead>Importe</TableHead>
@@ -132,26 +131,32 @@ export default function PurchasesIndex({ purchases, filters, branches = [], isSu
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {purchases.data && purchases.data.length > 0 ? (
-                                purchases.data.map((p: any) => (
+                            {sales.data && sales.data.length > 0 ? (
+                                sales.data.map((p: any) => (
                                     <TableRow key={p.id}>
                                         <TableCell className="font-medium text-xs text-muted-foreground">
-                                            {p.purchase_number}
+                                            {p.sale_number}
                                         </TableCell>
                                         <TableCell>
-                                            {new Date(p.document_date).toLocaleDateString()}
+                                            <div className="flex flex-col">
+                                                <span>{new Date(p.created_at).toLocaleDateString()}</span>
+                                                <span className="text-xs text-muted-foreground">{new Date(p.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                            </div>
                                         </TableCell>
                                         <TableCell>
-                                            {p.supplier?.legal_name || 'Desconocido'}
+                                            <div className="font-medium">{p.customer_name_snapshot || p.customer?.legal_name || 'Desconocido'}</div>
+                                            <div className="text-xs text-muted-foreground truncate max-w-[150px]" title={p.lines?.map((l: any) => l.product_name_snapshot || l.product?.name).join(', ')}>
+                                                {p.lines?.map((l: any) => l.product_name_snapshot || l.product?.name).join(', ') || 'Sin productos'}
+                                            </div>
                                         </TableCell>
                                         <TableCell>
-                                            <Badge variant="outline">{p.supplier_document_type || 'N/A'}</Badge>
+                                            <Badge variant="outline">{p.sale_type || 'N/A'}</Badge>
                                         </TableCell>
                                         <TableCell>
-                                            {p.supplier_document_series || '-'}
+                                            {p.external_document_series || '-'}
                                         </TableCell>
                                         <TableCell className="font-mono">
-                                            {p.supplier_document_number || '-'}
+                                            {p.external_document_number || '-'}
                                         </TableCell>
                                         <TableCell>
                                             S/ {Number(p.subtotal_amount).toFixed(2)}
@@ -166,7 +171,7 @@ export default function PurchasesIndex({ purchases, filters, branches = [], isSu
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <div className="flex justify-end gap-2">
-                                                <Link href={`/purchases/${p.id}`}>
+                                                <Link href={`/sales/${p.id}`}>
                                                     <Button variant="outline" size="sm">
                                                         <Eye className="h-4 w-4 mr-1" /> Ver
                                                     </Button>
@@ -178,7 +183,7 @@ export default function PurchasesIndex({ purchases, filters, branches = [], isSu
                             ) : (
                                 <TableRow>
                                     <TableCell colSpan={10} className="text-center p-8 text-muted-foreground">
-                                        No se encontraron compras con los filtros actuales.
+                                        No se encontraron ventas con los filtros actuales.
                                     </TableCell>
                                 </TableRow>
                             )}
@@ -190,6 +195,6 @@ export default function PurchasesIndex({ purchases, filters, branches = [], isSu
     );
 }
 
-PurchasesIndex.layout = {
+SalesIndex.layout = {
     breadcrumbs,
 };

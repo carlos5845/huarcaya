@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
 import { Head, useForm, router } from '@inertiajs/react';
+import { LayoutList, Plus, Edit, Power, PowerOff, Hash, CornerDownRight } from 'lucide-react';
+import React, { useState } from 'react';
+import InputError from '@/components/input-error';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
-import InputError from '@/components/input-error';
-import { LayoutList, Plus, Edit, Power, PowerOff, Hash, CornerDownRight } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type Category = {
@@ -60,7 +60,11 @@ export default function CategoriesIndex({ categories, flash }: Props) {
 
     const handleEdit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!editingCategory) return;
+
+        if (!editingCategory) {
+return;
+}
+
         const payload = {
             ...editData,
             parent_id: editData.parent_id === 'none' ? null : editData.parent_id
@@ -91,8 +95,12 @@ export default function CategoriesIndex({ categories, flash }: Props) {
     };
 
     const getParentName = (parentId: number | null) => {
-        if (!parentId) return null;
+        if (!parentId) {
+return null;
+}
+
         const parent = categories.find(c => c.id === parentId);
+
         return parent ? parent.name : null;
     };
 

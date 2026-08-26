@@ -10,10 +10,13 @@ export function useFlashToast(): void {
         if (flash?.success) {
             toast.success(flash.success);
         }
+
         if (flash?.error) {
             toast.error(flash.error);
         }
+
         const toastData = flash?.toast || directToast;
+
         if (toastData) {
             const data = toastData as FlashToast;
             toast[data.type as 'success' | 'error' | 'info' | 'warning']?.(data.message);

@@ -1,12 +1,14 @@
+import { Head, useForm, router, usePoll } from '@inertiajs/react';
+import { Users, Plus, Edit, Shield, Power, PowerOff, Building, Pencil, Trash2 } from 'lucide-react';
 import React, { useState } from 'react';
-import { Head, useForm, router } from '@inertiajs/react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import InputError from '@/components/input-error';
-import { Users, Plus, Edit, Shield, Power, PowerOff, Building } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type User = {
@@ -22,34 +24,124 @@ type User = {
     dni_ubigeo: string | null;
     dni_expiration_date: string | null;
     last_login_at: string | null;
+    is_online?: boolean;
 };
 
 type Props = {
     users: User[];
-    roles: string[];
+    roles: { id: number, name: string, permissions: string[] }[];
     branches: { id: number; name: string }[];
     flash: {
         success?: string;
     };
 };
 
+
+const permissionLabels: Record<string, string> = {
+    view_dashboard: 'Dashboard',
+    view_sales: 'Ventas',
+    view_purchases: 'Compras',
+    view_inventory: 'Inventario General',
+    view_products: 'Repuestos',
+    view_kardex: 'Kardex',
+    view_adjustments: 'Ajustes',
+    view_users: 'Usuarios',
+    view_branches: 'Sucursales',
+    view_customers: 'Clientes',
+    view_suppliers: 'Proveedores',
+    view_import: 'Importación Masiva'
+};
+
 export default function UsersIndex({ users, roles, branches, flash }: Props) {
+    usePoll(5000, { only: ['users'] });
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
+    const [statusFilter, setStatusFilter] = useState('ACTIVE');
+    const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
+    const [isEditingRole, setIsEditingRole] = useState(false);
+    const [editingRoleId, setEditingRoleId] = useState<number | null>(null);
+
+    const { data: roleData, setData: setRoleData, post: postRole, put: putRole, delete: deleteRole, processing: roleProcessing, reset: resetRole, errors: roleErrors } = useForm({
+        name: '',
+        permissions: {
+            view_dashboard: true,
+            view_sales: false,
+            view_purchases: false,
+            view_inventory: false,
+            view_products: false,
+            view_kardex: false,
+            view_adjustments: false,
+            view_users: false,
+            view_branches: false,
+            view_customers: false,
+            view_suppliers: false,
+            view_import: false,
+        }
+    });
+
+    const openCreateRoleModal = () => {
+        setIsEditingRole(false);
+        setEditingRoleId(null);
+        resetRole();
+        setIsRoleModalOpen(true);
+    };
+
+    const openEditRoleModal = (roleName: string) => {
+        const role = roles.find(r => r.name === roleName);
+        if (!role) return;
+        
+        setIsEditingRole(true);
+        setEditingRoleId(role.id);
+        
+        const permObj: any = {
+            view_dashboard: false,
+            view_sales: false,
+            view_purchases: false,
+            view_inventory: false,
+            view_products: false,
+            view_kardex: false,
+            view_adjustments: false,
+            view_users: false,
+            view_branches: false,
+            view_customers: false,
+            view_suppliers: false,
+            view_import: false,
+        };
+        role.permissions.forEach(p => {
+            if (p in permObj) permObj[p] = true;
+        });
+        
+        setRoleData({
+            name: role.name,
+            permissions: permObj
+        });
+        
+        setIsRoleModalOpen(true);
+    };
+
+    const filteredUsers = users.filter(u => {
+        if (statusFilter === 'ACTIVE') return u.status === 'ACTIVE';
+        if (statusFilter === 'INACTIVE') return u.status === 'INACTIVE';
+        return true;
+    });
 
     const { data: createData, setData: setCreateData, post: createPost, processing: createProcessing, errors: createErrors, reset: createReset } = useForm({
         name: '',
+        last_name: '',
+        mother_last_name: '',
         dni: '',
         phone: '',
         email: '',
-        role: roles.length > 0 ? roles[0] : '',
+        role: roles.length > 0 ? roles[0].name : '',
         branch_id: branches.length > 0 ? branches[0].id.toString() : '',
         status: 'ACTIVE',
     });
 
     const { data: editData, setData: setEditData, put: editPut, processing: editProcessing, errors: editErrors, reset: editReset } = useForm({
         name: '',
+        last_name: '',
+        mother_last_name: '',
         dni: '',
         phone: '',
         email: '',
@@ -70,7 +162,11 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
 
     const handleEdit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!editingUser) return;
+
+        if (!editingUser) {
+return;
+}
+
         editPut(`/users/${editingUser.id}`, {
             onSuccess: () => {
                 setIsEditOpen(false);
@@ -89,6 +185,8 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
         setEditingUser(user);
         setEditData({
             name: user.name,
+            last_name: user.last_name || '',
+            mother_last_name: user.mother_last_name || '',
             dni: user.dni,
             phone: user.phone || '',
             email: user.email || '',
@@ -118,6 +216,14 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
                     </Button>
                 </div>
 
+                <Tabs defaultValue="ACTIVE" onValueChange={setStatusFilter} className="w-full">
+                    <TabsList className="mb-4 bg-muted/50">
+                        <TabsTrigger value="ACTIVE">Activos</TabsTrigger>
+                        <TabsTrigger value="INACTIVE">Inactivos</TabsTrigger>
+                        <TabsTrigger value="ALL">Todos</TabsTrigger>
+                    </TabsList>
+                </Tabs>
+
                 <div className="rounded-xl border bg-card text-card-foreground shadow overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm text-left">
@@ -128,11 +234,12 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
                                     <th className="px-6 py-3 font-medium">Rol</th>
                                     <th className="px-6 py-3 font-medium">Sucursal</th>
                                     <th className="px-6 py-3 font-medium">Estado</th>
+                                    <th className="px-6 py-3 font-medium">Sesión</th>
                                     <th className="px-6 py-3 font-medium text-right">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y">
-                                {users.map((user) => (
+                                {filteredUsers.map((user) => (
                                     <tr key={user.id} className="hover:bg-muted/30 transition-colors">
                                         <td className="px-6 py-4 font-medium">
                                             <div className="flex flex-col">
@@ -160,6 +267,13 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
                                                 <Badge variant="secondary" className="bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400">Inactivo</Badge>
                                             )}
                                         </td>
+                                        <td className="px-6 py-4">
+                                            {user.is_online ? (
+                                                <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400">En línea</Badge>
+                                            ) : (
+                                                <Badge variant="secondary" className="bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400">Fuera de línea</Badge>
+                                            )}
+                                        </td>
                                         <td className="px-6 py-4 text-right">
                                             <div className="flex justify-end gap-2">
                                                 <Button variant="outline" size="sm" onClick={() => router.get(`/users/${user.id}/sessions`)} title="Ver Sesiones">
@@ -172,6 +286,7 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
                                                     variant={user.status === 'ACTIVE' ? "destructive" : "secondary"} 
                                                     size="sm" 
                                                     onClick={() => toggleStatus(user)}
+                                                    disabled={user.role === "Super Admin"}
                                                     title={user.status === 'ACTIVE' ? 'Desactivar' : 'Reactivar'}
                                                 >
                                                     {user.status === 'ACTIVE' ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
@@ -180,9 +295,9 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
                                         </td>
                                     </tr>
                                 ))}
-                                {users.length === 0 && (
+                                {filteredUsers.length === 0 && (
                                     <tr>
-                                        <td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">
+                                        <td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">
                                             No hay usuarios registrados.
                                         </td>
                                     </tr>
@@ -204,12 +319,24 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
                         </DialogDescription>
                     </DialogHeader>
                     <form onSubmit={handleCreate} className="space-y-4 py-4">
-                        <div className="grid gap-2">
-                            <Label htmlFor="name">Nombre completo <span className="text-red-500">*</span></Label>
-                            <Input id="name" value={createData.name} onChange={(e) => setCreateData('name', e.target.value)} required />
-                            <InputError message={createErrors.name} />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="grid gap-2 min-w-0">
+                                    <Label htmlFor="name">Nombre <span className="text-red-500">*</span></Label>
+                                    <Input id="name" value={createData.name} onChange={(e) => setCreateData('name', e.target.value)} required />
+                                    <InputError message={createErrors.name} />
+                                </div>
+                                <div className="grid gap-2 min-w-0">
+                                    <Label htmlFor="last_name">Apellido Paterno</Label>
+                                    <Input id="last_name" value={createData.last_name} onChange={(e) => setCreateData('last_name', e.target.value)} />
+                                    <InputError message={createErrors.last_name} />
+                                </div>
+                                <div className="grid gap-2 min-w-0">
+                                    <Label htmlFor="mother_last_name">Apellido Materno</Label>
+                                    <Input id="mother_last_name" value={createData.mother_last_name} onChange={(e) => setCreateData('mother_last_name', e.target.value)} />
+                                    <InputError message={createErrors.mother_last_name} />
+                                </div>
+                            </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="grid gap-2">
                                 <Label htmlFor="dni">DNI <span className="text-red-500">*</span></Label>
                                 <Input id="dni" value={createData.dni} onChange={(e) => setCreateData('dni', e.target.value)} maxLength={8} required />
@@ -226,26 +353,38 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
                             <Input id="email" type="email" value={createData.email} onChange={(e) => setCreateData('email', e.target.value)} />
                             <InputError message={createErrors.email} />
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="grid gap-2">
                                 <Label>Rol de Sistema</Label>
-                                <Select value={createData.role} onValueChange={(val) => setCreateData('role', val)}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Selecciona un rol" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {roles.map((role) => (
-                                            <SelectItem key={role} value={role}>{role}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                <InputError message={createErrors.role} />
+                                <div className="flex gap-2 items-center w-full min-w-0">
+                                    <div className="flex-1 min-w-0">
+                                        <Select value={createData.role} onValueChange={(val) => setCreateData('role', val)}>
+                                        <SelectTrigger className="w-full">
+                                            <SelectValue placeholder="Selecciona un rol" className="truncate" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {roles.map((role) => (
+                                                <SelectItem key={role.id} value={role.name}>{role.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                        </Select>
+                                    </div>
+                                  <Button type="button" variant="outline" size="icon" onClick={openCreateRoleModal} title="Crear nuevo rol" className="shrink-0">
+                                      <Plus className="h-4 w-4" />
+                                  </Button>
+                                  {createData.role && createData.role !== 'Super Admin' && (
+                                      <Button type="button" variant="outline" size="icon" onClick={() => openEditRoleModal(createData.role)} title="Editar rol seleccionado" className="shrink-0">
+                                          <Pencil className="h-4 w-4" />
+                                      </Button>
+                                  )}
+                              </div>
+                              <InputError message={createErrors.role} />
                             </div>
                             <div className="grid gap-2">
                                 <Label>Sucursal Base</Label>
                                 <Select value={createData.branch_id} onValueChange={(val) => setCreateData('branch_id', val)}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Selecciona la sucursal" />
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="Selecciona la sucursal" className="truncate" />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {branches.map((branch) => (
@@ -272,12 +411,24 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
                         <DialogDescription>Modifica la información y accesos del usuario.</DialogDescription>
                     </DialogHeader>
                     <form onSubmit={handleEdit} className="space-y-4 py-4">
-                        <div className="grid gap-2">
-                            <Label htmlFor="edit_name">Nombre completo <span className="text-red-500">*</span></Label>
-                            <Input id="edit_name" value={editData.name} onChange={(e) => setEditData('name', e.target.value)} required />
-                            <InputError message={editErrors.name} />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="grid gap-2 min-w-0">
+                                    <Label htmlFor="edit_name">Nombre <span className="text-red-500">*</span></Label>
+                                    <Input id="edit_name" value={editData.name} onChange={(e) => setEditData('name', e.target.value)} required />
+                                    <InputError message={editErrors.name} />
+                                </div>
+                                <div className="grid gap-2 min-w-0">
+                                    <Label htmlFor="edit_last_name">Apellido Paterno</Label>
+                                    <Input id="edit_last_name" value={editData.last_name} onChange={(e) => setEditData('last_name', e.target.value)} />
+                                    <InputError message={editErrors.last_name} />
+                                </div>
+                                <div className="grid gap-2 min-w-0">
+                                    <Label htmlFor="edit_mother_last_name">Apellido Materno</Label>
+                                    <Input id="edit_mother_last_name" value={editData.mother_last_name} onChange={(e) => setEditData('mother_last_name', e.target.value)} />
+                                    <InputError message={editErrors.mother_last_name} />
+                                </div>
+                            </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="grid gap-2">
                                 <Label htmlFor="edit_dni">DNI <span className="text-red-500">*</span></Label>
                                 <Input id="edit_dni" value={editData.dni} onChange={(e) => setEditData('dni', e.target.value)} maxLength={8} required />
@@ -294,26 +445,38 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
                             <Input id="edit_email" type="email" value={editData.email} onChange={(e) => setEditData('email', e.target.value)} />
                             <InputError message={editErrors.email} />
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="grid gap-2">
                                 <Label>Rol de Sistema</Label>
-                                <Select value={editData.role} onValueChange={(val) => setEditData('role', val)}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Selecciona un rol" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {roles.map((role) => (
-                                            <SelectItem key={role} value={role}>{role}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                <InputError message={editErrors.role} />
+                                <div className="flex gap-2 items-center w-full min-w-0">
+                                    <div className="flex-1 min-w-0">
+                                        <Select value={editData.role} onValueChange={(val) => setEditData('role', val)} disabled={editingUser?.role === "Super Admin"}>
+                                        <SelectTrigger className="w-full">
+                                            <SelectValue placeholder="Selecciona un rol" className="truncate" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {roles.map((role) => (
+                                                <SelectItem key={role.id} value={role.name}>{role.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                        </Select>
+                                    </div>
+                                  <Button type="button" variant="outline" size="icon" onClick={openCreateRoleModal} title="Crear nuevo rol" className="shrink-0">
+                                      <Plus className="h-4 w-4" />
+                                  </Button>
+                                  {editData.role && editData.role !== 'Super Admin' && (
+                                      <Button type="button" variant="outline" size="icon" onClick={() => openEditRoleModal(editData.role)} title="Editar rol seleccionado" className="shrink-0">
+                                          <Pencil className="h-4 w-4" />
+                                      </Button>
+                                  )}
+                              </div>
+                              <InputError message={editErrors.role} />
                             </div>
                             <div className="grid gap-2">
                                 <Label>Sucursal Base</Label>
                                 <Select value={editData.branch_id} onValueChange={(val) => setEditData('branch_id', val)}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Selecciona la sucursal" />
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="Selecciona la sucursal" className="truncate" />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {branches.map((branch) => (
@@ -327,6 +490,89 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
                         <DialogFooter>
                             <Button type="button" variant="outline" onClick={() => setIsEditOpen(false)}>Cancelar</Button>
                             <Button type="submit" disabled={editProcessing}>Actualizar</Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
+            {/* Modal Crear Rol */}
+            <Dialog open={isRoleModalOpen} onOpenChange={setIsRoleModalOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>{isEditingRole ? 'Editar Rol' : 'Crear Nuevo Rol'}</DialogTitle>
+                        <DialogDescription>
+                            Define un nuevo rol y sus permisos de acceso.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={(e) => {
+                        e.preventDefault();
+                        const options = {
+                            preserveState: true,
+                            onSuccess: () => {
+                                setIsRoleModalOpen(false);
+                                setCreateData('role', roleData.name);
+                                setEditData('role', roleData.name);
+                                resetRole();
+                            }
+                        };
+                        if (isEditingRole && editingRoleId) {
+                            putRole(`/roles/${editingRoleId}`, options);
+                        } else {
+                            postRole('/roles', options);
+                        }
+                    }}>
+                        <div className="grid gap-4 py-4">
+                            <div className="grid gap-2">
+                                <Label htmlFor="role_name">Nombre del Rol</Label>
+                                <Input 
+                                    id="role_name" 
+                                    placeholder="Ej. Supervisor de Ventas" 
+                                    value={roleData.name} 
+                                    onChange={(e) => setRoleData('name', e.target.value)} 
+                                />
+                                <InputError message={roleErrors.name} />
+                            </div>
+                            
+                            <div className="grid gap-3">
+                                <Label>Permisos de Módulos (Ver)</Label>
+                                <div className="grid grid-cols-2 gap-4 border p-4 rounded-md bg-muted/20">
+                                    {Object.keys(roleData.permissions).map((permKey) => (
+                                        <div key={permKey} className="flex items-center space-x-2">
+                                            <Checkbox 
+                                                id={`perm_${permKey}`} 
+                                                checked={roleData.permissions[permKey as keyof typeof roleData.permissions]}
+                                                onCheckedChange={(checked) => setRoleData('permissions', { ...roleData.permissions, [permKey]: checked === true })}
+                                            />
+                                            <Label htmlFor={`perm_${permKey}`} className="cursor-pointer font-normal capitalize">
+                                                {permissionLabels[permKey] || permKey}
+                                            </Label>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                        <DialogFooter className="flex justify-between w-full sm:justify-between">
+                            {isEditingRole && editingRoleId ? (
+                                <Button type="button" variant="destructive" onClick={() => {
+                                    if(confirm('¿Estás seguro de que deseas eliminar este rol?')) {
+                                        deleteRole(`/roles/${editingRoleId}`, {
+                                            preserveState: true,
+                                            onSuccess: () => {
+                                                setIsRoleModalOpen(false);
+                                                setCreateData('role', '');
+                                                setEditData('role', '');
+                                                resetRole();
+                                            }
+                                        });
+                                    }
+                                }}>
+                                    <Trash2 className="h-4 w-4 mr-2" /> Eliminar Rol
+                                </Button>
+                            ) : <div></div>}
+                            <div className="flex gap-2">
+                                <Button type="button" variant="outline" onClick={() => setIsRoleModalOpen(false)}>Cancelar</Button>
+                                <Button type="submit" disabled={roleProcessing}>Guardar Rol</Button>
+                            </div>
                         </DialogFooter>
                     </form>
                 </DialogContent>

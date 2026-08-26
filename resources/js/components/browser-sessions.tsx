@@ -1,12 +1,11 @@
 import { Form } from '@inertiajs/react';
-import { useRef, useState } from 'react';
 import { Computer, Smartphone } from 'lucide-react';
+import { useRef, useState } from 'react';
 import SecurityController from '@/actions/App/Http/Controllers/Settings/SecurityController';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import PasswordInput from '@/components/password-input';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
 import {
     Dialog,
     DialogContent,
@@ -15,6 +14,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 
 export type Session = {
     agent: {

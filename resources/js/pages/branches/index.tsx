@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
 import { Head, useForm, router } from '@inertiajs/react';
+import { Building, Plus, Edit, Store, Power, PowerOff, Phone, MapPin } from 'lucide-react';
+import React, { useState } from 'react';
+import InputError from '@/components/input-error';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
-import InputError from '@/components/input-error';
-import { Building, Plus, Edit, Store, Power, PowerOff, Phone, MapPin } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type Branch = {
@@ -64,7 +64,11 @@ export default function BranchesIndex({ branches, flash }: Props) {
 
     const handleEdit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!editingBranch) return;
+
+        if (!editingBranch) {
+return;
+}
+
         editPut(`/branches/${editingBranch.id}`, {
             onSuccess: () => {
                 setIsEditOpen(false);

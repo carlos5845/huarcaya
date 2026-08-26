@@ -4,16 +4,20 @@ import { LoaderCircle } from 'lucide-react';
 import { useState } from 'react';
 
 import InputError from '@/components/input-error';
+import PasswordInput from '@/components/password-input';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { login } from '@/routes';
-import PasswordInput from '@/components/password-input';
 
 function getCookie(name: string) {
     const value = `; ${document.cookie}`;
     const parts = value.split(`; ${name}=`);
-    if (parts.length === 2) return decodeURIComponent(parts.pop()?.split(';').shift() || '');
+
+    if (parts.length === 2) {
+return decodeURIComponent(parts.pop()?.split(';').shift() || '');
+}
+
     return null;
 }
 
