@@ -16,7 +16,7 @@ class Purchase extends Model
         'purchase_number', 'supplier_document_type', 'supplier_document_series',
         'supplier_document_number', 'document_date', 'currency_code',
         'exchange_rate', 'subtotal_amount', 'tax_amount', 'total_amount',
-        'status', 'notes', 'created_by', 'approved_by', 'confirmed_at', 'cancelled_at',
+        'status', 'notes', 'document_file_path', 'created_by', 'approved_by', 'confirmed_at', 'cancelled_at',
     ];
 
     protected function casts(): array

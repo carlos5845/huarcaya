@@ -94,7 +94,7 @@ export default function SaleShow({ sale }: { sale: any }) {
                             </div>
                             <div>
                                 <div className="text-gray-500">Fecha de Registro</div>
-                                <div className="font-medium">{new Date(sale.created_at).toLocaleString()}</div>
+                                <div className="font-medium">{new Date(sale.created_at).toLocaleString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })}</div>
                             </div>
                             <div className="col-span-2">
                                 <div className="text-gray-500">Notas</div>
@@ -124,8 +124,8 @@ export default function SaleShow({ sale }: { sale: any }) {
                                                 <div className="text-xs text-muted-foreground">{line.product?.primary_reference || line.product_reference_snapshot}</div>
                                             </TableCell>
                                             <TableCell className="text-center">{Number(line.quantity)}</TableCell>
-                                            <TableCell className="text-right">S/ {Number(line.unit_price).toFixed(2)}</TableCell>
-                                            <TableCell className="text-right font-medium">S/ {Number(line.line_total || line.line_subtotal).toFixed(2)}</TableCell>
+                                            <TableCell className="text-right">{sale.currency_code === 'USD' ? '$' : 'S/'} {Number(line.unit_price).toFixed(2)}</TableCell>
+                                            <TableCell className="text-right font-medium">{sale.currency_code === 'USD' ? '$' : 'S/'} {Number(line.line_total || line.line_subtotal).toFixed(2)}</TableCell>
                                         </TableRow>
                                     ))
                                 ) : (
@@ -142,17 +142,17 @@ export default function SaleShow({ sale }: { sale: any }) {
                                 <>
                                     <div className="flex justify-between text-sm items-center">
                                         <span className="text-muted-foreground">Subtotal:</span>
-                                        <span>S/ {Number(sale.subtotal_amount).toFixed(2)}</span>
+                                        <span>{sale.currency_code === 'USD' ? '$' : 'S/'} {Number(sale.subtotal_amount).toFixed(2)}</span>
                                     </div>
                                     <div className="flex justify-between text-sm items-center">
                                         <span className="text-muted-foreground">IGV:</span>
-                                        <span>S/ {Number(sale.tax_amount).toFixed(2)}</span>
+                                        <span>{sale.currency_code === 'USD' ? '$' : 'S/'} {Number(sale.tax_amount).toFixed(2)}</span>
                                     </div>
                                 </>
                             )}
                             <div className="flex justify-between text-xl font-bold pt-2 border-t mt-2">
                                 <span>Total:</span>
-                                <span>S/ {Number(sale.total_amount).toFixed(2)}</span>
+                                <span>{sale.currency_code === 'USD' ? '$' : 'S/'} {Number(sale.total_amount).toFixed(2)}</span>
                             </div>
                         </div>
                     </div>

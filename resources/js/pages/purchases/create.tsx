@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import type { BreadcrumbItem } from '@/types';
@@ -23,7 +24,11 @@ export default function PurchaseCreate({ suppliers }: { suppliers: any[] }) {
         supplier_document_series: '',
         supplier_document_number: '',
         document_date: new Date().toISOString().split('T')[0],
+        tax_mode: 'PLUS_TAX',
+        currency_code: 'PEN',
+        exchange_rate: 1.0,
         notes: '',
+        document_file: null as File | null,
         lines: [] as { product_id: number; product_name: string; internal_code: string; quantity: number; unit_cost: number }[],
     });
 
@@ -165,13 +170,53 @@ return;
                                 <Input id="date" type="date" value={data.document_date} onChange={e => setData('document_date', e.target.value)} required />
                                 <InputError message={errors.document_date} />
                             </div>
+                            
+                            <div className="space-y-2">
+                                <Label htmlFor="currency_code">Moneda <span className="text-red-500">*</span></Label>
+                                <Select value={data.currency_code} onValueChange={(v) => setData('currency_code', v)}>
+                                    <SelectTrigger id="currency_code">
+                                        <SelectValue placeholder="Seleccione Moneda" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="PEN">Soles (S/)</SelectItem>
+                                        <SelectItem value="USD">Dólares ($)</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <InputError message={errors.currency_code} />
+                            </div>
+                            
+                            {data.currency_code === 'USD' && (
+                                <div className="space-y-2">
+                                    <Label htmlFor="exchange_rate">Tipo de Cambio <span className="text-red-500">*</span></Label>
+                                    <Input id="exchange_rate" type="number" step="0.001" min="0.01" value={data.exchange_rate} onChange={e => setData('exchange_rate', parseFloat(e.target.value) || 1)} required />
+                                    <InputError message={errors.exchange_rate} />
+                                </div>
+                            )}
                         </div>
 
                         <div className="space-y-4">
                             <h3 className="font-medium border-b pb-2">Información Adicional</h3>
                             <div className="space-y-2">
                                 <Label htmlFor="notes">Notas / Observaciones</Label>
-                                <Textarea id="notes" rows={5} value={data.notes} onChange={e => setData('notes', e.target.value)} placeholder="Detalles sobre la compra..." />
+                                <Textarea id="notes" rows={3} value={data.notes} onChange={e => setData('notes', e.target.value)} placeholder="Detalles sobre la compra..." />
+                            </div>
+                            <div className="space-y-2 mt-4 border-t pt-4">
+                                <Label htmlFor="document_file">Archivo de Factura (PDF/Imagen)</Label>
+                                <div className="border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer relative">
+                                    <Input 
+                                        id="document_file" 
+                                        type="file" 
+                                        accept=".pdf,.jpg,.jpeg,.png"
+                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                        onChange={e => setData('document_file', e.target.files?.[0] || null)} 
+                                    />
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 mb-2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                                    <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                        {data.document_file ? data.document_file.name : "Haz clic para examinar o arrastra el archivo aquí"}
+                                    </div>
+                                    <p className="text-xs text-gray-500 mt-1">Soporta PDF, JPG, PNG (Max 5MB)</p>
+                                </div>
+                                <InputError message={errors.document_file} />
                             </div>
                         </div>
                     </div>
@@ -245,13 +290,13 @@ return;
                                                 <Input 
                                                     type="number" 
                                                     min="0" 
-                                                    step="0.01" 
+                                                    step="0.001" 
                                                     value={line.unit_cost} 
                                                     onChange={e => updateLine(idx, 'unit_cost', parseFloat(e.target.value) || 0)} 
                                                 />
                                             </TableCell>
                                             <TableCell className="text-right font-medium">
-                                                S/ {(line.quantity * line.unit_cost).toFixed(2)}
+                                                {data.currency_code === 'USD' ? '$' : 'S/'} {(line.quantity * line.unit_cost).toFixed(2)}
                                             </TableCell>
                                             <TableCell>
                                                 <Button type="button" variant="ghost" size="icon" className="text-red-500" onClick={() => removeLine(idx)}>
@@ -270,9 +315,38 @@ return;
                             </TableBody>
                         </Table>
 
-                        <div className="flex justify-end pt-4 border-t">
-                            <div className="text-xl font-bold">
-                                Total: S/ {total.toFixed(2)}
+                        <div className="flex flex-col md:flex-row justify-between pt-4 border-t gap-6">
+                            <div className="flex-1 max-w-sm">
+                                <h4 className="text-sm font-medium mb-3 text-muted-foreground">Configuración de Impuestos</h4>
+                                <RadioGroup value={data.tax_mode} onValueChange={(v) => setData('tax_mode', v)} className="space-y-2">
+                                    <div className="flex items-center space-x-2">
+                                        <RadioGroupItem value="INCLUDED" id="tax_included" />
+                                        <Label htmlFor="tax_included" className="cursor-pointer">Los precios incluyen IGV (Extracción)</Label>
+                                    </div>
+                                    <div className="flex items-center space-x-2">
+                                        <RadioGroupItem value="PLUS_TAX" id="tax_plus" />
+                                        <Label htmlFor="tax_plus" className="cursor-pointer">Los precios NO incluyen IGV (Adición)</Label>
+                                    </div>
+                                    <div className="flex items-center space-x-2">
+                                        <RadioGroupItem value="EXEMPT" id="tax_exempt" />
+                                        <Label htmlFor="tax_exempt" className="cursor-pointer">Operación Exonerada / Inafecta</Label>
+                                    </div>
+                                </RadioGroup>
+                            </div>
+
+                            <div className="text-right space-y-2 w-72">
+                                <div className="flex justify-between text-sm items-center">
+                                    <span className="text-muted-foreground">Op. Gravada:</span>
+                                    <span>{data.currency_code === 'USD' ? '$' : 'S/'} {(data.tax_mode === 'INCLUDED' ? (total / 1.18) : total).toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm items-center">
+                                    <span className="text-muted-foreground">IGV (18%):</span>
+                                    <span>{data.currency_code === 'USD' ? '$' : 'S/'} {(data.tax_mode === 'INCLUDED' ? (total - (total / 1.18)) : data.tax_mode === 'PLUS_TAX' ? (total * 0.18) : 0).toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between text-xl font-bold pt-2 border-t mt-2">
+                                    <span>Total a Pagar:</span>
+                                    <span>{data.currency_code === 'USD' ? '$' : 'S/'} {(data.tax_mode === 'PLUS_TAX' ? (total * 1.18) : total).toFixed(2)}</span>
+                                </div>
                             </div>
                         </div>
                     </div>

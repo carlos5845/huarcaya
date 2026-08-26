@@ -119,14 +119,15 @@ export default function PurchasesIndex({ purchases, filters, branches = [], isSu
                     <Table>
                         <TableHeader>
                             <TableRow>
-                                <TableHead>ID Interno</TableHead>
                                 <TableHead>Fecha</TableHead>
                                 <TableHead>Proveedor</TableHead>
                                 <TableHead>Documento</TableHead>
                                 <TableHead>Serie</TableHead>
                                 <TableHead>Número</TableHead>
-                                <TableHead>Importe</TableHead>
+                                <TableHead>Op. Gravada</TableHead>
+                                <TableHead>IGV</TableHead>
                                 <TableHead>Total</TableHead>
+                                <TableHead>Moneda</TableHead>
                                 <TableHead>Estado</TableHead>
                                 <TableHead className="text-right">Acciones</TableHead>
                             </TableRow>
@@ -135,11 +136,11 @@ export default function PurchasesIndex({ purchases, filters, branches = [], isSu
                             {purchases.data && purchases.data.length > 0 ? (
                                 purchases.data.map((p: any) => (
                                     <TableRow key={p.id}>
-                                        <TableCell className="font-medium text-xs text-muted-foreground">
-                                            {p.purchase_number}
-                                        </TableCell>
                                         <TableCell>
-                                            {new Date(p.document_date).toLocaleDateString()}
+                                            <div className="flex flex-col">
+                                                <span>{new Date(p.created_at).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
+                                                <span className="text-xs text-gray-500">{new Date(p.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
+                                            </div>
                                         </TableCell>
                                         <TableCell>
                                             {p.supplier?.legal_name || 'Desconocido'}
@@ -154,18 +155,40 @@ export default function PurchasesIndex({ purchases, filters, branches = [], isSu
                                             {p.supplier_document_number || '-'}
                                         </TableCell>
                                         <TableCell>
-                                            S/ {Number(p.subtotal_amount).toFixed(2)}
-                                        </TableCell>
-                                        <TableCell className="font-medium">
-                                            S/ {Number(p.total_amount).toFixed(2)}
+                                            {p.currency_code === 'USD' ? '$' : 'S/'} {Number(p.subtotal_amount).toFixed(2)}
                                         </TableCell>
                                         <TableCell>
+                                            {p.currency_code === 'USD' ? '$' : 'S/'} {Number(p.tax_amount).toFixed(2)}
+                                        </TableCell>
+                                        <TableCell className="font-medium">
+                                            {p.currency_code === 'USD' ? '$' : 'S/'} {Number(p.total_amount).toFixed(2)}
+                                        </TableCell>
+                                        <TableCell>{p.currency_code === 'USD' ? 'USD' : 'PEN'}</TableCell>
+                                          <TableCell>
                                             {p.status === 'DRAFT' && <Badge variant="secondary">Borrador</Badge>}
                                             {p.status === 'CONFIRMED' && <Badge className="bg-green-600 hover:bg-green-700">Confirmado</Badge>}
                                             {p.status === 'CANCELLED' && <Badge variant="destructive">Anulado</Badge>}
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <div className="flex justify-end gap-2">
+                                                {p.document_file_path ? (
+                                                    <a href={`/storage/${p.document_file_path}`} target="_blank" rel="noopener noreferrer">
+                                                        <Button variant="outline" size="sm" title="Ver Archivo Adjunto">
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 text-blue-500"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+                                                        </Button>
+                                                    </a>
+                                                ) : (
+                                                    <Button variant="outline" size="sm" title="Sin Archivo Adjunto" onClick={() => alert('No hay un archivo adjunto a esta compra.')}>
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 text-gray-400"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+                                                    </Button>
+                                                )}
+                                                {p.status === 'DRAFT' && (
+                                                    <Link href={`/purchases/${p.id}/edit`}>
+                                                        <Button variant="outline" size="sm">
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 mr-1"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg> Editar
+                                                        </Button>
+                                                    </Link>
+                                                )}
                                                 <Link href={`/purchases/${p.id}`}>
                                                     <Button variant="outline" size="sm">
                                                         <Eye className="h-4 w-4 mr-1" /> Ver

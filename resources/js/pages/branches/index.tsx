@@ -199,36 +199,17 @@ return;
                             <Input id="name" value={createData.name} onChange={(e) => setCreateData('name', e.target.value)} required />
                             <InputError message={createErrors.name} />
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="grid gap-2">
-                                <Label htmlFor="code">Código Interno</Label>
-                                <Input id="code" value={createData.code} onChange={(e) => setCreateData('code', e.target.value)} placeholder="Ej: SUC-002" />
-                                <InputError message={createErrors.code} />
-                            </div>
-                            <div className="grid gap-2">
-                                <Label htmlFor="phone">Teléfono</Label>
-                                <Input id="phone" value={createData.phone} onChange={(e) => setCreateData('phone', e.target.value)} />
-                                <InputError message={createErrors.phone} />
-                            </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor="phone">Teléfono</Label>
+                            <Input id="phone" value={createData.phone} onChange={(e) => setCreateData('phone', e.target.value)} />
+                            <InputError message={createErrors.phone} />
                         </div>
                         <div className="grid gap-2">
                             <Label htmlFor="address">Dirección</Label>
                             <Input id="address" value={createData.address} onChange={(e) => setCreateData('address', e.target.value)} />
                             <InputError message={createErrors.address} />
                         </div>
-                        <div className="grid gap-2">
-                            <Label>Tipo de Sucursal</Label>
-                            <Select value={createData.type} onValueChange={(val) => setCreateData('type', val)}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Selecciona un tipo" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="STORE">Tienda (Ventas)</SelectItem>
-                                    <SelectItem value="WAREHOUSE">Almacén (Solo Inventario)</SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <InputError message={createErrors.type} />
-                        </div>
+                        
                         <DialogFooter>
                             <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
                             <Button type="submit" disabled={createProcessing}>Guardar</Button>

@@ -39,7 +39,12 @@ class BranchController extends Controller
         $data['uuid'] = Str::uuid()->toString();
         $data['company_id'] = auth()->user()->company_id;
 
-        Branch::create($data);
+        $branch = Branch::create($data);
+        
+        if (empty($branch->code)) {
+            $branch->code = 'SUC-' . str_pad($branch->id, 3, '0', STR_PAD_LEFT);
+            $branch->save();
+        }
 
         return redirect()->route('branches.index')->with('success', 'Sucursal creada exitosamente.');
     }

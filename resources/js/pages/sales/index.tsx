@@ -118,13 +118,14 @@ export default function SalesIndex({ sales, filters, branches = [], isSuperAdmin
                     <Table>
                         <TableHeader>
                             <TableRow>
-                                <TableHead>ID Interno</TableHead>
                                 <TableHead>Fecha y Hora</TableHead>
                                 <TableHead>Cliente</TableHead>
                                 <TableHead>Comprobante</TableHead>
                                 <TableHead>Serie</TableHead>
                                 <TableHead>Número</TableHead>
-                                <TableHead>Importe</TableHead>
+                                <TableHead>Op. Gravada</TableHead>
+                                <TableHead>IGV</TableHead>
+                                <TableHead>Moneda</TableHead>
                                 <TableHead>Total</TableHead>
                                 <TableHead>Estado</TableHead>
                                 <TableHead className="text-right">Acciones</TableHead>
@@ -134,13 +135,10 @@ export default function SalesIndex({ sales, filters, branches = [], isSuperAdmin
                             {sales.data && sales.data.length > 0 ? (
                                 sales.data.map((p: any) => (
                                     <TableRow key={p.id}>
-                                        <TableCell className="font-medium text-xs text-muted-foreground">
-                                            {p.sale_number}
-                                        </TableCell>
                                         <TableCell>
                                             <div className="flex flex-col">
-                                                <span>{new Date(p.created_at).toLocaleDateString()}</span>
-                                                <span className="text-xs text-muted-foreground">{new Date(p.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                                <span>{new Date(p.created_at).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
+                                                <span className="text-xs text-muted-foreground">{new Date(p.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
                                             </div>
                                         </TableCell>
                                         <TableCell>
@@ -159,10 +157,14 @@ export default function SalesIndex({ sales, filters, branches = [], isSuperAdmin
                                             {p.external_document_number || '-'}
                                         </TableCell>
                                         <TableCell>
-                                            S/ {Number(p.subtotal_amount).toFixed(2)}
+                                            {p.currency_code === 'USD' ? '$' : 'S/'} {Number(p.subtotal_amount).toFixed(2)}
                                         </TableCell>
-                                        <TableCell className="font-medium">
-                                            S/ {Number(p.total_amount).toFixed(2)}
+                                        <TableCell>
+                                            {p.currency_code === 'USD' ? '$' : 'S/'} {Number(p.tax_amount).toFixed(2)}
+                                        </TableCell>
+                                        <TableCell>{p.currency_code === 'USD' ? 'USD' : 'PEN'}</TableCell>
+                                          <TableCell className="font-medium">
+                                            {p.currency_code === 'USD' ? '$' : 'S/'} {Number(p.total_amount).toFixed(2)}
                                         </TableCell>
                                         <TableCell>
                                             {p.status === 'DRAFT' && <Badge variant="secondary">Borrador</Badge>}
@@ -182,7 +184,7 @@ export default function SalesIndex({ sales, filters, branches = [], isSuperAdmin
                                 ))
                             ) : (
                                 <TableRow>
-                                    <TableCell colSpan={10} className="text-center p-8 text-muted-foreground">
+                                    <TableCell colSpan={11} className="text-center p-8 text-muted-foreground">
                                         No se encontraron ventas con los filtros actuales.
                                     </TableCell>
                                 </TableRow>

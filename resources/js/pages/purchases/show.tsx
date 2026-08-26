@@ -90,11 +90,24 @@ export default function PurchaseShow({ purchase }: { purchase: any }) {
                             </div>
                             <div>
                                 <div className="text-gray-500">Fecha de Registro</div>
-                                <div className="font-medium">{new Date(purchase.created_at).toLocaleString()}</div>
+                                <div className="font-medium">{new Date(purchase.created_at).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })}</div>
                             </div>
                             <div className="col-span-2">
                                 <div className="text-gray-500">Notas</div>
                                 <div className="font-medium">{purchase.notes || '-'}</div>
+                            </div>
+                            <div className="col-span-2 mt-2 pt-2 border-t">
+                                <div className="text-gray-500 mb-2">Archivo Adjunto</div>
+                                {purchase.document_file_path ? (
+                                    <a href={`/storage/${purchase.document_file_path}`} target="_blank" rel="noopener noreferrer">
+                                        <Button variant="outline" size="sm" className="gap-2">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 text-blue-500"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+                                            Ver Documento Adjunto
+                                        </Button>
+                                    </a>
+                                ) : (
+                                    <p className="text-sm text-muted-foreground italic">No se adjuntó ningún archivo a esta compra.</p>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -122,8 +135,8 @@ export default function PurchaseShow({ purchase }: { purchase: any }) {
                                         </TableCell>
                                         <TableCell className="text-center">{Number(line.ordered_quantity)}</TableCell>
                                         <TableCell className="text-center">{Number(line.received_quantity)}</TableCell>
-                                        <TableCell className="text-right">S/ {Number(line.unit_cost_base).toFixed(2)}</TableCell>
-                                        <TableCell className="text-right font-medium">S/ {Number(line.line_subtotal).toFixed(2)}</TableCell>
+                                        <TableCell className="text-right">{purchase.currency_code === 'USD' ? '$' : 'S/'} {Number(line.unit_cost_base).toFixed(2)}</TableCell>
+                                        <TableCell className="text-right font-medium">{purchase.currency_code === 'USD' ? '$' : 'S/'} {Number(line.line_subtotal).toFixed(2)}</TableCell>
                                     </TableRow>
                                 ))
                             ) : (
@@ -135,8 +148,19 @@ export default function PurchaseShow({ purchase }: { purchase: any }) {
                     </Table>
 
                     <div className="flex justify-end pt-4 border-t">
-                        <div className="text-xl font-bold">
-                            Total: S/ {Number(purchase.total_amount).toFixed(2)}
+                        <div className="text-right space-y-2 w-64">
+                            <div className="flex justify-between text-sm items-center">
+                                <span className="text-muted-foreground">Op. Gravada:</span>
+                                <span>{purchase.currency_code === 'USD' ? '$' : 'S/'} {Number(purchase.subtotal_amount).toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between text-sm items-center">
+                                <span className="text-muted-foreground">IGV (18%):</span>
+                                <span>{purchase.currency_code === 'USD' ? '$' : 'S/'} {Number(purchase.tax_amount).toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between text-xl font-bold pt-2 border-t mt-2">
+                                <span>Total:</span>
+                                <span>{purchase.currency_code === 'USD' ? '$' : 'S/'} {Number(purchase.total_amount).toFixed(2)}</span>
+                            </div>
                         </div>
                     </div>
                 </div>

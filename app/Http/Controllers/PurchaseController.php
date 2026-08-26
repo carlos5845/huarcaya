@@ -96,6 +96,10 @@ class PurchaseController extends Controller
             'lines.*.product_id' => ['required', 'exists:products,id'],
             'lines.*.quantity' => ['required', 'numeric', 'min:1'],
             'lines.*.unit_cost' => ['required', 'numeric', 'min:0'],
+            'tax_mode' => ['required', 'string', 'in:INCLUDED,PLUS_TAX,EXEMPT'],
+            'currency_code' => ['required', 'string', 'in:PEN,USD'],
+            'exchange_rate' => ['required_if:currency_code,USD', 'numeric', 'min:0.01'],
+            'document_file' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'], // Max 5MB
         ]);
 
         $companyId = Auth::user()->company_id;
@@ -120,13 +124,26 @@ class PurchaseController extends Controller
             }
 
             // Calculate totals
-            $subtotal = 0;
+            $linesTotal = 0;
+            $taxMode = $validated['tax_mode'];
+
             foreach ($validated['lines'] as $line) {
-                $subtotal += ($line['quantity'] * $line['unit_cost']);
+                $linesTotal += ($line['quantity'] * $line['unit_cost']);
             }
-            // For simplicity, tax is 0 in this basic version, or calculated if needed
-            $taxAmount = 0;
-            $totalAmount = $subtotal + $taxAmount;
+
+            $globalSubtotal = $linesTotal;
+            $globalTax = 0;
+            $globalTotal = $linesTotal;
+
+            if ($taxMode === 'INCLUDED') {
+                $globalSubtotal = $linesTotal / 1.18;
+                $globalTax = $linesTotal - $globalSubtotal;
+                $globalTotal = $linesTotal;
+            } elseif ($taxMode === 'PLUS_TAX') {
+                $globalSubtotal = $linesTotal;
+                $globalTax = $linesTotal * 0.18;
+                $globalTotal = $linesTotal + $globalTax;
+            }
 
             $purchaseNumber = 'PUR-'.date('Ymd').'-'.strtoupper(Str::random(6));
 
@@ -140,18 +157,34 @@ class PurchaseController extends Controller
                 'supplier_document_series' => $validated['supplier_document_series'],
                 'supplier_document_number' => $validated['supplier_document_number'],
                 'document_date' => $validated['document_date'],
-                'currency_code' => 'PEN',
-                'exchange_rate' => 1,
-                'subtotal_amount' => $subtotal,
-                'tax_amount' => $taxAmount,
-                'total_amount' => $totalAmount,
+                'currency_code' => $validated['currency_code'],
+                'exchange_rate' => $validated['currency_code'] === 'USD' ? $validated['exchange_rate'] : 1,
+                'subtotal_amount' => round($globalSubtotal, 2),
+                'tax_amount' => round($globalTax, 2),
+                'total_amount' => round($globalTotal, 2),
                 'status' => 'DRAFT',
-                'notes' => $validated['notes'],
+                'notes' => $validated['notes'] ?? null,
+                'document_file_path' => $request->hasFile('document_file') ? $request->file('document_file')->store('purchases', 'public') : null,
                 'created_by' => Auth::id(),
             ]);
 
             foreach ($validated['lines'] as $lineData) {
-                $lineSubtotal = $lineData['quantity'] * $lineData['unit_cost'];
+                $baseInput = $lineData['quantity'] * $lineData['unit_cost'];
+                
+                $lineSubtotal = $baseInput;
+                $lineTax = 0;
+                $lineFinalTotal = $baseInput;
+
+                if ($taxMode === 'INCLUDED') {
+                    $lineSubtotal = $baseInput / 1.18;
+                    $lineTax = $baseInput - $lineSubtotal;
+                    $lineFinalTotal = $baseInput;
+                } elseif ($taxMode === 'PLUS_TAX') {
+                    $lineSubtotal = $baseInput;
+                    $lineTax = $baseInput * 0.18;
+                    $lineFinalTotal = $baseInput + $lineTax;
+                }
+
                 PurchaseLine::create([
                     'uuid' => (string) Str::uuid(),
                     'purchase_id' => $purchase->id,
@@ -159,9 +192,9 @@ class PurchaseController extends Controller
                     'ordered_quantity' => $lineData['quantity'],
                     'unit_cost_original' => $lineData['unit_cost'],
                     'unit_cost_base' => $lineData['unit_cost'], // assuming same currency
-                    'line_subtotal' => $lineSubtotal,
-                    'tax_amount' => 0,
-                    'line_total' => $lineSubtotal,
+                    'line_subtotal' => round($lineSubtotal, 2),
+                    'tax_amount' => round($lineTax, 2),
+                    'line_total' => round($lineFinalTotal, 2),
                     'received_quantity' => 0,
                 ]);
             }
@@ -182,6 +215,142 @@ class PurchaseController extends Controller
         return Inertia::render('purchases/show', [
             'purchase' => $purchase,
         ]);
+    }
+
+    public function edit(Purchase $purchase)
+    {
+        if ($purchase->status !== 'DRAFT') {
+            return redirect()->route('purchases.index')->with('error', 'Solo se pueden editar compras en estado borrador.');
+        }
+
+        $purchase->load(['lines.product']);
+        $suppliers = \App\Models\Supplier::where('company_id', \Illuminate\Support\Facades\Auth::user()->company_id)->where('status', 'ACTIVE')->get();
+
+        return Inertia::render('purchases/edit', [
+            'purchase' => $purchase,
+            'suppliers' => $suppliers,
+        ]);
+    }
+
+    public function update(Request $request, Purchase $purchase)
+    {
+        if ($purchase->status !== 'DRAFT') {
+            return redirect()->back()->with('error', 'Solo se pueden editar compras en estado borrador.');
+        }
+
+        $validated = $request->validate([
+            'supplier_id' => ['required', 'exists:suppliers,id'],
+            'supplier_document_type' => ['required', 'string'],
+            'supplier_document_series' => ['nullable', 'string', 'max:10'],
+            'supplier_document_number' => ['nullable', 'string', 'max:20'],
+            'document_date' => ['required', 'date'],
+            'notes' => ['nullable', 'string'],
+            'lines' => ['required', 'array', 'min:1'],
+            'lines.*.product_id' => ['required', 'exists:products,id'],
+            'lines.*.quantity' => ['required', 'numeric', 'min:1'],
+            'lines.*.unit_cost' => ['required', 'numeric', 'min:0'],
+            'tax_mode' => ['required', 'string', 'in:INCLUDED,PLUS_TAX,EXEMPT'],
+            'currency_code' => ['required', 'string', 'in:PEN,USD'],
+            'exchange_rate' => ['required_if:currency_code,USD', 'numeric', 'min:0.01'],
+            'document_file' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
+        ]);
+
+        $companyId = \Illuminate\Support\Facades\Auth::user()->company_id;
+
+        // Check document uniqueness if changed
+        if ($validated['supplier_document_type'] && $validated['supplier_document_series'] && $validated['supplier_document_number']) {
+            $exists = \App\Models\Purchase::where('company_id', $companyId)
+                ->where('supplier_id', $validated['supplier_id'])
+                ->where('supplier_document_type', $validated['supplier_document_type'])
+                ->where('supplier_document_series', $validated['supplier_document_series'])
+                ->where('supplier_document_number', $validated['supplier_document_number'])
+                ->where('id', '!=', $purchase->id)
+                ->exists();
+
+            if ($exists) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'supplier_document_number' => 'Ya existe una compra con este comprobante para el proveedor seleccionado.',
+                ]);
+            }
+        }
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $request, $purchase) {
+            $linesTotal = 0;
+            $taxMode = $validated['tax_mode'];
+
+            $purchase->lines()->delete();
+
+            foreach ($validated['lines'] as $lineData) {
+                $lineSubtotal = $lineData['quantity'] * $lineData['unit_cost'];
+                
+                $lineTax = 0;
+                $lineFinalTotal = 0;
+                
+                if ($taxMode === 'INCLUDED') {
+                    $lineFinalTotal = $lineSubtotal;
+                    $lineSubtotal = $lineFinalTotal / 1.18;
+                    $lineTax = $lineFinalTotal - $lineSubtotal;
+                } elseif ($taxMode === 'PLUS_TAX') {
+                    $lineTax = $lineSubtotal * 0.18;
+                    $lineFinalTotal = $lineSubtotal + $lineTax;
+                } else {
+                    $lineFinalTotal = $lineSubtotal;
+                }
+
+                $linesTotal += $lineFinalTotal;
+
+                $purchase->lines()->create([
+                    'uuid' => (string) \Illuminate\Support\Str::uuid(),
+                    'product_id' => $lineData['product_id'],
+                    'ordered_quantity' => $lineData['quantity'],
+                    'unit_cost_original' => $lineData['unit_cost'],
+                    'unit_cost_base' => $lineData['unit_cost'],
+                    'line_subtotal' => round($lineSubtotal, 2),
+                    'tax_amount' => round($lineTax, 2),
+                    'line_total' => round($lineFinalTotal, 2),
+                    'received_quantity' => 0,
+                ]);
+            }
+
+            $globalSubtotal = 0;
+            $globalTax = 0;
+            $globalTotal = 0;
+
+            if ($taxMode === 'INCLUDED') {
+                $globalTotal = $linesTotal;
+                $globalSubtotal = $globalTotal / 1.18;
+                $globalTax = $globalTotal - $globalSubtotal;
+            } elseif ($taxMode === 'PLUS_TAX') {
+                $globalSubtotal = $purchase->lines()->sum('line_subtotal');
+                $globalTax = $purchase->lines()->sum('tax_amount');
+                $globalTotal = $globalSubtotal + $globalTax;
+            } else {
+                $globalSubtotal = $linesTotal;
+                $globalTotal = $linesTotal;
+            }
+
+            $updateData = [
+                'supplier_id' => $validated['supplier_id'],
+                'supplier_document_type' => $validated['supplier_document_type'],
+                'supplier_document_series' => $validated['supplier_document_series'] ?? null,
+                'supplier_document_number' => $validated['supplier_document_number'] ?? null,
+                'document_date' => $validated['document_date'],
+                'currency_code' => $validated['currency_code'],
+                'exchange_rate' => $validated['currency_code'] === 'USD' ? $validated['exchange_rate'] : 1,
+                'subtotal_amount' => round($globalSubtotal, 2),
+                'tax_amount' => round($globalTax, 2),
+                'total_amount' => round($globalTotal, 2),
+                'notes' => $validated['notes'] ?? null,
+            ];
+
+            if ($request->hasFile('document_file')) {
+                $updateData['document_file_path'] = $request->file('document_file')->store('purchases', 'public');
+            }
+
+            $purchase->update($updateData);
+        });
+
+        return redirect()->route('purchases.show', $purchase)->with('success', 'Compra actualizada exitosamente.');
     }
 
     public function confirm(Purchase $purchase, KardexService $kardexService)
