@@ -22,7 +22,7 @@ Route::inertia('/', 'welcome')->name('home');
 Route::middleware(['auth'])->group(function () {
     Route::get('dashboard', function () {
     $company_id = auth()->user()->company_id;
-    
+
     $stats = [
         'customers_count' => \App\Models\Customer::where('company_id', $company_id)->count(),
         'products_count' => \App\Models\Product::where('company_id', $company_id)->count(),
@@ -32,13 +32,12 @@ Route::middleware(['auth'])->group(function () {
         'recent_purchases' => \App\Models\Purchase::where('company_id', $company_id)->with('supplier')->orderBy('created_at', 'desc')->take(5)->get(),
     ];
 
-    // SQLite uses strftime for month formatting
-    $salesChart = \App\Models\Sale::where('company_id', $company_id)
-        ->selectRaw("strftime('%Y-%m', created_at) as month, sum(total_amount) as total")
-        ->where('created_at', '>=', now()->subMonths(6))
-        ->groupBy('month')
-        ->orderBy('month')
-        ->get();
+        $salesChart = \App\Models\Sale::where('company_id', $company_id)
+            ->selectRaw("to_char(created_at, 'YYYY-MM') as month, sum(total_amount) as total")
+            ->where('created_at', '>=', now()->subMonths(6))
+            ->groupByRaw("to_char(created_at, 'YYYY-MM')")
+            ->orderByRaw("to_char(created_at, 'YYYY-MM')")
+            ->get();
 
     return Inertia::render('dashboard', [
         'stats' => $stats,
@@ -95,7 +94,7 @@ Route::middleware(['auth'])->group(function () {
 
         Route::get('inventory', [InventoryController::class, 'index'])->name('inventory.index');
         Route::get('kardex', [\App\Http\Controllers\KardexController::class, 'index'])->name('kardex.index');
-        
+
         Route::post('inventory/adjustments/{adjustment}/confirm', [\App\Http\Controllers\InventoryAdjustmentController::class, 'confirm'])->name('inventory.adjustments.confirm');
         Route::resource('inventory/adjustments', \App\Http\Controllers\InventoryAdjustmentController::class)->names('inventory.adjustments');
 
