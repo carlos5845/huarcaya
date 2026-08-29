@@ -113,28 +113,22 @@ export default function ForgotPassword() {
     };
 
     return (
-        <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
+        <>
             <Head title="Recuperar contraseña" />
-            <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 p-8">
-
-                <div className="text-center mb-6">
-                    <h2 className="text-xl font-semibold">Recuperar Contraseña</h2>
-                    <p className="text-sm text-muted-foreground mt-1">Verifica tu identidad para restablecer tu acceso</p>
+            <div className="flex flex-col gap-6">
+            {message && (
+                <div className="mb-6 text-center text-sm font-medium text-green-600 bg-green-50 p-3 rounded-md border border-green-200">
+                    {message}
                 </div>
-
-                {message && (
-                    <div className="mb-6 text-center text-sm font-medium text-green-600 bg-green-50 p-3 rounded-md border border-green-200">
-                        {message}
-                    </div>
                 )}
 
-                <div className="space-y-6">
-                    {step === 1 && (
-                        <form onSubmit={handleRequestQuestion}>
-                            <div className="grid gap-4">
-                                <div className="grid gap-2">
-                                    <Label htmlFor="dni">Número de DNI</Label>
-                                    <Input
+            <div className="space-y-6">
+                {step === 1 && (
+                    <form onSubmit={handleRequestQuestion}>
+                        <div className="grid gap-4">
+                            <div className="grid gap-2">
+                                <Label htmlFor="dni">Número de DNI</Label>
+                                <Input
                                         id="dni"
                                         type="text"
                                         value={dni}
@@ -144,27 +138,27 @@ export default function ForgotPassword() {
                                         autoFocus
                                         placeholder="Ingresa tu DNI"
                                     />
-                                    <InputError message={errors.dni} />
-                                </div>
-
-                                <Button className="w-full" disabled={processing || dni.length !== 8}>
-                                    {processing && <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />}
-                                    Continuar
-                                </Button>
+                                <InputError message={errors.dni} />
                             </div>
-                        </form>
+
+                            <Button className="w-full" disabled={processing || dni.length !== 8}>
+                                {processing && <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />}
+                                    Continuar
+                            </Button>
+                        </div>
+                    </form>
                     )}
 
-                    {step === 2 && (
-                        <form onSubmit={handleResetPassword}>
-                            <div className="grid gap-6">
-                                <div className="grid gap-2">
-                                    <Label htmlFor="answer">
-                                        {questionType === 'ubigeo' 
+                {step === 2 && (
+                    <form onSubmit={handleResetPassword}>
+                        <div className="grid gap-6">
+                            <div className="grid gap-2">
+                                <Label htmlFor="answer">
+                                    {questionType === 'ubigeo' 
                                             ? '¿Cuál es el código de Ubigeo de tu DNI?' 
                                             : '¿Cuál es la fecha de vencimiento de tu DNI?'}
-                                    </Label>
-                                    <Input
+                                </Label>
+                                <Input
                                         id="answer"
                                         type={questionType === 'ubigeo' ? 'text' : 'date'}
                                         value={answer}
@@ -174,53 +168,56 @@ export default function ForgotPassword() {
                                         placeholder={questionType === 'ubigeo' ? 'Ej: 150101' : ''}
                                         maxLength={questionType === 'ubigeo' ? 6 : undefined}
                                     />
-                                    <InputError message={errors.answer} />
-                                    <p className="text-xs text-muted-foreground">
-                                        {questionType === 'ubigeo' 
+                                <InputError message={errors.answer} />
+                                <p className="text-xs text-muted-foreground">
+                                    {questionType === 'ubigeo' 
                                             ? 'El ubigeo es un código de 6 dígitos que aparece en el anverso de tu DNI.' 
                                             : 'Busca la fecha de caducidad impresa en tu DNI.'}
-                                    </p>
-                                </div>
+                                </p>
+                            </div>
 
-                                <div className="grid gap-2">
-                                    <Label htmlFor="password">Nueva Contraseña</Label>
-                                    <PasswordInput
+                            <div className="grid gap-2">
+                                <Label htmlFor="password">Nueva Contraseña</Label>
+                                <PasswordInput
                                         id="password"
                                         value={password}
                                         onChange={(e) => setPassword(e.target.value)}
                                         autoComplete="new-password"
                                     />
-                                    <InputError message={errors.password} />
-                                </div>
+                                <InputError message={errors.password} />
+                            </div>
 
-                                <div className="grid gap-2">
-                                    <Label htmlFor="password_confirmation">Confirmar Contraseña</Label>
-                                    <PasswordInput
+                            <div className="grid gap-2">
+                                <Label htmlFor="password_confirmation">Confirmar Contraseña</Label>
+                                <PasswordInput
                                         id="password_confirmation"
                                         value={passwordConfirmation}
                                         onChange={(e) => setPasswordConfirmation(e.target.value)}
                                         autoComplete="new-password"
                                     />
-                                </div>
-
-                                <Button className="w-full" disabled={processing || answer.length === 0 || password.length < 8}>
-                                    {processing && <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />}
-                                    Restablecer Contraseña
-                                </Button>
                             </div>
-                        </form>
+
+                            <Button className="w-full" disabled={processing || answer.length === 0 || password.length < 8}>
+                                {processing && <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />}
+                                    Restablecer Contraseña
+                            </Button>
+                        </div>
+                    </form>
                     )}
 
-                    <div className="space-x-1 text-center text-sm text-muted-foreground mt-6">
-                        <span>O, volver para</span>
-                        <Link href={login()} className="font-medium text-primary hover:underline">
+                <div className="space-x-1 text-center text-sm text-muted-foreground mt-6">
+                    <span>O, volver para</span>
+                    <Link href={login()} className="font-medium text-primary hover:underline">
                             iniciar sesión
-                        </Link>
-                    </div>
+                    </Link>
+                </div>
+
                 </div>
             </div>
-        </div>
+        </>
     );
 }
-
-ForgotPassword.layout = (page: any) => <>{page}</>;
+ForgotPassword.layout = {
+    title: 'Recuperar contraseña',
+    description: 'Ingresa tus datos para restablecer tu contraseña',
+};

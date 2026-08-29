@@ -30,9 +30,8 @@
             }
         </style>
 
-        <link rel="icon" href="/logo-huarcaya.webp" type="image/webp">
-        <link rel="apple-touch-icon" href="/logo-huarcaya.webp">
 
+        <link rel="icon" href="/captura.png" type="image/png">
         @fonts
 
         @viteReactRefresh

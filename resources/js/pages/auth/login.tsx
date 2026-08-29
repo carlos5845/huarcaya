@@ -84,26 +84,10 @@ export default function Login() {
 
 
     return (
-        <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
+        <>
             <Head title="Iniciar Sesión" />
-            <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 p-8">
-                
-                <div className="mb-8 flex flex-col items-center text-center">
-                    <div className="mb-6 flex items-center justify-center gap-3">
-                        <img src="/logo-huarcaya.webp" alt="Logo" className="h-12 w-auto object-contain block dark:hidden" />
-                        <img src="/logo-dark.png" alt="Logo" className="h-12 w-auto object-contain hidden dark:block" />
-                        <img src="/logo-text.png" alt="Huarcaya" className="h-8 w-auto object-contain block dark:hidden" />
-                        <img src="/logo-dark-text.png" alt="Huarcaya" className="h-8 w-auto object-contain hidden dark:block" />
-                    </div>
-                    <h1 className="text-2xl font-bold text-primary mb-2">Bienvenido</h1>
-                    <p className="text-muted-foreground text-sm">
-                        Sistema de Gestión Integrado
-                    </p>
-                </div>
 
-
-
-                {step === 1 && (
+            {step === 1 && (
                     <form onSubmit={handleCheckDni} className="flex flex-col gap-6">
                         <div className="grid gap-2">
                             <Label htmlFor="dni">Documento de Identidad (DNI)</Label>
@@ -190,9 +174,12 @@ export default function Login() {
                         </div>
                     </form>
                 )}
-            </div>
-        </div>
+
+        </>
     );
 }
-
-Login.layout = (page: any) => <>{page}</>;
+Login.layout = {
+    title: 'Bienvenido',
+    description: 'Sistema de Gestión Integrado',
+    showBackArrow: true,
+};

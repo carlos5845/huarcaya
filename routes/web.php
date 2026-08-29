@@ -32,11 +32,15 @@ Route::middleware(['auth'])->group(function () {
         'recent_purchases' => \App\Models\Purchase::where('company_id', $company_id)->with('supplier')->orderBy('created_at', 'desc')->take(5)->get(),
     ];
 
+        $monthExpr = \Illuminate\Support\Facades\DB::connection()->getDriverName() === 'pgsql' 
+            ? "to_char(created_at, 'YYYY-MM')" 
+            : "strftime('%Y-%m', created_at)";
+            
         $salesChart = \App\Models\Sale::where('company_id', $company_id)
-            ->selectRaw("to_char(created_at, 'YYYY-MM') as month, sum(total_amount) as total")
+            ->selectRaw("{$monthExpr} as month, sum(total_amount) as total")
             ->where('created_at', '>=', now()->subMonths(6))
-            ->groupByRaw("to_char(created_at, 'YYYY-MM')")
-            ->orderByRaw("to_char(created_at, 'YYYY-MM')")
+            ->groupByRaw($monthExpr)
+            ->orderByRaw($monthExpr)
             ->get();
 
     return Inertia::render('dashboard', [

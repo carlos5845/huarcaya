@@ -18,113 +18,132 @@ export default function Welcome() {
             <Head title="SIMAQ" />
 
             <div className="min-h-screen overflow-x-hidden bg-black-haze-50 text-bunker-900">
-                <header className="relative z-30 mx-auto flex h-[84px] w-full max-w-7xl items-center justify-between px-6 lg:px-8">
-                    <Link
-                        href="/"
-                        className="flex items-center gap-3"
-                        aria-label="Ir al inicio"
-                    >
-                        <span className="flex size-10 items-center justify-center overflow-hidden rounded-xl bg-midnight-950 shadow-[0_8px_22px_rgba(4,22,46,0.18)]">
-                            <img
-                                src="/images/simaq-logo.png"
-                                alt="SIMAQ"
-                                className="h-full w-full object-contain"
-                                onError={(event) => {
-                                    event.currentTarget.style.display = 'none';
-
-                                    if (event.currentTarget.parentElement) {
-                                        event.currentTarget.parentElement.textContent =
-                                            'S';
-
-                                        event.currentTarget.parentElement.classList.add(
-                                            'text-lg',
-                                            'font-black',
-                                            'text-white',
-                                        );
-                                    }
-                                }}
-                            />
-                        </span>
-
-                        <span className="text-sm font-semibold tracking-wide text-midnight-950">
-                            SIMAQ
-                        </span>
-                    </Link>
-
-
-
-                    {auth?.user ? (
+                {/* Header con efecto glassmorphism */}
+                <header className="absolute inset-x-0 top-0 z-40 bg-transparent">
+                    <div className="mx-auto flex h-[84px] w-full max-w-7xl items-center justify-between px-6 lg:px-8">
                         <Link
-                            href="/dashboard"
-                            className="rounded-full bg-midnight-950 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(4,22,46,0.18)] transition hover:bg-midnight-900 hover:shadow-[0_12px_28px_rgba(4,22,46,0.24)]"
+                            href="/"
+                            className="flex items-center gap-3"
+                            aria-label="Ir al inicio"
                         >
-                            Dashboard
+                            <span className="flex size-25 items-center justify-center">
+                                <img
+                                    src="/logo-text.png"
+                                    alt="SIMAQ"
+                                    className="h-full w-full object-contain"
+                                    onError={(event) => {
+                                        event.currentTarget.style.display =
+                                            'none';
+
+                                        if (event.currentTarget.parentElement) {
+                                            event.currentTarget.parentElement.textContent =
+                                                'S';
+
+                                            event.currentTarget.parentElement.classList.add(
+                                                'text-lg',
+                                                'font-black',
+                                                'text-white',
+                                            );
+                                        }
+                                    }}
+                                />
+                            </span>
                         </Link>
-                    ) : (
-                        <Link
-                            href="/login"
-                            className="rounded-full bg-midnight-950 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(4,22,46,0.18)] transition hover:bg-midnight-900 hover:shadow-[0_12px_28px_rgba(4,22,46,0.24)]"
-                        >
-                            Iniciar sesión
-                        </Link>
-                    )}
+
+                        {auth?.user ? (
+                            <Link
+                                href="/dashboard"
+                                className="rounded-full border border-white/20 bg-midnight-950/95 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(4,22,46,0.22)] transition hover:-translate-y-0.5 hover:bg-midnight-900 hover:shadow-[0_12px_28px_rgba(4,22,46,0.28)]"
+                            >
+                                Dashboard
+                            </Link>
+                        ) : (
+                            <Link
+                                href="/login"
+                                className="rounded-md border border-white/20 bg-midnight-950/95 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(4,22,46,0.22)] transition hover:-translate-y-0.5 hover:bg-midnight-900 hover:shadow-[0_12px_28px_rgba(4,22,46,0.28)]"
+                            >
+                                Iniciar sesión
+                            </Link>
+                        )}
+                    </div>
                 </header>
 
-                <main className="relative">
-                    <div className="pointer-events-none absolute inset-0 overflow-hidden">
-                        <div className="absolute top-[-280px] left-1/2 h-[580px] w-[580px] -translate-x-1/2 rounded-full bg-midnight-200/65 blur-[145px]" />
-
-                        <div className="absolute top-[450px] right-[-180px] h-[360px] w-[360px] rounded-full bg-fun-blue-200/45 blur-[135px]" />
-
-                        <div className="absolute bottom-[80px] left-[-180px] h-[320px] w-[320px] rounded-full bg-cannon-black-100/50 blur-[135px]" />
-                    </div>
-
-                    <section className="relative mx-auto flex w-full max-w-7xl flex-col items-center px-6 pt-14 text-center sm:pt-20 lg:px-8 lg:pt-24">
-                        <div className="inline-flex items-center gap-2 rounded-full border border-midnight-200 bg-white/90 px-3.5 py-2 text-[11px] font-medium text-midnight-800 shadow-[0_5px_16px_rgba(4,22,46,0.08)]">
-                            <span className="size-1.5 rounded-full bg-cannon-black-500" />
-
-                            <span>Plataforma inteligente de gestión</span>
-
-                            <ChevronRight className="size-3 text-midnight-600" />
+                <main>
+                    <section className="relative isolate min-h-[900px] overflow-hidden pt-[84px]">
+                        {/* Imagen industrial */}
+                        <div className="absolute inset-0 -z-30 overflow-hidden">
+                            <img
+                                src="/images/hero-maquinaria.jpg"
+                                alt=""
+                                aria-hidden="true"
+                                className="h-full w-full scale-100 object-cover object-[center_8%] sm:object-[center_5%] lg:object-[center_2%]"
+                            />
                         </div>
 
-                        <h1 className="mt-7 max-w-5xl text-5xl leading-[0.98] font-bold tracking-[-0.06em] text-midnight-950 sm:text-6xl lg:text-[78px]">
-                            Una solución integral para
-                            <br />
-                            <span className="bg-gradient-to-r from-midnight-700 via-fun-blue-600 to-midnight-700 bg-clip-text text-transparent">
-                                toda tu operación
-                            </span>
-                        </h1>
+                        {/* Oscurece mínimamente toda la foto */}
+                        <div className="pointer-events-none absolute inset-0 -z-20 bg-midnight-950/10" />
 
-                        <p className="mt-7 max-w-2xl text-base leading-7 text-black-haze-700 sm:text-lg">
-                            SIMAQ es un sistema de inventario de maquinaria que
-                            te ayuda a administrar productos, compras, ventas,
-                            usuarios y sucursales desde un solo lugar.
-                        </p>
+                        {/* Centro más claro; laterales más visibles */}
+                        <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.70)_0%,rgba(255,255,255,0.45)_26%,rgba(255,255,255,0.12)_52%,rgba(255,255,255,0)_76%)]" />
 
-                        <div className="mt-8 flex items-center justify-center gap-6">
-                            {auth?.user ? (
-                                <Link
-                                    href="/dashboard"
-                                    className="group inline-flex items-center gap-2 rounded-full bg-midnight-950 px-5 py-3 text-xs font-semibold text-white shadow-[0_10px_24px_rgba(4,22,46,0.2)] transition hover:-translate-y-0.5 hover:bg-midnight-900 hover:shadow-[0_14px_30px_rgba(4,22,46,0.26)]"
-                                >
-                                    Ir al dashboard
-                                    <ArrowRight className="size-3.5 transition group-hover:translate-x-1" />
-                                </Link>
-                            ) : (
-                                <Link
-                                    href="/login"
-                                    className="group inline-flex items-center gap-2 rounded-full bg-midnight-950 px-5 py-3 text-xs font-semibold text-white shadow-[0_10px_24px_rgba(4,22,46,0.2)] transition hover:-translate-y-0.5 hover:bg-midnight-900 hover:shadow-[0_14px_30px_rgba(4,22,46,0.26)]"
-                                >
-                                    Iniciar sesión
-                                    <ArrowRight className="size-3.5 transition group-hover:translate-x-1" />
-                                </Link>
-                            )}
+                        {/* Suavizado superior muy leve */}
+                        <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[42%] bg-gradient-to-b from-white/18 via-white/5 to-transparent" />
 
+                        {/* Blanco inferior: integración con dashboard */}
+                        <div className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 h-[42%] bg-gradient-to-t from-white via-white/70 to-transparent" />
 
+                        <div className="relative mx-auto flex w-full max-w-7xl flex-col items-center px-6 pt-12 text-center sm:pt-2 lg:px-8 lg:pt-2">
+                            {/* Tu badge, título, descripción, botón y DashboardMockup */}
                         </div>
+                        {/* Fusión clara con la zona donde comienza el mockup */}
+                        <div className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 h-[44%] bg-gradient-to-t from-white via-white/78 to-transparent" />
 
-                        <DashboardMockup />
+                        <div className="relative mx-auto flex w-full max-w-7xl flex-col items-center px-6 pt-2 text-center sm:pt-2 lg:px-8 lg:pt-2">
+                            <div className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/50 px-3.5 py-2 text-[11px] font-medium text-midnight-800 shadow-[0_5px_18px_rgba(4,22,46,0.10)] backdrop-blur-md">
+                                <span className="size-1.5 rounded-full bg-cannon-black-500" />
+
+                                <span>Plataforma de gestión de repuestos</span>
+
+                                <ChevronRight className="size-3 text-midnight-600" />
+                            </div>
+
+                            <h1 className="mt-7 max-w-5xl text-5xl leading-[0.98] font-bold tracking-[-0.06em] text-midnight-950 drop-shadow-[0_3px_16px_rgba(255,255,255,0.92)] sm:text-6xl lg:text-[78px]">
+                                Una solución integral para
+                                <br />
+                                <span className="bg-gradient-to-r from-midnight-700 via-fun-blue-600 to-midnight-700 bg-clip-text text-transparent">
+                                    toda tu operación
+                                </span>
+                            </h1>
+
+                            <p className="mt-7 max-w-2xl  px-5 py-3 text-base leading-7 text-black-haze-800  sm:text-lg">
+                                SIMAQ es un sistema de inventario de maquinaria
+                                que te ayuda a administrar productos, compras,
+                                ventas, usuarios y sucursales desde un solo
+                                lugar.
+                            </p>
+
+                            <div className="mt-8 flex items-center justify-center gap-6">
+                                {auth?.user ? (
+                                    <Link
+                                        href="/dashboard"
+                                        className="group inline-flex items-center gap-2 rounded-full border border-white/20 bg-midnight-950 px-5 py-3 text-xs font-semibold text-white shadow-[0_10px_24px_rgba(4,22,46,0.24)] transition hover:-translate-y-0.5 hover:bg-midnight-900 hover:shadow-[0_14px_30px_rgba(4,22,46,0.30)]"
+                                    >
+                                        Ir al dashboard
+                                        <ArrowRight className="size-3.5 transition group-hover:translate-x-1" />
+                                    </Link>
+                                ) : (
+                                    <Link
+                                        href="/login"
+                                        className="group inline-flex items-center gap-2 rounded-md border border-white/20 bg-midnight-950 px-5 py-3 text-xs font-semibold text-white shadow-[0_10px_24px_rgba(4,22,46,0.24)] transition hover:-translate-y-0.5 hover:bg-midnight-900 hover:shadow-[0_14px_30px_rgba(4,22,46,0.30)]"
+                                    >
+                                        Iniciar sesión
+                                        <ArrowRight className="size-3.5 transition group-hover:translate-x-1" />
+                                    </Link>
+                                )}
+                            </div>
+
+                            <DashboardMockup />
+                        </div>
                     </section>
 
                     <section
@@ -208,10 +227,10 @@ function BrowserHeader() {
 }
 
 function FeatureCard({
-    number,
-    title,
-    description,
-}: {
+                         number,
+                         title,
+                         description,
+                     }: {
     number: string;
     title: string;
     description: string;
