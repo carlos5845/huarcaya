@@ -102,9 +102,11 @@ export function BrandManager({ brands, value, onChange, error }: Props) {
                                 error && "border-red-500 focus-visible:ring-red-500"
                             )}
                         >
-                            {value
+                            <span className="truncate flex-1 text-left">
+                                {value
                                 ? selectedBrand?.name || "Seleccione una marca"
                                 : "Seleccione una marca"}
+                            </span>
                             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
                     </PopoverTrigger>

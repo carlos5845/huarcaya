@@ -22,6 +22,17 @@ export default function CustomersIndex({ customers }: { customers: any[] }) {
     const [isOpen, setIsOpen] = useState(false);
     const [editingId, setEditingId] = useState<number | null>(null);
 
+    
+    const getDocumentProps = (type: string) => {
+        switch(type) {
+            case 'DNI': return { maxLength: 8, placeholder: 'Ej: 12345678', pattern: "\\d{8}" };
+            case 'RUC': return { maxLength: 11, placeholder: 'Ej: 10123456789', pattern: "\\d{11}" };
+            case 'CE': return { maxLength: 12, placeholder: 'Ej: 000123456' };
+            case 'PASAPORTE': return { maxLength: 15, placeholder: 'Ej: P1234567' };
+            default: return { maxLength: 20, placeholder: 'Ingrese número...' };
+        }
+    };
+
     const { data, setData, post, put, reset, errors, clearErrors, processing } = useForm({
         document_type: '',
         document_number: '',
@@ -192,7 +203,19 @@ export default function CustomersIndex({ customers }: { customers: any[] }) {
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="document_number">Número de Documento</Label>
-                                    <Input id="document_number" value={data.document_number} onChange={(e) => setData('document_number', e.target.value)} />
+                                    <Input 
+                                        id="document_number" 
+                                        value={data.document_number} 
+                                        onChange={(e) => {
+                                            let val = e.target.value;
+                                            // Solo permitir números para DNI y RUC
+                                            if (data.document_type === 'DNI' || data.document_type === 'RUC') {
+                                                val = val.replace(/\D/g, '');
+                                            }
+                                            setData('document_number', val);
+                                        }} 
+                                        {...getDocumentProps(data.document_type)}
+                                    />
                                     <InputError message={errors.document_number} />
                                 </div>
                             </div>

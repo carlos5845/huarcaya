@@ -20,32 +20,76 @@ use Inertia\Inertia;
 Route::inertia('/', 'welcome')->name('home');
 
 Route::middleware(['auth'])->group(function () {
-    Route::get('dashboard', function () {
+    Route::get('dashboard', function (\Illuminate\Http\Request $request) {
     $company_id = auth()->user()->company_id;
+    $now = now();
+    $startOfMonth = $now->copy()->startOfMonth();
+    $startOfLastMonth = $now->copy()->subMonth()->startOfMonth();
+    $endOfLastMonth = $now->copy()->subMonth()->endOfMonth();
 
+    // KPI Stats
     $stats = [
-        'customers_count' => \App\Models\Customer::where('company_id', $company_id)->count(),
+        'revenue_this_month' => \App\Models\Sale::where('company_id', $company_id)->where('status', 'CONFIRMED')->where('created_at', '>=', $startOfMonth)->sum('total_amount'),
+        'revenue_last_month' => \App\Models\Sale::where('company_id', $company_id)->where('status', 'CONFIRMED')->whereBetween('created_at', [$startOfLastMonth, $endOfLastMonth])->sum('total_amount'),
+        'expenses_this_month' => \App\Models\Purchase::where('company_id', $company_id)->where('status', 'CONFIRMED')->where('created_at', '>=', $startOfMonth)->sum('total_amount'),
+        'expenses_last_month' => \App\Models\Purchase::where('company_id', $company_id)->where('status', 'CONFIRMED')->whereBetween('created_at', [$startOfLastMonth, $endOfLastMonth])->sum('total_amount'),
+        'sales_count_this_month' => \App\Models\Sale::where('company_id', $company_id)->where('created_at', '>=', $startOfMonth)->count(),
+        'sales_count_last_month' => \App\Models\Sale::where('company_id', $company_id)->whereBetween('created_at', [$startOfLastMonth, $endOfLastMonth])->count(),
         'products_count' => \App\Models\Product::where('company_id', $company_id)->count(),
-        'sales_count' => \App\Models\Sale::where('company_id', $company_id)->count(),
-        'purchases_count' => \App\Models\Purchase::where('company_id', $company_id)->count(),
-        'recent_sales' => \App\Models\Sale::where('company_id', $company_id)->with('customer')->orderBy('created_at', 'desc')->take(5)->get(),
-        'recent_purchases' => \App\Models\Purchase::where('company_id', $company_id)->with('supplier')->orderBy('created_at', 'desc')->take(5)->get(),
+        'recent_sales' => \App\Models\Sale::where('company_id', $company_id)->with(['customer', 'lines', 'creator'])->orderBy('created_at', 'desc')->take(5)->get(),
     ];
 
-        $monthExpr = \Illuminate\Support\Facades\DB::connection()->getDriverName() === 'pgsql' 
-            ? "to_char(created_at, 'YYYY-MM')" 
-            : "strftime('%Y-%m', created_at)";
+    // Sales by User Logic with Filters
+    $branchId = $request->query('branch_id', 'all');
+    $month = $request->query('month');
+    $date = $request->query('date');
+
+    $query = \App\Models\User::where('users.company_id', $company_id);
+
+    if ($branchId && $branchId !== 'all') {
+        $query->whereExists(function ($q) use ($branchId) {
+            $q->select(\Illuminate\Support\Facades\DB::raw(1))
+              ->from('user_branches')
+              ->whereColumn('user_branches.user_id', 'users.id')
+              ->where('user_branches.branch_id', $branchId);
+        });
+    }
+
+    $salesByUser = $query->leftJoin('sales', function($join) use ($branchId, $date, $month) {
+            $join->on('users.id', '=', 'sales.created_by')
+                 ->where('sales.status', 'CONFIRMED');
             
-        $salesChart = \App\Models\Sale::where('company_id', $company_id)
-            ->selectRaw("{$monthExpr} as month, sum(total_amount) as total")
-            ->where('created_at', '>=', now()->subMonths(6))
-            ->groupByRaw($monthExpr)
-            ->orderByRaw($monthExpr)
-            ->get();
+            if ($branchId && $branchId !== 'all') {
+                $join->where('sales.branch_id', $branchId);
+            }
+
+            if ($date) {
+                $join->whereDate('sales.created_at', $date);
+            } elseif ($month) {
+                $year = substr($month, 0, 4);
+                $m = substr($month, 5, 2);
+                $join->whereYear('sales.created_at', $year)->whereMonth('sales.created_at', $m);
+            }
+        })
+        ->select('users.name', 
+            \Illuminate\Support\Facades\DB::raw('COALESCE(SUM(sales.total_amount), 0) as total_amount'), 
+            \Illuminate\Support\Facades\DB::raw('COUNT(sales.id) as total_sales')
+        )
+        ->groupBy('users.id', 'users.name')
+        ->orderByDesc('total_amount')
+        ->get();
+
+    $branches = \App\Models\Branch::where('company_id', $company_id)->select('id', 'name')->get();
 
     return Inertia::render('dashboard', [
         'stats' => $stats,
-        'salesChart' => $salesChart
+        'salesByUser' => $salesByUser,
+        'branches' => $branches,
+        'filters' => [
+            'branch_id' => $branchId,
+            'month' => $month,
+            'date' => $date
+        ]
     ]);
 })->name('dashboard');
 

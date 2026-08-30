@@ -142,7 +142,7 @@ export function AppSidebar() {
                     <SidebarMenuItem>
                         <SidebarMenuButton size="lg" asChild>
                             <Link href={dashboard.url()} prefetch>
-                                <AppLogo />
+                                <AppLogo forceDark={true} />
                             </Link>
                         </SidebarMenuButton>
                     </SidebarMenuItem>

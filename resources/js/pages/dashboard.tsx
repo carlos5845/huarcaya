@@ -1,208 +1,302 @@
-import { Head } from '@inertiajs/react';
+import { Head, router } from '@inertiajs/react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Users, Package, ShoppingCart, TrendingUp, ArrowRight, Activity, CreditCard, DollarSign } from 'lucide-react';
-import { dashboard } from '@/routes';
+import { Activity, ArrowRight, ArrowUpRight, ArrowDownRight, Package, ShoppingCart, DollarSign, CreditCard, User, Clock, Filter, Users } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useState } from 'react';
 import {
-  AreaChart,
-  Area,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  Cell,
 } from 'recharts';
 
-export default function Dashboard({ stats, salesChart }: any) {
+export default function Dashboard({ stats, salesByUser, branches, filters }: any) {
+    const [localFilters, setLocalFilters] = useState({
+        branch_id: filters.branch_id || 'all',
+        month: filters.month || '',
+        date: filters.date || ''
+    });
+
+    // Format currency
+    const formatCurrency = (value: number) => {
+        return new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(value || 0);
+    };
+
+    // Calculate percentage change
+    const getChange = (current: number, previous: number) => {
+        if (!previous || previous === 0) return current > 0 ? 100 : 0;
+        return ((current - previous) / previous) * 100;
+    };
+
+    const revenueChange = getChange(stats.revenue_this_month, stats.revenue_last_month);
+    const expensesChange = getChange(stats.expenses_this_month, stats.expenses_last_month);
+    const salesCountChange = getChange(stats.sales_count_this_month, stats.sales_count_last_month);
+
+    const applyFilters = () => {
+        router.get('/dashboard', localFilters, { preserveState: true, preserveScroll: true });
+    };
+
     return (
         <>
             <Head title="Dashboard" />
             <div className="flex h-full flex-1 flex-col gap-6 overflow-x-auto p-6 bg-slate-50/50 dark:bg-background/95">
-                
+
                 <div className="flex items-center justify-between space-y-2 mb-2">
                     <h2 className="text-3xl font-bold tracking-tight">Panel de Control</h2>
                     <div className="flex items-center space-x-2">
-                        <div className="bg-primary/10 text-primary px-3 py-1 rounded-full text-sm font-medium flex items-center">
-                            <Activity className="w-4 h-4 mr-2" />
-                            Actualizado en tiempo real
+                        <div className="bg-primary/10 text-primary px-3 py-1 rounded-full text-xs font-medium flex items-center">
+                            <Activity className="w-3 h-3 mr-1" />
+                            Tiempo real
                         </div>
                     </div>
                 </div>
 
                 {/* KPI Cards */}
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-                    {/* Clientes */}
-                    <Card className="border-none shadow-md bg-gradient-to-br from-blue-500 to-blue-600 text-white transition-all hover:scale-[1.02] hover:shadow-lg">
-                        <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-md font-medium text-blue-50">Total Clientes</CardTitle>
-                            <div className="p-2 bg-white/20 rounded-lg">
-                                <Users className="h-5 w-5 text-white" />
-                            </div>
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                            <CardTitle className="text-sm font-medium text-muted-foreground">Ingresos del Mes</CardTitle>
+                            <DollarSign className="h-4 w-4 text-muted-foreground" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-4xl font-bold tracking-tight mt-1">{stats?.customers_count || 0}</div>
-                            <p className="text-sm text-blue-100 mt-1 flex items-center">
-                                <ArrowRight className="w-3 h-3 mr-1" /> Clientes registrados
-                            </p>
-                        </CardContent>
-                    </Card>
-
-                    {/* Productos */}
-                    <Card className="border-none shadow-md bg-gradient-to-br from-purple-500 to-purple-600 text-white transition-all hover:scale-[1.02] hover:shadow-lg">
-                        <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-md font-medium text-purple-50">Catlogo</CardTitle>
-                            <div className="p-2 bg-white/20 rounded-lg">
-                                <Package className="h-5 w-5 text-white" />
-                            </div>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-4xl font-bold tracking-tight mt-1">{stats?.products_count || 0}</div>
-                            <p className="text-sm text-purple-100 mt-1 flex items-center">
-                                <ArrowRight className="w-3 h-3 mr-1" /> Productos en stock
-                            </p>
-                        </CardContent>
-                    </Card>
-
-                    {/* Ventas */}
-                    <Card className="border-none shadow-md bg-gradient-to-br from-emerald-500 to-emerald-600 text-white transition-all hover:scale-[1.02] hover:shadow-lg">
-                        <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-md font-medium text-emerald-50">Total Ventas</CardTitle>
-                            <div className="p-2 bg-white/20 rounded-lg">
-                                <TrendingUp className="h-5 w-5 text-white" />
-                            </div>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-4xl font-bold tracking-tight mt-1">{stats?.sales_count || 0}</div>
-                            <p className="text-sm text-emerald-100 mt-1 flex items-center">
-                                <ArrowRight className="w-3 h-3 mr-1" /> Ventas realizadas
-                            </p>
-                        </CardContent>
-                    </Card>
-
-                    {/* Compras */}
-                    <Card className="border-none shadow-md bg-gradient-to-br from-orange-500 to-orange-600 text-white transition-all hover:scale-[1.02] hover:shadow-lg">
-                        <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-md font-medium text-orange-50">Total Compras</CardTitle>
-                            <div className="p-2 bg-white/20 rounded-lg">
-                                <ShoppingCart className="h-5 w-5 text-white" />
-                            </div>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-4xl font-bold tracking-tight mt-1">{stats?.purchases_count || 0}</div>
-                            <p className="text-sm text-orange-100 mt-1 flex items-center">
-                                <ArrowRight className="w-3 h-3 mr-1" /> Compras a proveedores
-                            </p>
-                        </CardContent>
-                    </Card>
-                </div>
-                
-                {/* Main Content Area */}
-                <div className="grid gap-6 md:grid-cols-7 lg:grid-cols-7">
-                    
-                    {/* Chart Section */}
-                    <Card className="col-span-4 shadow-sm border-muted/50 rounded-xl overflow-hidden">
-                        <CardHeader className="bg-muted/30 pb-6 border-b border-muted/50">
-                            <CardTitle className="text-xl flex items-center">
-                                <Activity className="w-5 h-5 mr-2 text-primary" />
-                                Historial de Ventas
-                            </CardTitle>
-                            <CardDescription className="text-sm">Rendimiento mensual de los ltimos 6 meses</CardDescription>
-                        </CardHeader>
-                        <CardContent className="pt-8">
-                            <div className="h-[350px]">
-                                {salesChart && salesChart.length > 0 ? (
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <AreaChart data={salesChart} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                                            <defs>
-                                                <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
-                                                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                                                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                                                </linearGradient>
-                                            </defs>
-                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                                            <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dy={10} />
-                                            <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dx={-10} tickFormatter={(value) => `S/ ${value}`} />
-                                            <Tooltip 
-                                                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                                labelStyle={{ color: '#64748b', marginBottom: '4px' }}
-                                                formatter={(value: any) => [`S/ ${value}`, 'Total']}
-                                            />
-                                            <Area type="monotone" dataKey="total" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorTotal)" />
-                                        </AreaChart>
-                                    </ResponsiveContainer>
+                            <div className="text-2xl font-bold">{formatCurrency(stats.revenue_this_month)}</div>
+                            <p className="text-xs text-muted-foreground mt-1 flex items-center">
+                                {revenueChange >= 0 ? (
+                                    <span className="text-emerald-500 flex items-center"><ArrowUpRight className="w-3 h-3 mr-1" /> +{revenueChange.toFixed(1)}%</span>
                                 ) : (
-                                    <div className="flex flex-col h-full items-center justify-center text-muted-foreground bg-slate-50/50 rounded-lg border border-dashed border-slate-200 dark:border-slate-800 dark:bg-slate-900/20 p-12">
-                                        <TrendingUp className="w-12 h-12 mb-4 text-slate-300 dark:text-slate-700" />
-                                        <p>No hay datos suficientes para mostrar el grfico</p>
-                                    </div>
+                                    <span className="text-rose-500 flex items-center"><ArrowDownRight className="w-3 h-3 mr-1" /> {revenueChange.toFixed(1)}%</span>
                                 )}
-                            </div>
-                        </CardContent>
-                    </Card>
-                    
-                    {/* Recent Sales Section */}
-                    <Card className="col-span-3 shadow-sm border-muted/50 rounded-xl flex flex-col">
-                        <CardHeader className="bg-muted/30 border-b border-muted/50">
-                            <CardTitle className="text-xl flex items-center">
-                                <CreditCard className="w-5 h-5 mr-2 text-primary" />
-                                Transacciones Recientes
-                            </CardTitle>
-                            <CardDescription>Las ltimas 5 ventas concretadas</CardDescription>
-                        </CardHeader>
-                        <CardContent className="p-0 flex-1 overflow-hidden">
-                            <div className="divide-y divide-border/50">
-                                {stats?.recent_sales && stats.recent_sales.map((sale: any) => (
-                                    <div key={sale.id} className="flex items-center justify-between p-5 hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
-                                        <div className="flex items-center gap-4">
-                                            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 text-primary">
-                                                <span className="font-bold text-sm uppercase">
-                                                    {sale.customer && sale.customer.legal_name ? sale.customer.legal_name.charAt(0) : 'G'}
-                                                </span>
-                                            </div>
-                                            <div>
-                                                <p className="text-sm font-bold text-foreground line-clamp-1">
-                                                    {sale.customer ? sale.customer.legal_name : 'Cliente Genrico'}
-                                                </p>
-                                                <div className="flex items-center text-xs text-muted-foreground mt-1">
-                                                    <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded font-mono">
-                                                        {sale.sale_number}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="text-right flex flex-col items-end">
-                                            <div className="inline-flex items-center font-bold px-2.5 py-1 rounded-full text-sm bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                                                {sale.currency_code === 'USD' ? '$' : 'S/'} {parseFloat(sale.total_amount).toFixed(2)}
-                                            </div>
-                                            <span className="text-[10px] text-muted-foreground mt-1 font-medium">
-                                                {new Date(sale.created_at).toLocaleDateString()}
-                                            </span>
-                                        </div>
-                                    </div>
-                                ))}
-                                {(!stats?.recent_sales || stats?.recent_sales.length === 0) && (
-                                    <div className="flex flex-col items-center justify-center p-12 text-center">
-                                        <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
-                                            <ShoppingCart className="w-8 h-8 text-slate-300 dark:text-slate-600" />
-                                        </div>
-                                        <h3 className="font-medium text-slate-600 dark:text-slate-400">No hay ventas</h3>
-                                        <p className="text-sm text-slate-400 dark:text-slate-500 mt-1">Todava no se han registrado ventas en el sistema.</p>
-                                    </div>
-                                )}
-                            </div>
+                                <span className="ml-2 text-muted-foreground"> vs mes anterior</span>
+                            </p>
                         </CardContent>
                     </Card>
 
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                            <CardTitle className="text-sm font-medium text-muted-foreground">Gastos del Mes</CardTitle>
+                            <CreditCard className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold">{formatCurrency(stats.expenses_this_month)}</div>
+                            <p className="text-xs text-muted-foreground mt-1 flex items-center">
+                                {expensesChange >= 0 ? (
+                                    <span className="text-rose-500 flex items-center"><ArrowUpRight className="w-3 h-3 mr-1" /> +{expensesChange.toFixed(1)}%</span>
+                                ) : (
+                                    <span className="text-emerald-500 flex items-center"><ArrowDownRight className="w-3 h-3 mr-1" /> {expensesChange.toFixed(1)}%</span>
+                                )}
+                                <span className="ml-2 text-muted-foreground"> vs mes anterior</span>
+                            </p>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                            <CardTitle className="text-sm font-medium text-muted-foreground">Ventas Realizadas</CardTitle>
+                            <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold">{stats.sales_count_this_month}</div>
+                            <p className="text-xs text-muted-foreground mt-1 flex items-center">
+                                {salesCountChange >= 0 ? (
+                                    <span className="text-emerald-500 flex items-center"><ArrowUpRight className="w-3 h-3 mr-1" /> +{salesCountChange.toFixed(1)}%</span>
+                                ) : (
+                                    <span className="text-rose-500 flex items-center"><ArrowDownRight className="w-3 h-3 mr-1" /> {salesCountChange.toFixed(1)}%</span>
+                                )}
+                                <span className="ml-2 text-muted-foreground"> vs mes anterior</span>
+                            </p>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                            <CardTitle className="text-sm font-medium text-muted-foreground">Productos Activos</CardTitle>
+                            <Package className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold">{stats.products_count}</div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                                Total en catálogo
+                            </p>
+                        </CardContent>
+                    </Card>
                 </div>
+
+                {/* Sales by User Section */}
+                <Card className="w-full">
+                    <CardHeader className="flex flex-col xl:flex-row xl:items-center justify-between pb-4 gap-4">
+                        <div>
+                            <CardTitle>Ventas por Usuario</CardTitle>
+                            <CardDescription>Rendimiento del equipo de ventas</CardDescription>
+                        </div>
+                        <div className="flex flex-col sm:flex-row items-center gap-2">
+                            <Select value={localFilters.branch_id} onValueChange={(val) => setLocalFilters({...localFilters, branch_id: val})}>
+                                <SelectTrigger className="w-full sm:w-[160px] h-9">
+                                    <SelectValue placeholder="Sucursal" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Todas las sucursales</SelectItem>
+                                    {branches?.map((b: any) => (
+                                        <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+
+                            {/* Year Select */}
+                            <Select
+                                value={localFilters.month ? localFilters.month.substring(0, 4) : 'all'}
+                                onValueChange={(val) => {
+                                    if (val === 'all') {
+                                        setLocalFilters({...localFilters, month: '', date: ''});
+                                    } else {
+                                        const m = localFilters.month ? localFilters.month.substring(5, 7) : '01';
+                                        setLocalFilters({...localFilters, month: `${val}-${m}`, date: ''});
+                                    }
+                                }}
+                            >
+                                <SelectTrigger className="w-full sm:w-[110px] h-9">
+                                    <SelectValue placeholder="Año" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Todos</SelectItem>
+                                    {[2024, 2025, 2026, 2027].map(y => (
+                                        <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+
+                            {/* Month Select */}
+                            <Select
+                                value={localFilters.month ? localFilters.month.substring(5, 7) : 'all'}
+                                onValueChange={(val) => {
+                                    if (val === 'all') {
+                                        setLocalFilters({...localFilters, month: '', date: ''});
+                                    } else {
+                                        const y = localFilters.month ? localFilters.month.substring(0, 4) : new Date().getFullYear().toString();
+                                        setLocalFilters({...localFilters, month: `${y}-${val}`, date: ''});
+                                    }
+                                }}
+                            >
+                                <SelectTrigger className="w-full sm:w-[130px] h-9">
+                                    <SelectValue placeholder="Mes" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Todos</SelectItem>
+                                    <SelectItem value="01">Enero</SelectItem>
+                                    <SelectItem value="02">Febrero</SelectItem>
+                                    <SelectItem value="03">Marzo</SelectItem>
+                                    <SelectItem value="04">Abril</SelectItem>
+                                    <SelectItem value="05">Mayo</SelectItem>
+                                    <SelectItem value="06">Junio</SelectItem>
+                                    <SelectItem value="07">Julio</SelectItem>
+                                    <SelectItem value="08">Agosto</SelectItem>
+                                    <SelectItem value="09">Septiembre</SelectItem>
+                                    <SelectItem value="10">Octubre</SelectItem>
+                                    <SelectItem value="11">Noviembre</SelectItem>
+                                    <SelectItem value="12">Diciembre</SelectItem>
+                                </SelectContent>
+                            </Select>
+
+                            <Input
+                                type="date"
+                                value={localFilters.date}
+                                onChange={(e) => setLocalFilters({...localFilters, date: e.target.value, month: ''})}
+                                className="h-9 w-full sm:w-[140px]"
+                            />
+
+                            <Button onClick={applyFilters} className="h-9 w-full sm:w-auto" variant="default">
+                                <Filter className="w-4 h-4 mr-2" />
+                                Filtrar
+                            </Button>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        {salesByUser && salesByUser.length > 0 ? (
+                            <div className="grid lg:grid-cols-5 gap-8 items-start">
+                                {/* Chart side - takes 3 columns */}
+                                <div className="lg:col-span-3 h-[300px] w-full mt-4">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart
+                                            data={salesByUser}
+                                            margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                                        >
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
+                                            <XAxis
+                                                dataKey="name"
+                                                axisLine={false}
+                                                tickLine={false}
+                                                tick={{ fontSize: 12, fontWeight: 500 }}
+                                                dy={10}
+                                            />
+                                            <YAxis
+                                                axisLine={false}
+                                                tickLine={false}
+                                                tickFormatter={(value) => `S/ ${value}`}
+                                                tick={{ fontSize: 11 }}
+                                                dx={-10}
+                                            />
+                                            <Tooltip
+                                                formatter={(value: any) => [
+                                                    formatCurrency(Number(value)),
+                                                    'Ingresos'
+                                                ]}
+                                                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: '12px' }}
+                                                cursor={{fill: 'rgba(0,0,0,0.05)'}}
+                                            />
+                                            <Bar dataKey="total_amount" fill="#0f9aff" radius={[4, 4, 0, 0]} maxBarSize={60}>
+                                                {salesByUser.map((entry: any, index: number) => (
+                                                    <Cell key={`cell-${index}`} fill={index === 0 ? '#0076ff' : '#0f9aff'} />
+                                                ))}
+                                            </Bar>
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+
+                                {/* Table side - takes 2 columns */}
+                                <div className="lg:col-span-2 rounded-md border mt-4">
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-sm text-left">
+                                            <thead className="text-xs text-muted-foreground bg-muted/50 uppercase">
+                                                <tr>
+                                                    <th className="px-4 py-4 font-medium">Usuario</th>
+                                                    <th className="px-4 py-4 font-medium text-center">Nro Ventas</th>
+                                                    <th className="px-4 py-4 font-medium text-right">Total Ingresos</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {salesByUser.map((user: any, idx: number) => (
+                                                    <tr key={idx} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                                                        <td className="px-4 py-4 font-medium flex items-center gap-3">
+                                                            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                                                                <Users className="w-4 h-4 text-primary" />
+                                                            </div>
+                                                            {user.name}
+                                                        </td>
+                                                        <td className="px-4 py-4 text-center text-base">{user.total_sales}</td>
+                                                        <td className="px-4 py-4 text-right font-semibold text-base text-emerald-600 dark:text-emerald-500">
+                                                            {formatCurrency(Number(user.total_amount))}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="h-[300px] w-full flex items-center justify-center text-muted-foreground text-sm flex-col gap-2">
+                                <Users className="w-8 h-8 opacity-20" />
+                                No hay ventas registradas para este filtro.
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
             </div>
         </>
     );
 }
-
-Dashboard.layout = {
-    breadcrumbs: [
-        {
-            title: 'Dashboard',
-            href: dashboard(),
-        },
-    ],
-};

@@ -102,9 +102,11 @@ export function UnitManager({ units, value, onChange, error }: Props) {
                                 error && "border-red-500 focus-visible:ring-red-500"
                             )}
                         >
-                            {value
+                            <span className="truncate flex-1 text-left">
+                                {value
                                 ? (selectedUnit ? `${selectedUnit.name} (${selectedUnit.code})` : "Seleccione una unidad")
                                 : "Seleccione una unidad"}
+                            </span>
                             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
                     </PopoverTrigger>

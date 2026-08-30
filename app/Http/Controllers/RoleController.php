@@ -11,7 +11,16 @@ class RoleController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'name' => 'required|string|max:255|unique:roles,name',
+            'name' => [
+                'required',
+                'string',
+                'max:255',
+                function ($attribute, $value, $fail) {
+                    if (Role::where(\Illuminate\Support\Facades\DB::raw('LOWER(name)'), strtolower($value))->exists()) {
+                        $fail('El nombre del rol ya está en uso.');
+                    }
+                },
+            ],
             'permissions' => 'required|array',
         ]);
 
@@ -37,7 +46,16 @@ class RoleController extends Controller
         }
 
         $validated = $request->validate([
-            'name' => 'required|string|max:255|unique:roles,name,' . $role->id,
+            'name' => [
+                'required',
+                'string',
+                'max:255',
+                function ($attribute, $value, $fail) use ($role) {
+                    if (Role::where(\Illuminate\Support\Facades\DB::raw('LOWER(name)'), strtolower($value))->where('id', '!=', $role->id)->exists()) {
+                        $fail('El nombre del rol ya está en uso.');
+                    }
+                },
+            ],
             'permissions' => 'required|array',
         ]);
 

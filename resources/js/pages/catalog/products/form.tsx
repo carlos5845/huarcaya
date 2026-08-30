@@ -110,6 +110,10 @@ export default function ProductForm({ brands, categories, units, product }: Prop
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         
+        // Hardcode inventory settings to true as requested
+        data.requires_lot_tracking = true;
+        data.fifo_enabled = true;
+        
         if (isEditing) {
             put(`/products/${product.id}`);
         } else {
@@ -333,8 +337,14 @@ export default function ProductForm({ brands, categories, units, product }: Prop
                                         <div className="grid gap-2">
                                             <Label>Tipo de Producto <span className="text-red-500">*</span></Label>
                                             <Select value={data.product_type} onValueChange={(v: any) => setData('product_type', v)}>
-                                                <SelectTrigger>
-                                                    <SelectValue />
+                                                <SelectTrigger className="w-full">
+                                                    <span className="truncate flex-1 text-left">
+                                                        <SelectValue>
+                                                            {data.product_type === 'SIMPLE' && 'Producto Simple'}
+                                                            {data.product_type === 'KIT_UNICO' && 'Kit Único (Pre-armado)'}
+                                                            {data.product_type === 'KIT_COMPONENTES' && 'Kit por Componentes'}
+                                                        </SelectValue>
+                                                    </span>
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                     <SelectItem value="SIMPLE">
@@ -357,8 +367,12 @@ export default function ProductForm({ brands, categories, units, product }: Prop
                                         <div className="grid gap-2">
                                             <Label>Estado de Catálogo</Label>
                                             <Select value={data.status} onValueChange={(v: any) => setData('status', v)}>
-                                                <SelectTrigger>
-                                                    <SelectValue />
+                                                <SelectTrigger className="w-full">
+                                                    <span className="truncate flex-1 text-left">
+                                                        <SelectValue>
+                                                            {data.status === 'ACTIVE' ? 'Activo - Disponible para operaciones' : 'Inactivo - Oculto y bloqueado'}
+                                                        </SelectValue>
+                                                    </span>
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                     <SelectItem value="ACTIVE">Activo - Disponible para operaciones</SelectItem>
@@ -370,34 +384,6 @@ export default function ProductForm({ brands, categories, units, product }: Prop
                                     </div>
                                 </div>
 
-                                <div>
-                                    <h3 className="text-lg font-medium mb-4 pb-2 border-b">Configuración de Inventario Base</h3>
-                                    <div className="space-y-4">
-                                        <div className="flex items-center space-x-3 p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                                            <Checkbox 
-                                                id="lot_tracking" 
-                                                checked={data.requires_lot_tracking} 
-                                                onCheckedChange={(c) => setData('requires_lot_tracking', !!c)} 
-                                            />
-                                            <div className="space-y-1 leading-none">
-                                                <Label htmlFor="lot_tracking" className="font-medium cursor-pointer">Requerir Seguimiento de Lotes</Label>
-                                                <p className="text-sm text-muted-foreground">Obligará al almacenero a ingresar y seleccionar lotes para este producto.</p>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex items-center space-x-3 p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                                            <Checkbox 
-                                                id="fifo" 
-                                                checked={data.fifo_enabled} 
-                                                onCheckedChange={(c) => setData('fifo_enabled', !!c)} 
-                                            />
-                                            <div className="space-y-1 leading-none">
-                                                <Label htmlFor="fifo" className="font-medium cursor-pointer">Habilitar PEPS Estricto (FIFO)</Label>
-                                                <p className="text-sm text-muted-foreground">Obligará al sistema a descontar siempre las unidades más antiguas primero.</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
 
                             </TabsContent>
                         </div>

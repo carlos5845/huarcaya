@@ -89,21 +89,32 @@ export default function Login() {
 
             {step === 1 && (
                     <form onSubmit={handleCheckDni} className="flex flex-col gap-6">
+                        {(dniError || loginErrors.dni) && (
+                            <Alert variant="destructive" className="mb-2">
+                                <AlertCircle className="h-4 w-4" />
+                                <AlertDescription>
+                                    {dniError || loginErrors.dni}
+                                </AlertDescription>
+                            </Alert>
+                        )}
                         <div className="grid gap-2">
                             <Label htmlFor="dni">Documento de Identidad (DNI)</Label>
                             <Input
                                 id="dni"
                                 type="text"
+                                inputMode="numeric"
+                                pattern="\d{8}"
                                 name="dni"
                                 value={loginData.dni}
-                                onChange={(e) => setLoginData('dni', e.target.value)}
+                                onChange={(e) => {
+                                    const val = e.target.value.replace(/\D/g, '').slice(0, 8);
+                                    setLoginData('dni', val);
+                                }}
                                 required
                                 autoFocus
                                 placeholder="Ej: 12345678"
-                                maxLength={15}
+                                maxLength={8}
                             />
-                            {dniError && <InputError message={dniError} />}
-                            <InputError message={loginErrors.dni} />
                         </div>
 
                         <Button type="submit" className="w-full" disabled={checkingDni || !loginData.dni}>
@@ -124,6 +135,14 @@ export default function Login() {
 
                 {step === 2 && userInfo && (
                     <form onSubmit={handleLogin} className="flex flex-col gap-6">
+                        {loginErrors.dni && (
+                            <Alert variant="destructive" className="mb-2">
+                                <AlertCircle className="h-4 w-4" />
+                                <AlertDescription>
+                                    {loginErrors.dni}
+                                </AlertDescription>
+                            </Alert>
+                        )}
                         <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-lg border border-gray-100 dark:border-gray-700 mb-2">
                             <p className="text-sm text-muted-foreground mb-1">Hola,</p>
                             <p className="font-semibold text-lg text-gray-900 dark:text-white">{userInfo.name}</p>

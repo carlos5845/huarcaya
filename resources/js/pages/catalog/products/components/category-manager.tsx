@@ -110,9 +110,11 @@ export function CategoryManager({ categories, value, onChange, error }: Props) {
                                 error && "border-red-500 focus-visible:ring-red-500"
                             )}
                         >
-                            {value
+                            <span className="truncate flex-1 text-left">
+                                {value
                                 ? selectedCategory?.name || "Seleccione una categoría"
                                 : "Seleccione una categoría"}
+                            </span>
                             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
                     </PopoverTrigger>
