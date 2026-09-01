@@ -1,4 +1,4 @@
-import { Head, useForm, Link } from '@inertiajs/react';
+import { Head, useForm, Link, usePage } from '@inertiajs/react';
 import { Search, Plus, Trash2, ArrowLeft } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import InputError from '@/components/input-error';
@@ -10,6 +10,12 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import type { BreadcrumbItem } from '@/types';
+import { Check, ChevronsUpDown } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from '@/components/ui/command';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { cn, normalizeSearch } from '@/lib/utils';
+
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
@@ -18,6 +24,9 @@ const breadcrumbs: BreadcrumbItem[] = [
 ];
 
 export default function PurchaseCreate({ suppliers }: { suppliers: any[] }) {
+    const { company_settings } = usePage<any>().props;
+    const globalExchangeRate = company_settings?.exchange_rate ? parseFloat(company_settings.exchange_rate) : 3.80;
+
     const { data, setData, post, processing, errors } = useForm({
         supplier_id: '',
         supplier_document_type: 'FACTURA',
@@ -26,13 +35,52 @@ export default function PurchaseCreate({ suppliers }: { suppliers: any[] }) {
         document_date: new Date().toISOString().split('T')[0],
         tax_mode: 'PLUS_TAX',
         currency_code: 'PEN',
-        exchange_rate: 1.0,
+        exchange_rate: globalExchangeRate,
         notes: '',
         document_file: null as File | null,
         lines: [] as { product_id: number; product_name: string; internal_code: string; quantity: number; unit_cost: number }[],
     });
 
+    useEffect(() => {
+        if (data.currency_code === 'USD') {
+            setData('exchange_rate', globalExchangeRate);
+        } else if (data.currency_code === 'PEN') {
+            setData('exchange_rate', 1.0);
+        }
+    }, [data.currency_code]);
+
     const [searchQuery, setSearchQuery] = useState('');
+    
+    // Quick create supplier
+    const [supplierOpen, setSupplierOpen] = useState(false);
+    const [isCreateSupplierOpen, setIsCreateSupplierOpen] = useState(false);
+    
+    const { data: createSupplierData, setData: setCreateSupplierData, post: postSupplier, processing: processingSupplier, errors: errorsSupplier, reset: resetSupplier } = useForm({
+        document_type: 'RUC',
+        document_number: '',
+        legal_name: '',
+        status: 'ACTIVE',
+    });
+
+    useEffect(() => {
+        if (data.currency_code === 'USD') {
+            setData('exchange_rate', globalExchangeRate);
+        } else if (data.currency_code === 'PEN') {
+            setData('exchange_rate', 1.0);
+        }
+    }, [data.currency_code]);
+
+    const handleCreateSupplier = (e: React.FormEvent) => {
+        e.preventDefault();
+        postSupplier('/suppliers', {
+            onSuccess: () => {
+                setIsCreateSupplierOpen(false);
+                resetSupplier();
+                // Optionally we could try to auto-select but the ID isn't returned directly. 
+                // The list will update and the user can pick it.
+            }
+        });
+    };
     const [searchResults, setSearchResults] = useState<any[]>([]);
     const [isSearching, setIsSearching] = useState(false);
 
@@ -126,16 +174,53 @@ return;
                             
                             <div className="space-y-2">
                                 <Label htmlFor="supplier_id">Proveedor <span className="text-red-500">*</span></Label>
-                                <Select value={data.supplier_id} onValueChange={(v) => setData('supplier_id', v)}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Seleccionar proveedor..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {suppliers.map(s => (
-                                            <SelectItem key={s.id} value={s.id.toString()}>{s.legal_name} ({s.document_number || 'S/D'})</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                <Popover open={supplierOpen} onOpenChange={setSupplierOpen} modal={true}>
+                                    <PopoverTrigger asChild>
+                                        <Button variant="outline" role="combobox" aria-expanded={supplierOpen} className={cn("w-full justify-between", !data.supplier_id && "text-muted-foreground")}>
+                                            {data.supplier_id
+                                                ? (suppliers.find(s => s.id.toString() === data.supplier_id)?.legal_name || 'Seleccionar proveedor...')
+                                                : "Seleccionar proveedor..."}
+                                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-[400px] p-0" align="start">
+                                        <Command filter={(value, search) => value.includes(normalizeSearch(search)) ? 1 : 0}>
+                                            <CommandInput placeholder="Buscar proveedor..." />
+                                            <CommandList>
+                                                <CommandEmpty>No se encontraron proveedores.</CommandEmpty>
+                                                <CommandGroup>
+                                                    {suppliers.map(s => (
+                                                        <CommandItem
+                                                            key={s.id}
+                                                            value={`${normalizeSearch(s.legal_name)} ${s.document_number || ''}`}
+                                                            onSelect={() => {
+                                                                setData('supplier_id', s.id.toString());
+                                                                setSupplierOpen(false);
+                                                            }}
+                                                        >
+                                                            <Check className={cn("mr-2 h-4 w-4", data.supplier_id === s.id.toString() ? "opacity-100" : "opacity-0")} />
+                                                            <span className="flex-1 truncate">{s.legal_name}</span>
+                                                            <span className="text-xs text-muted-foreground ml-2">{s.document_number}</span>
+                                                        </CommandItem>
+                                                    ))}
+                                                </CommandGroup>
+                                                <CommandSeparator />
+                                                <CommandGroup>
+                                                    <CommandItem
+                                                        onSelect={() => {
+                                                            setSupplierOpen(false);
+                                                            setIsCreateSupplierOpen(true);
+                                                        }}
+                                                        className="cursor-pointer text-primary"
+                                                    >
+                                                        <Plus className="mr-2 h-4 w-4" />
+                                                        Agregar nuevo proveedor
+                                                    </CommandItem>
+                                                </CommandGroup>
+                                            </CommandList>
+                                        </Command>
+                                    </PopoverContent>
+                                </Popover>
                                 <InputError message={errors.supplier_id} />
                             </div>
 
@@ -361,6 +446,44 @@ return;
                     </div>
                 </form>
             </div>
+            {/* Modal Crear Proveedor */}
+            <Dialog open={isCreateSupplierOpen} onOpenChange={setIsCreateSupplierOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Nuevo Proveedor</DialogTitle>
+                        <DialogDescription>Registra un nuevo proveedor rápidamente. Para más detalles ve a la pestaña de Proveedores.</DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleCreateSupplier} className="space-y-4 py-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="sup_doc_type">Tipo Doc.</Label>
+                                <Select value={createSupplierData.document_type} onValueChange={(v) => setCreateSupplierData('document_type', v)}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="RUC">RUC</SelectItem>
+                                        <SelectItem value="DNI">DNI</SelectItem>
+                                        <SelectItem value="CE">CE</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="sup_doc_num">Número Doc.</Label>
+                                <Input id="sup_doc_num" value={createSupplierData.document_number} onChange={e => setCreateSupplierData('document_number', e.target.value)} required />
+                                <InputError message={errorsSupplier.document_number} />
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="sup_name">Razón Social / Nombre <span className="text-red-500">*</span></Label>
+                            <Input id="sup_name" value={createSupplierData.legal_name} onChange={e => setCreateSupplierData('legal_name', e.target.value)} required />
+                            <InputError message={errorsSupplier.legal_name} />
+                        </div>
+                        <DialogFooter>
+                            <Button type="button" variant="outline" onClick={() => setIsCreateSupplierOpen(false)}>Cancelar</Button>
+                            <Button type="submit" disabled={processingSupplier}>Guardar</Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
         </>
     );
 }

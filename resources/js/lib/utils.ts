@@ -10,3 +10,9 @@ export function cn(...inputs: ClassValue[]) {
 export function toUrl(url: NonNullable<InertiaLinkProps['href']>): string {
     return typeof url === 'string' ? url : url.url;
 }
+
+
+export function normalizeSearch(str: string | null | undefined): string {
+    if (!str) return '';
+    return str.toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}

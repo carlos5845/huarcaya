@@ -29,6 +29,9 @@ class UpdateBranchRequest extends FormRequest
             'code' => 'nullable|string|max:20|unique:branches,code,'.$branchId,
             'address' => 'nullable|string|max:255',
             'phone' => 'nullable|string|max:255',
+            'department' => 'nullable|string|max:255',
+            'province' => 'nullable|string|max:255',
+            'district' => 'nullable|string|max:255',
             'type' => 'required|string|in:STORE,WAREHOUSE',
             'status' => 'required|string|in:ACTIVE,INACTIVE',
         ];

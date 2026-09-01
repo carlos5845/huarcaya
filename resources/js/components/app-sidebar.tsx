@@ -63,7 +63,7 @@ export function AppSidebar() {
         });
     }
 
-    if (hasPerm('view_inventory')) {
+    if (hasPerm('view_inventory') || hasPerm('view_inventory_general')) {
         mainNavItems.push({
             title: 'Inventario',
             href: '/inventory',

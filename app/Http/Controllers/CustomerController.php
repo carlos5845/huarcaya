@@ -24,8 +24,8 @@ class CustomerController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'document_type' => ['nullable', 'string', 'max:30'],
-            'document_number' => ['nullable', 'string', 'max:50'],
+            'document_type' => ['required', 'string', 'max:30'],
+            'document_number' => ['required', 'string', 'max:50'],
             'legal_name' => ['required', 'string', 'max:255'],
             'trade_name' => ['nullable', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:50'],
@@ -50,14 +50,14 @@ class CustomerController extends Controller
         Customer::create([
             'uuid' => (string) Str::uuid(),
             'company_id' => $companyId,
-            'document_type' => $validated['document_type'],
-            'document_number' => $validated['document_number'],
+            'document_type' => $validated['document_type'] ?? null,
+            'document_number' => $validated['document_number'] ?? null,
             'legal_name' => $validated['legal_name'],
-            'trade_name' => $validated['trade_name'],
-            'phone' => $validated['phone'],
-            'email' => $validated['email'],
-            'address' => $validated['address'],
-            'status' => $validated['status'],
+            'trade_name' => $validated['trade_name'] ?? null,
+            'phone' => $validated['phone'] ?? null,
+            'email' => $validated['email'] ?? null,
+            'address' => $validated['address'] ?? null,
+            'status' => $validated['status'] ?? 'ACTIVE',
             'created_by' => Auth::id(),
         ]);
 
@@ -67,8 +67,8 @@ class CustomerController extends Controller
     public function update(Request $request, Customer $customer)
     {
         $validated = $request->validate([
-            'document_type' => ['nullable', 'string', 'max:30'],
-            'document_number' => ['nullable', 'string', 'max:50'],
+            'document_type' => ['required', 'string', 'max:30'],
+            'document_number' => ['required', 'string', 'max:50'],
             'legal_name' => ['required', 'string', 'max:255'],
             'trade_name' => ['nullable', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:50'],
@@ -90,14 +90,14 @@ class CustomerController extends Controller
         }
 
         $customer->update([
-            'document_type' => $validated['document_type'],
-            'document_number' => $validated['document_number'],
+            'document_type' => $validated['document_type'] ?? null,
+            'document_number' => $validated['document_number'] ?? null,
             'legal_name' => $validated['legal_name'],
-            'trade_name' => $validated['trade_name'],
-            'phone' => $validated['phone'],
-            'email' => $validated['email'],
-            'address' => $validated['address'],
-            'status' => $validated['status'],
+            'trade_name' => $validated['trade_name'] ?? null,
+            'phone' => $validated['phone'] ?? null,
+            'email' => $validated['email'] ?? null,
+            'address' => $validated['address'] ?? null,
+            'status' => $validated['status'] ?? 'ACTIVE',
         ]);
 
         return back()->with('success', 'Cliente actualizado exitosamente.');

@@ -1,6 +1,7 @@
 import { Head, useForm, router } from '@inertiajs/react';
 import { Search, Plus, Edit, Trash2, CheckCircle2 } from 'lucide-react';
 import { useState } from 'react';
+import { normalizeSearch } from '@/lib/utils';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -45,7 +46,7 @@ export default function CustomersIndex({ customers }: { customers: any[] }) {
     });
 
     const filteredCustomers = customers.filter(c =>
-        c.legal_name.toLowerCase().includes(search.toLowerCase()) ||
+        normalizeSearch(c.legal_name).includes(normalizeSearch(search)) ||
         (c.document_number && c.document_number.includes(search))
     );
 
@@ -187,7 +188,7 @@ export default function CustomersIndex({ customers }: { customers: any[] }) {
                         <form onSubmit={submit} className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <Label htmlFor="document_type">Tipo de Documento</Label>
+                                    <Label htmlFor="document_type">Tipo de Documento <span className="text-red-500">*</span></Label>
                                     <Select value={data.document_type} onValueChange={(val) => setData('document_type', val)}>
                                         <SelectTrigger>
                                             <SelectValue placeholder="Seleccione..." />
@@ -202,7 +203,7 @@ export default function CustomersIndex({ customers }: { customers: any[] }) {
                                     <InputError message={errors.document_type} />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label htmlFor="document_number">Número de Documento</Label>
+                                    <Label htmlFor="document_number">Número de Documento <span className="text-red-500">*</span></Label>
                                     <Input 
                                         id="document_number" 
                                         value={data.document_number} 
@@ -214,7 +215,7 @@ export default function CustomersIndex({ customers }: { customers: any[] }) {
                                             }
                                             setData('document_number', val);
                                         }} 
-                                        {...getDocumentProps(data.document_type)}
+                                        {...getDocumentProps(data.document_type)} required
                                     />
                                     <InputError message={errors.document_number} />
                                 </div>
@@ -232,6 +233,12 @@ export default function CustomersIndex({ customers }: { customers: any[] }) {
                                 <InputError message={errors.trade_name} />
                             </div>
 
+                                                        <div className="space-y-2">
+                                <Label htmlFor="address">Dirección</Label>
+                                <Textarea id="address" value={data.address} onChange={(e) => setData('address', e.target.value)} />
+                                <InputError message={errors.address} />
+                            </div>
+
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label htmlFor="phone">Teléfono</Label>
@@ -245,25 +252,23 @@ export default function CustomersIndex({ customers }: { customers: any[] }) {
                                 </div>
                             </div>
 
-                            <div className="space-y-2">
-                                <Label htmlFor="address">Dirección</Label>
-                                <Textarea id="address" value={data.address} onChange={(e) => setData('address', e.target.value)} />
-                                <InputError message={errors.address} />
-                            </div>
+                            
 
-                            <div className="space-y-2">
-                                <Label htmlFor="status">Estado</Label>
-                                <Select value={data.status} onValueChange={(val) => setData('status', val)}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Seleccione..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="ACTIVE">Activo</SelectItem>
-                                        <SelectItem value="INACTIVE">Inactivo</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                                <InputError message={errors.status} />
-                            </div>
+                            {editingId && (
+                                <div className="space-y-2">
+                                    <Label htmlFor="status">Estado</Label>
+                                    <Select value={data.status} onValueChange={(val) => setData('status', val)}>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Seleccione..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="ACTIVE">Activo</SelectItem>
+                                            <SelectItem value="INACTIVE">Inactivo</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <InputError message={errors.status} />
+                                </div>
+                            )}
 
                             <DialogFooter>
                                 <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>

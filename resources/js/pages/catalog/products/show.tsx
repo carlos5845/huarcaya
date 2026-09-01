@@ -207,7 +207,7 @@ export default function ProductSettings({ product, branches, flash, isSuperAdmin
 )}
                                         <div className="grid gap-2 w-32">
                                             <Label>Monto (PEN)</Label>
-                                            <Input type="number" step="0.01" min="0" value={priceData.amount} onChange={e => setPriceData('amount', e.target.value)} required />
+                                            <Input type="number" step="0.01" min="1" value={priceData.amount} onChange={e => setPriceData('amount', e.target.value)} required />
                                         </div>
                                         <Button type="submit" disabled={priceProcessing}><Plus className="h-4 w-4" /></Button>
                                     </form>
@@ -266,7 +266,7 @@ export default function ProductSettings({ product, branches, flash, isSuperAdmin
 )}
                                         <div className="grid gap-2 w-32">
                                             <Label>Monto (PEN)</Label>
-                                            <Input type="number" step="0.01" min="0" value={minPriceData.amount} onChange={e => setMinPriceData('amount', e.target.value)} required />
+                                            <Input type="number" step="0.01" min="1" value={minPriceData.amount} onChange={e => setMinPriceData('amount', e.target.value)} required />
                                         </div>
                                         <Button type="submit" variant="destructive" disabled={minPriceProcessing}><Plus className="h-4 w-4" /></Button>
                                     </form>

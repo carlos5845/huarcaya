@@ -21,15 +21,15 @@ class ProductController extends Controller
 
         $products = Product::with(['brand', 'category', 'unit'])
             ->when($search, function ($query, $search) {
-                $query->where('primary_reference', 'like', "%{$search}%")
-                    ->orWhere('normalized_reference', 'like', '%'.Str::upper(preg_replace('/[^A-Za-z0-9]/', '', $search)).'%')
-                    ->orWhere('name', 'like', "%{$search}%")
-                    ->orWhere('internal_code', 'like', "%{$search}%")
+                $query->whereLikeAccentInsensitive('primary_reference', "%{$search}%")
+                    ->orWhereLikeAccentInsensitive('normalized_reference', '%'.Str::upper(preg_replace('/[^A-Za-z0-9]/', '', $search)).'%')
+                    ->orWhereLikeAccentInsensitive('name', "%{$search}%")
+                    ->orWhereLikeAccentInsensitive('internal_code', "%{$search}%")
                     ->orWhereHas('aliases', function ($q) use ($search) {
-                        $q->where('alias', 'like', "%{$search}%");
+                        $q->whereLikeAccentInsensitive('alias', "%{$search}%");
                     })
                     ->orWhereHas('brand', function ($bq) use ($search) {
-                        $bq->where('name', 'like', "%{$search}%");
+                        $bq->whereLikeAccentInsensitive('name', "%{$search}%");
                     });
             })
             ->orderBy('id', 'desc')
@@ -145,11 +145,11 @@ class ProductController extends Controller
             ->where('status', 'ACTIVE')
             ->when($search, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
-                    $q->where('primary_reference', 'like', "%{$search}%")
-                      ->orWhere('normalized_reference', 'like', '%'.Str::upper(preg_replace('/[^A-Za-z0-9]/', '', $search)).'%')
-                      ->orWhere('name', 'like', "%{$search}%")
+                    $q->whereLikeAccentInsensitive('primary_reference', "%{$search}%")
+                      ->orWhereLikeAccentInsensitive('normalized_reference', '%'.Str::upper(preg_replace('/[^A-Za-z0-9]/', '', $search)).'%')
+                      ->orWhereLikeAccentInsensitive('name', "%{$search}%")
                       ->orWhereHas('brand', function ($brandQuery) use ($search) {
-                          $brandQuery->where('name', 'like', "%{$search}%");
+                          $brandQuery->whereLikeAccentInsensitive('name', "%{$search}%");
                       });
                 });
             })

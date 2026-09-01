@@ -1,4 +1,9 @@
-import { Head, useForm, Link } from '@inertiajs/react';
+import { Check, ChevronsUpDown, UserPlus } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { cn, normalizeSearch } from '@/lib/utils';
+import { Head, useForm, Link, usePage } from '@inertiajs/react';
 import { Search, Plus, Trash2, ArrowLeft } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import InputError from '@/components/input-error';
@@ -17,8 +22,33 @@ const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Nueva Venta', href: '#' },
 ];
 
-export default function SaleCreate({ customers }: { customers: any[] }) {
-    const defaultCustomer = customers.length > 0 ? (customers.find(c => c.legal_name.toLowerCase().includes('public') || c.legal_name.toLowerCase().includes('general'))?.id?.toString() || customers[0].id.toString()) : '';
+export default function SaleCreate({ customers, generic_customer_id }: { customers: any[], generic_customer_id: number }) {
+    const defaultCustomer = generic_customer_id?.toString() || (customers.length > 0 ? customers[0].id.toString() : '');
+
+    const { company_settings } = usePage<any>().props;
+    const globalExchangeRate = company_settings?.exchange_rate ? parseFloat(company_settings.exchange_rate) : 3.80;
+
+    
+    const [openCustomerCombobox, setOpenCustomerCombobox] = useState(false);
+    const [openCustomerDialog, setOpenCustomerDialog] = useState(false);
+
+    const customerForm = useForm({
+        document_type: 'DNI',
+        document_number: '',
+        legal_name: '',
+        status: 'ACTIVE',
+    });
+
+    const submitCustomer = (e: React.FormEvent) => {
+        e.preventDefault();
+        customerForm.post('/customers', {
+            preserveScroll: true,
+            onSuccess: () => {
+                setOpenCustomerDialog(false);
+                customerForm.reset();
+            },
+        });
+    };
 
     const { data, setData, post, processing, errors } = useForm({
         customer_id: defaultCustomer,
@@ -27,11 +57,19 @@ export default function SaleCreate({ customers }: { customers: any[] }) {
         external_document_series: '',
         external_document_number: '',
         currency_code: 'PEN',
-        exchange_rate: 1.0,
+        exchange_rate: globalExchangeRate,
         notes: '',
         tax_mode: 'INCLUDED',
         lines: [] as { product_id: number; product_name: string; internal_code: string; quantity: number; unit_price: number }[],
     });
+
+    useEffect(() => {
+        if (data.currency_code === 'USD') {
+            setData('exchange_rate', globalExchangeRate);
+        } else if (data.currency_code === 'PEN') {
+            setData('exchange_rate', 1.0);
+        }
+    }, [data.currency_code]);
 
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -124,18 +162,77 @@ return;
                         <div className="space-y-4">
                             <h3 className="font-medium border-b pb-2">Datos del Comprobante</h3>
                             
-                            <div className="space-y-2">
+                            <div className="space-y-2 flex flex-col">
                                 <Label htmlFor="customer_id">Cliente <span className="text-red-500">*</span></Label>
-                                <Select value={data.customer_id} onValueChange={(v) => setData('customer_id', v)}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Seleccionar cliente..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {customers.map(s => (
-                                            <SelectItem key={s.id} value={s.id.toString()}>{s.legal_name} ({s.document_number || 'S/D'})</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                <div className="flex items-center gap-2">
+                                    <Popover open={openCustomerCombobox} onOpenChange={setOpenCustomerCombobox}>
+                                        <PopoverTrigger asChild>
+                                            <Button
+                                                variant="outline"
+                                                role="combobox"
+                                                aria-expanded={openCustomerCombobox}
+                                                className="flex-1 justify-between"
+                                            >
+                                                {data.customer_id
+                                                    ? customers.find((s) => s.id.toString() === data.customer_id)?.legal_name || 'Cliente desconocido'
+                                                    : "Buscar cliente..."}
+                                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-[400px] p-0" align="start">
+                                            <Command filter={(value, search) => value.includes(normalizeSearch(search)) ? 1 : 0}>
+                                                <CommandInput placeholder="Buscar por nombre o documento..." />
+                                                <CommandList>
+                                                    <CommandEmpty>No se encontraron clientes.</CommandEmpty>
+                                                    <CommandGroup>
+                                                        {customers.map((s) => (
+                                                            <CommandItem
+                                                                key={s.id}
+                                                                value={`${normalizeSearch(s.legal_name)} ${s.document_number}`}
+                                                                onSelect={() => {
+                                                                    setData('customer_id', s.id.toString());
+                                                                    setOpenCustomerCombobox(false);
+                                                                }}
+                                                            >
+                                                                <Check
+                                                                    className={cn(
+                                                                        "mr-2 h-4 w-4",
+                                                                        data.customer_id === s.id.toString() ? "opacity-100" : "opacity-0"
+                                                                    )}
+                                                                />
+                                                                {s.legal_name} {s.document_number ? `(${s.document_number})` : ''}
+                                                            </CommandItem>
+                                                        ))}
+                                                    </CommandGroup>
+                                                </CommandList>
+                                                <div className="p-2 border-t flex gap-2">
+                                                    <Button 
+                                                        variant="ghost" 
+                                                        className="w-full justify-start text-sm text-blue-600 dark:text-blue-400" 
+                                                        onClick={() => {
+                                                            setData('customer_id', generic_customer_id.toString());
+                                                            setOpenCustomerCombobox(false);
+                                                        }}
+                                                    >
+                                                        <UserPlus className="mr-2 h-4 w-4" />
+                                                        Usar Cliente Genérico
+                                                    </Button>
+                                                    <Button 
+                                                        variant="ghost" 
+                                                        className="w-full justify-start text-sm text-green-600 dark:text-green-400" 
+                                                        onClick={() => {
+                                                            setOpenCustomerCombobox(false);
+                                                            setOpenCustomerDialog(true);
+                                                        }}
+                                                    >
+                                                        <Plus className="mr-2 h-4 w-4" />
+                                                        Nuevo Cliente
+                                                    </Button>
+                                                </div>
+                                            </Command>
+                                        </PopoverContent>
+                                    </Popover>
+                                </div>
                                 <InputError message={errors.customer_id} />
                             </div>
 
@@ -362,6 +459,62 @@ return;
                     </div>
                 </form>
             </div>
+
+            <Dialog open={openCustomerDialog} onOpenChange={setOpenCustomerDialog}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Agregar Nuevo Cliente</DialogTitle>
+                        <DialogDescription>
+                            Registra rápidamente un cliente. Para agregar más detalles como teléfono o dirección, ve a la pestaña de Clientes.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={submitCustomer} className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="c_doc_type">Tipo de Documento</Label>
+                                <Select value={customerForm.data.document_type} onValueChange={(v) => { customerForm.setData('document_type', v); customerForm.setData('document_number', ''); }}>
+                                    <SelectTrigger id="c_doc_type"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="DNI">DNI</SelectItem>
+                                        <SelectItem value="RUC">RUC</SelectItem>
+                                        <SelectItem value="CE">CE</SelectItem>
+                                        <SelectItem value="PASAPORTE">Pasaporte</SelectItem>
+                                        <SelectItem value="OTRO">Otro</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="c_doc_num">Número</Label>
+                                <Input 
+                                    id="c_doc_num" 
+                                    maxLength={customerForm.data.document_type === 'DNI' ? 8 : customerForm.data.document_type === 'RUC' ? 11 : customerForm.data.document_type === 'CE' ? 9 : 15}
+                                    value={customerForm.data.document_number} 
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        if (customerForm.data.document_type === 'DNI' || customerForm.data.document_type === 'RUC') {
+                                            if (val === '' || /^[0-9]+$/.test(val)) {
+                                                customerForm.setData('document_number', val);
+                                            }
+                                        } else {
+                                            customerForm.setData('document_number', val);
+                                        }
+                                    }} 
+                                />
+                                <InputError message={customerForm.errors.document_number} />
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="c_legal_name">Nombre Completo o Razón Social <span className="text-red-500">*</span></Label>
+                            <Input id="c_legal_name" required value={customerForm.data.legal_name} onChange={(e) => customerForm.setData('legal_name', e.target.value)} />
+                            <InputError message={customerForm.errors.legal_name} />
+                        </div>
+                        <DialogFooter>
+                            <Button type="button" variant="outline" onClick={() => setOpenCustomerDialog(false)}>Cancelar</Button>
+                            <Button type="submit" disabled={customerForm.processing}>Guardar</Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
         </>
     );
 }

@@ -1,12 +1,13 @@
 import { Head, useForm, router } from '@inertiajs/react';
 import { Building, Plus, Edit, Store, Power, PowerOff, Phone, MapPin } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import InputError from '@/components/input-error';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { UbigeoSelects } from '@/components/ubigeo-selects';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type Branch = {
@@ -31,11 +32,21 @@ type Props = {
 
 export default function BranchesIndex({ branches, flash }: Props) {
     const [isCreateOpen, setIsCreateOpen] = useState(false);
+    const [depDict, setDepDict] = useState<Record<string, string>>({});
+    const [provDict, setProvDict] = useState<Record<string, string>>({});
+    const [distDict, setDistDict] = useState<Record<string, string>>({});
+
+    useEffect(() => {
+        fetch('/data/ubigeo/ubigeo_peru_2016_departamentos.json').then(res => res.json()).then((data: any[]) => { const dict: Record<string, string> = {}; data.forEach(d => dict[d.id] = d.name); setDepDict(dict); }).catch(() => {});
+        fetch('/data/ubigeo/ubigeo_peru_2016_provincias.json').then(res => res.json()).then((data: any[]) => { const dict: Record<string, string> = {}; data.forEach(d => dict[d.id] = d.name); setProvDict(dict); }).catch(() => {});
+        fetch('/data/ubigeo/ubigeo_peru_2016_distritos.json').then(res => res.json()).then((data: any[]) => { const dict: Record<string, string> = {}; data.forEach(d => dict[d.id] = d.name); setDistDict(dict); }).catch(() => {});
+    }, []);
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
 
     const { data: createData, setData: setCreateData, post: createPost, processing: createProcessing, errors: createErrors, reset: createReset } = useForm({
         name: '',
+        code_prefix: 'SUC',
         code: '',
         address: '',
         phone: '',
@@ -124,6 +135,7 @@ return;
                                     <th className="px-6 py-3 font-medium">Nombre</th>
                                     <th className="px-6 py-3 font-medium">Tipo</th>
                                     <th className="px-6 py-3 font-medium">Estado</th>
+                                    <th className="px-6 py-3 font-medium">Ubigeo</th>
                                     <th className="px-6 py-3 font-medium">Contacto</th>
                                     <th className="px-6 py-3 font-medium text-right">Acciones</th>
                                 </tr>
@@ -149,6 +161,11 @@ return;
                                             ) : (
                                                 <Badge variant="secondary" className="bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400">Inactivo</Badge>
                                             )}
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="text-xs text-muted-foreground">
+                                                {branch.department ? `${depDict[branch.department] || ''}, ${provDict[branch.province || ''] || ''}, ${distDict[branch.district || ''] || ''}` : '-'}
+                                            </div>
                                         </td>
                                         <td className="px-6 py-4 text-muted-foreground">
                                             <div className="flex flex-col gap-1">
@@ -194,22 +211,57 @@ return;
                         <DialogDescription>Completa los datos para registrar una nueva tienda o almacén.</DialogDescription>
                     </DialogHeader>
                     <form onSubmit={handleCreate} className="space-y-4 py-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="grid gap-2">
+                                <Label>Tipo de Sede</Label>
+                                <Select value={createData.code_prefix} onValueChange={(val) => setCreateData('code_prefix', val)}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Seleccionar..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="SUC">Sucursal (SUC)</SelectItem>
+                                        <SelectItem value="SED">Sede (SED)</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="name">Nombre <span className="text-red-500">*</span></Label>
+                                <Input id="name" value={createData.name} onChange={(e) => setCreateData('name', e.target.value)} required />
+                                <InputError message={createErrors.name} />
+                            </div>
+                        </div>
+                        
+                        <UbigeoSelects 
+                            department={createData.department || ""}
+                            province={createData.province || ""}
+                            district={createData.district || ""}
+                            onDepartmentChange={(val) => setCreateData('department', val)}
+                            onProvinceChange={(val) => setCreateData('province', val)}
+                            onDistrictChange={(val) => setCreateData('district', val)}
+                        />
                         <div className="grid gap-2">
-                            <Label htmlFor="name">Nombre <span className="text-red-500">*</span></Label>
-                            <Input id="name" value={createData.name} onChange={(e) => setCreateData('name', e.target.value)} required />
-                            <InputError message={createErrors.name} />
+                            <Label htmlFor="address">Dirección (Referencia o Detalle)</Label>
+                            <Input id="address" value={createData.address || ""} onChange={(e) => setCreateData('address', e.target.value)} />
+                            <InputError message={createErrors.address} />
                         </div>
                         <div className="grid gap-2">
                             <Label htmlFor="phone">Teléfono</Label>
-                            <Input id="phone" value={createData.phone} onChange={(e) => setCreateData('phone', e.target.value)} />
+                            <Input id="phone" value={createData.phone || ""} onChange={(e) => setCreateData('phone', e.target.value)} />
                             <InputError message={createErrors.phone} />
                         </div>
                         <div className="grid gap-2">
-                            <Label htmlFor="address">Dirección</Label>
-                            <Input id="address" value={createData.address} onChange={(e) => setCreateData('address', e.target.value)} />
-                            <InputError message={createErrors.address} />
+                            <Label>Tipo de Sucursal</Label>
+                            <Select value={createData.type} onValueChange={(val) => setCreateData('type', val)}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Selecciona un tipo" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="STORE">Tienda (Ventas)</SelectItem>
+                                    <SelectItem value="WAREHOUSE">Almacén (Solo Inventario)</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <InputError message={createErrors.type} />
                         </div>
-                        
                         <DialogFooter>
                             <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
                             <Button type="submit" disabled={createProcessing}>Guardar</Button>
@@ -231,22 +283,30 @@ return;
                             <Input id="edit_name" value={editData.name} onChange={(e) => setEditData('name', e.target.value)} required />
                             <InputError message={editErrors.name} />
                         </div>
+                        <UbigeoSelects 
+                            department={editData.department || ""}
+                            province={editData.province || ""}
+                            district={editData.district || ""}
+                            onDepartmentChange={(val) => setEditData('department', val)}
+                            onProvinceChange={(val) => setEditData('province', val)}
+                            onDistrictChange={(val) => setEditData('district', val)}
+                        />
+                        <div className="grid gap-2">
+                            <Label htmlFor="edit_address">Dirección (Referencia o Detalle)</Label>
+                            <Input id="edit_address" value={editData.address || ""} onChange={(e) => setEditData('address', e.target.value)} />
+                            <InputError message={editErrors.address} />
+                        </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div className="grid gap-2">
                                 <Label htmlFor="edit_code">Código Interno</Label>
-                                <Input id="edit_code" value={editData.code} onChange={(e) => setEditData('code', e.target.value)} />
+                                <Input id="edit_code" value={editData.code || ""} disabled />
                                 <InputError message={editErrors.code} />
                             </div>
                             <div className="grid gap-2">
                                 <Label htmlFor="edit_phone">Teléfono</Label>
-                                <Input id="edit_phone" value={editData.phone} onChange={(e) => setEditData('phone', e.target.value)} />
+                                <Input id="edit_phone" value={editData.phone || ""} onChange={(e) => setEditData('phone', e.target.value)} />
                                 <InputError message={editErrors.phone} />
                             </div>
-                        </div>
-                        <div className="grid gap-2">
-                            <Label htmlFor="edit_address">Dirección</Label>
-                            <Input id="edit_address" value={editData.address} onChange={(e) => setEditData('address', e.target.value)} />
-                            <InputError message={editErrors.address} />
                         </div>
                         <div className="grid gap-2">
                             <Label>Tipo de Sucursal</Label>

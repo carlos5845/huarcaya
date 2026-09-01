@@ -23,19 +23,20 @@ class InventoryAdjustmentController extends Controller
 
         $user = $request->user();
         $isSuperAdmin = $user->hasRole('Super Admin');
+        $canSeeAllBranches = $isSuperAdmin || $user->hasPermissionTo('view_inventory_general');
         
-        $allowedBranchIds = $isSuperAdmin 
+        $allowedBranchIds = $canSeeAllBranches 
             ? Branch::pluck('id')->toArray() 
             : $user->branches()->pluck('branches.id')->toArray();
 
-        if (empty($allowedBranchIds) && !$isSuperAdmin && $user->default_branch_id) {
+        if (empty($allowedBranchIds) && !$canSeeAllBranches && $user->default_branch_id) {
             $allowedBranchIds = [$user->default_branch_id];
         }
 
         $adjustments = InventoryAdjustment::with(['branch', 'creator'])
             ->whereIn('branch_id', $allowedBranchIds)
             ->when($search, function ($query, $search) {
-                $query->where('adjustment_number', 'like', "%{$search}%");
+                $query->whereLikeAccentInsensitive('adjustment_number', "%{$search}%");
             })
             ->when($status, function ($query, $status) {
                 $query->where('status', $status);
@@ -50,7 +51,7 @@ class InventoryAdjustmentController extends Controller
         return Inertia::render('inventory/adjustments/index', [
             'adjustments' => $adjustments,
             'filters' => $request->only(['search', 'status', 'type']),
-            'isSuperAdmin' => $isSuperAdmin,
+            'canSeeAllBranches' => $canSeeAllBranches,
         ]);
     }
 
@@ -58,8 +59,9 @@ class InventoryAdjustmentController extends Controller
     {
         $user = $request->user();
         $isSuperAdmin = $user->hasRole('Super Admin');
+        $canSeeAllBranches = $isSuperAdmin || $user->hasPermissionTo('view_inventory_general');
 
-        $branches = $isSuperAdmin 
+        $branches = $canSeeAllBranches 
             ? Branch::orderBy('name')->get() 
             : $user->branches()->orderBy('name')->get();
 
@@ -69,7 +71,7 @@ class InventoryAdjustmentController extends Controller
 
         return Inertia::render('inventory/adjustments/create', [
             'branches' => $branches,
-            'isSuperAdmin' => $isSuperAdmin,
+            'canSeeAllBranches' => $canSeeAllBranches,
         ]);
     }
 

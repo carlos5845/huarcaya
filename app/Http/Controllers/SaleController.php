@@ -47,19 +47,19 @@ class SaleController extends Controller
             ->whereIn('branch_id', $allowedBranchIds)
             ->when($search, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
-                    $q->where('sale_number', 'like', "%{$search}%")
+                    $q->whereLikeAccentInsensitive('sale_number', "%{$search}%")
                         ->orWhereHas('customer', function ($cq) use ($search) {
-                            $cq->where('legal_name', 'like', "%{$search}%")
-                               ->orWhere('document_number', 'like', "%{$search}%");
+                            $cq->whereLikeAccentInsensitive('legal_name', "%{$search}%")
+                               ->orWhereLikeAccentInsensitive('document_number', "%{$search}%");
                         })
                         ->orWhereHas('lines', function ($lq) use ($search) {
-                            $lq->where('product_name_snapshot', 'like', "%{$search}%")
-                                ->orWhere('product_reference_snapshot', 'like', "%{$search}%")
+                            $lq->whereLikeAccentInsensitive('product_name_snapshot', "%{$search}%")
+                                ->orWhereLikeAccentInsensitive('product_reference_snapshot', "%{$search}%")
                                 ->orWhereHas('product', function ($pq) use ($search) {
-                                    $pq->where('name', 'like', "%{$search}%")
-                                       ->orWhere('primary_reference', 'like', "%{$search}%")
+                                    $pq->whereLikeAccentInsensitive('name', "%{$search}%")
+                                       ->orWhereLikeAccentInsensitive('primary_reference', "%{$search}%")
                                        ->orWhereHas('brand', function($bq) use ($search) {
-                                           $bq->where('name', 'like', "%{$search}%");
+                                           $bq->whereLikeAccentInsensitive('name', "%{$search}%");
                                        });
                                 });
                         });
@@ -91,9 +91,24 @@ class SaleController extends Controller
 
     public function create()
     {
+        
+        $genericCustomer = Customer::firstOrCreate(
+            [
+                'company_id' => Auth::user()->company_id,
+                'document_number' => '00000000'
+            ],
+            [
+                'uuid' => (string) Str::uuid(),
+                'document_type' => 'DNI',
+                'legal_name' => 'Clientes Varios / Público en General',
+                'status' => 'ACTIVE',
+                'created_by' => Auth::id()
+            ]
+        );
         return Inertia::render('sales/create', [
             'customers' => Customer::where('company_id', Auth::user()->company_id)
                 ->orderBy('legal_name')->get(),
+            'generic_customer_id' => $genericCustomer->id,
         ]);
     }
 
@@ -228,10 +243,25 @@ class SaleController extends Controller
 
         $sale->load(['lines.product']);
         $customers = Customer::where('company_id', \Illuminate\Support\Facades\Auth::user()->company_id)->orderBy('legal_name')->get();
+        
+        $genericCustomer = Customer::firstOrCreate(
+            [
+                'company_id' => Auth::user()->company_id,
+                'document_number' => '00000000'
+            ],
+            [
+                'uuid' => (string) Str::uuid(),
+                'document_type' => 'DNI',
+                'legal_name' => 'Clientes Varios / Público en General',
+                'status' => 'ACTIVE',
+                'created_by' => Auth::id()
+            ]
+        );
 
         return Inertia::render('sales/edit', [
             'sale' => $sale,
             'customers' => $customers,
+            'generic_customer_id' => $genericCustomer->id,
         ]);
     }
 

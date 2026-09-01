@@ -17,7 +17,7 @@ type Props = {
 
 export default function InventoryIndex({ products, branches, filters }: Props) {
     const { auth } = usePage<any>().props;
-    const isSuperAdmin = auth.roles?.includes('Super Admin');
+    const isSuperAdmin = auth.roles?.includes('Super Admin') || auth.permissions?.includes('view_inventory_general');
 
     const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();

@@ -14,12 +14,13 @@ class KardexController extends Controller
     {
         $user = $request->user();
         $isSuperAdmin = $user->hasRole('Super Admin');
+        $canSeeAllBranches = $isSuperAdmin || $user->hasPermissionTo('view_inventory_general');
         
-        $allowedBranchIds = $isSuperAdmin 
+        $allowedBranchIds = $canSeeAllBranches 
             ? \App\Models\Branch::pluck('id')->toArray() 
             : $user->branches()->pluck('branches.id')->toArray();
 
-        if (empty($allowedBranchIds) && !$isSuperAdmin && $user->default_branch_id) {
+        if (empty($allowedBranchIds) && !$canSeeAllBranches && $user->default_branch_id) {
             $allowedBranchIds = [$user->default_branch_id];
         }
 
@@ -30,7 +31,7 @@ class KardexController extends Controller
         $dateTo = $request->input('date_to');
 
         // Si no es Super Admin y pide 'ALL' o una sucursal no permitida, forzamos a mostrar solo las permitidas
-        if (!$isSuperAdmin) {
+        if (!$canSeeAllBranches) {
             if (empty($branchId) || $branchId === 'ALL' || !in_array((int)$branchId, $allowedBranchIds)) {
                 $branchId = null; // No filtramos por uno específico, dejamos que el whereIn actúe sobre todos los permitidos
             }
@@ -42,14 +43,14 @@ class KardexController extends Controller
             ->when($productId, fn($q) => $q->where('product_id', $productId))
             ->when($search, function ($query, $search) {
                 $query->where(function($q) use ($search) {
-                    $q->where('operation_type', 'like', "%{$search}%")
+                    $q->whereLikeAccentInsensitive('operation_type', "%{$search}%")
                       ->orWhereHas('user', function($uq) use ($search) {
-                          $uq->where('name', 'like', "%{$search}%");
+                          $uq->whereLikeAccentInsensitive('name', "%{$search}%");
                       })
                       ->orWhereHas('product', function($pq) use ($search) {
-                          $pq->where('name', 'like', "%{$search}%")
-                             ->orWhere('internal_code', 'like', "%{$search}%")
-                             ->orWhere('primary_reference', 'like', "%{$search}%");
+                          $pq->whereLikeAccentInsensitive('name', "%{$search}%")
+                             ->orWhereLikeAccentInsensitive('internal_code', "%{$search}%")
+                             ->orWhereLikeAccentInsensitive('primary_reference', "%{$search}%");
                       });
                 });
             })
@@ -63,7 +64,7 @@ class KardexController extends Controller
             ->paginate(50)
             ->withQueryString();
 
-        $branches = $isSuperAdmin 
+        $branches = $canSeeAllBranches 
             ? \App\Models\Branch::orderBy('name')->get() 
             : $user->branches()->orderBy('name')->get();
         if ($branches->isEmpty() && $user->default_branch_id) {
@@ -73,7 +74,7 @@ class KardexController extends Controller
         return Inertia::render('inventory/kardex/index', [
             'entries' => $entries,
             'branches' => $branches,
-            'isSuperAdmin' => $isSuperAdmin,
+            'canSeeAllBranches' => $canSeeAllBranches,
             'products' => Product::all(), // En producción esto debería ser un buscador asíncrono
             'filters' => $request->only(['branch_id', 'product_id', 'search', 'date_from', 'date_to'])
         ]);

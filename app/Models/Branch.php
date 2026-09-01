@@ -8,7 +8,7 @@ class Branch extends Model
 {
     protected $fillable = [
         'uuid', 'company_id', 'name', 'code', 'address',
-        'phone', 'type', 'status',
+        'phone', 'type', 'status', 'department', 'province', 'district',
     ];
 
     public function company()

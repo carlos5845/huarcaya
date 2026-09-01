@@ -24,9 +24,12 @@ class StoreBranchRequest extends FormRequest
     {
         return [
             'name' => 'required|string|max:255',
-            'code' => 'nullable|string|max:20|unique:branches,code',
+            'code_prefix' => 'required|string|in:SUC,SED',
             'address' => 'nullable|string|max:255',
             'phone' => 'nullable|string|max:255',
+            'department' => 'nullable|string|max:255',
+            'province' => 'nullable|string|max:255',
+            'district' => 'nullable|string|max:255',
             'type' => 'required|string|in:STORE,WAREHOUSE',
             'status' => 'required|string|in:ACTIVE,INACTIVE',
         ];

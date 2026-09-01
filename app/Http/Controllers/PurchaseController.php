@@ -41,16 +41,16 @@ class PurchaseController extends Controller
             ->whereIn('branch_id', $allowedBranchIds)
             ->when($search, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
-                    $q->where('purchase_number', 'like', "%{$search}%")
+                    $q->whereLikeAccentInsensitive('purchase_number', "%{$search}%")
                         ->orWhereHas('supplier', function ($sq) use ($search) {
-                            $sq->where('legal_name', 'like', "%{$search}%")
-                               ->orWhere('document_number', 'like', "%{$search}%");
+                            $sq->whereLikeAccentInsensitive('legal_name', "%{$search}%")
+                               ->orWhereLikeAccentInsensitive('document_number', "%{$search}%");
                         })
                         ->orWhereHas('lines.product', function ($pq) use ($search) {
-                            $pq->where('name', 'like', "%{$search}%")
-                               ->orWhere('primary_reference', 'like', "%{$search}%")
+                            $pq->whereLikeAccentInsensitive('name', "%{$search}%")
+                               ->orWhereLikeAccentInsensitive('primary_reference', "%{$search}%")
                                ->orWhereHas('brand', function($bq) use ($search) {
-                                   $bq->where('name', 'like', "%{$search}%");
+                                   $bq->whereLikeAccentInsensitive('name', "%{$search}%");
                                });
                         });
                 });

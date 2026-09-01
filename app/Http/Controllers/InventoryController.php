@@ -13,9 +13,10 @@ class InventoryController extends Controller
     {
         $user = $request->user();
         $isSuperAdmin = $user->hasRole('Super Admin');
+        $canSeeAllBranches = $isSuperAdmin || $user->hasPermissionTo('view_inventory_general');
 
         // Determinar las sucursales permitidas para este usuario
-        if ($isSuperAdmin) {
+        if ($canSeeAllBranches) {
             $branches = Branch::orderBy('name')->get(['id', 'name']);
             $allowedBranchIds = $branches->pluck('id')->toArray();
         } else {
@@ -32,7 +33,7 @@ class InventoryController extends Controller
         $search = $request->input('search');
 
         // Si no es Super Admin y pide 'ALL' o pide una sucursal no permitida, forzamos a la primera permitida
-        if (! $isSuperAdmin) {
+        if (! $canSeeAllBranches) {
             if (empty($branchId) || $branchId === 'ALL' || ! in_array((int) $branchId, $allowedBranchIds)) {
                 $branchId = $allowedBranchIds[0] ?? null;
             }
@@ -42,11 +43,11 @@ class InventoryController extends Controller
 
         if ($search) {
             $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                    ->orWhere('primary_reference', 'like', "%{$search}%")
-                    ->orWhere('internal_code', 'like', "%{$search}%")
+                $q->whereLikeAccentInsensitive('name', "%{$search}%")
+                    ->orWhereLikeAccentInsensitive('primary_reference', "%{$search}%")
+                    ->orWhereLikeAccentInsensitive('internal_code', "%{$search}%")
                     ->orWhereHas('brand', function ($bq) use ($search) {
-                        $bq->where('name', 'like', "%{$search}%");
+                        $bq->whereLikeAccentInsensitive('name', "%{$search}%");
                     });
             });
         }

@@ -30,6 +30,39 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configureDefaults();
 
+        if (\DB::connection() instanceof \Illuminate\Database\SQLiteConnection) {
+            \DB::connection()->getPdo()->sqliteCreateFunction('unaccent', function ($str) {
+                return strtolower(\Illuminate\Support\Str::ascii($str));
+            }, 1);
+        }
+
+        \Illuminate\Database\Eloquent\Builder::macro('whereLikeAccentInsensitive', function ($column, $search) {
+            $connection = $this->getConnection();
+            $driver = $connection->getDriverName();
+            
+            if ($driver === 'sqlite') {
+                return $this->whereRaw("unaccent({$column}) LIKE unaccent(?)", [$search]);
+            } elseif ($driver === 'pgsql') {
+                return $this->whereRaw("unaccent({$column}) ILIKE unaccent(?)", [$search]);
+            } else {
+                return $this->where($column, 'like', "%{$search}%");
+            }
+        });
+
+        \Illuminate\Database\Eloquent\Builder::macro('orWhereLikeAccentInsensitive', function ($column, $search) {
+            $connection = $this->getConnection();
+            $driver = $connection->getDriverName();
+            
+            if ($driver === 'sqlite') {
+                return $this->orWhereRaw("unaccent({$column}) LIKE unaccent(?)", [$search]);
+            } elseif ($driver === 'pgsql') {
+                return $this->orWhereRaw("unaccent({$column}) ILIKE unaccent(?)", [$search]);
+            } else {
+                return $this->orWhere($column, 'like', "%{$search}%");
+            }
+        });
+
+
         Event::listen(function (Login $event) {
             if ($event->user->status !== 'ACTIVE') {
                 Auth::logout();

@@ -20,7 +20,7 @@ class ProductSettingsController extends Controller
 
         $validated = $request->validate([
             'branch_id' => ['nullable', 'exists:branches,id'],
-            'amount' => ['required', 'numeric', 'min:0'],
+            'amount' => ['required', 'numeric', 'min:1'],
         ]);
 
         $product->prices()->create([
@@ -51,7 +51,7 @@ class ProductSettingsController extends Controller
 
         $validated = $request->validate([
             'branch_id' => ['nullable', 'exists:branches,id'],
-            'amount' => ['required', 'numeric', 'min:0'],
+            'amount' => ['required', 'numeric', 'min:1'],
         ]);
 
         $product->minPrices()->create([

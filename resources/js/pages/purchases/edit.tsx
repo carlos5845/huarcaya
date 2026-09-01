@@ -1,4 +1,4 @@
-import { Head, useForm, Link } from '@inertiajs/react';
+import { Head, useForm, Link, usePage } from '@inertiajs/react';
 import { Search, Plus, Trash2, ArrowLeft } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import InputError from '@/components/input-error';
@@ -18,6 +18,9 @@ const breadcrumbs: BreadcrumbItem[] = [
 ];
 
 export default function PurchaseEdit({ purchase, suppliers }: { purchase: any, suppliers: any[] }) {
+    const { company_settings } = usePage<any>().props;
+    const globalExchangeRate = company_settings?.exchange_rate ? parseFloat(company_settings.exchange_rate) : 3.80;
+
     const { data, setData, post, processing, errors } = useForm({
         _method: 'PUT',
         supplier_id: purchase.supplier_id.toString(),
@@ -38,6 +41,14 @@ export default function PurchaseEdit({ purchase, suppliers }: { purchase: any, s
             unit_cost: Number(line.unit_cost_original)
         })) as { product_id: number; product_name: string; internal_code: string; quantity: number; unit_cost: number }[],
     });
+
+    useEffect(() => {
+        if (data.currency_code === 'USD') {
+            setData('exchange_rate', globalExchangeRate);
+        } else if (data.currency_code === 'PEN') {
+            setData('exchange_rate', 1.0);
+        }
+    }, [data.currency_code]);
 
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState<any[]>([]);

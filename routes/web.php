@@ -20,7 +20,27 @@ use Inertia\Inertia;
 Route::inertia('/', 'welcome')->name('home');
 
 Route::middleware(['auth'])->group(function () {
-    Route::get('dashboard', function (\Illuminate\Http\Request $request) {
+    Route::get('/init', function (\Illuminate\Http\Request $request) {
+        $user = $request->user();
+        if ($user->hasRole('Super Admin') || $user->hasPermissionTo('view_dashboard')) {
+            return redirect('/dashboard');
+        }
+        if ($user->hasPermissionTo('view_inventory') || $user->hasPermissionTo('view_inventory_general')) {
+            return redirect('/inventory');
+        }
+        if ($user->hasPermissionTo('view_sales')) {
+            return redirect('/sales');
+        }
+        if ($user->hasPermissionTo('view_purchases')) {
+            return redirect('/purchases');
+        }
+        if ($user->hasPermissionTo('view_products')) {
+            return redirect('/products');
+        }
+        return redirect('/user/profile');
+    })->name('init');
+    Route::middleware(['role_or_permission:Super Admin|view_dashboard'])->group(function () {
+        Route::get('dashboard', function (\Illuminate\Http\Request $request) {
     $company_id = auth()->user()->company_id;
     $now = now();
     $startOfMonth = $now->copy()->startOfMonth();
@@ -91,7 +111,8 @@ Route::middleware(['auth'])->group(function () {
             'date' => $date
         ]
     ]);
-})->name('dashboard');
+    })->name('dashboard');
+    });
 
     // Ruta necesaria para la confirmación de contraseña (Fortify views=false)
     Route::get('/user/confirm-password', function () {
@@ -118,34 +139,55 @@ Route::middleware(['auth'])->group(function () {
 
     // Modules (Access controlled by Frontend and specific permissions if needed)
         // Catalog Base Parameters
+        Route::middleware(['role_or_permission:Super Admin|view_products'])->group(function () {
         Route::resource('brands', BrandController::class)->except(['create', 'show', 'edit']);
         Route::resource('categories', CategoryController::class)->except(['create', 'show', 'edit']);
         Route::resource('units', UnitController::class)->except(['create', 'show', 'edit']);
+    });
 
+        Route::middleware(['role_or_permission:Super Admin|view_customers'])->group(function () {
         Route::resource('customers', \App\Http\Controllers\CustomerController::class)->except(['create', 'show', 'edit']);
+    });
+        Route::middleware(['role_or_permission:Super Admin|view_suppliers'])->group(function () {
         Route::resource('suppliers', \App\Http\Controllers\SupplierController::class)->except(['create', 'show', 'edit']);
+    });
 
+        Route::middleware(['role_or_permission:Super Admin|view_purchases'])->group(function () {
         Route::post('purchases/{purchase}/confirm', [\App\Http\Controllers\PurchaseController::class, 'confirm'])->name('purchases.confirm');
         Route::resource('purchases', \App\Http\Controllers\PurchaseController::class);
+    });
 
+        Route::middleware(['role_or_permission:Super Admin|view_sales'])->group(function () {
         Route::post('sales/{sale}/confirm', [\App\Http\Controllers\SaleController::class, 'confirm'])->name('sales.confirm');
         Route::resource('sales', \App\Http\Controllers\SaleController::class);
+    });
 
         // Products Catalog
+        Route::middleware(['role_or_permission:Super Admin|view_products'])->group(function () {
         Route::get('products/search', [ProductController::class, 'search'])->name('products.search');
         Route::post('products/check-similarity', [ProductController::class, 'checkSimilarity'])->name('products.check-similarity');
         Route::resource('products', ProductController::class);
+    });
 
+        Route::middleware(['role_or_permission:Super Admin|view_import'])->group(function () {
         Route::get('catalog/import', [ProductImportController::class, 'index'])->name('catalog.import');
         Route::get('catalog/import/template', [ProductImportController::class, 'downloadTemplate'])->name('catalog.import.template');
         Route::post('catalog/import', [ProductImportController::class, 'store'])->name('catalog.import.store');
+    });
 
+        Route::middleware(['role_or_permission:Super Admin|view_inventory|view_inventory_general'])->group(function () {
         Route::get('inventory', [InventoryController::class, 'index'])->name('inventory.index');
+    });
+        Route::middleware(['role_or_permission:Super Admin|view_kardex'])->group(function () {
         Route::get('kardex', [\App\Http\Controllers\KardexController::class, 'index'])->name('kardex.index');
+    });
 
+        Route::middleware(['role_or_permission:Super Admin|view_inventory|view_inventory_general'])->group(function () {
         Route::post('inventory/adjustments/{adjustment}/confirm', [\App\Http\Controllers\InventoryAdjustmentController::class, 'confirm'])->name('inventory.adjustments.confirm');
         Route::resource('inventory/adjustments', \App\Http\Controllers\InventoryAdjustmentController::class)->names('inventory.adjustments');
+    });
 
+        Route::middleware(['role_or_permission:Super Admin|view_products'])->group(function () {
         // Product Settings
         Route::post('products/{product}/prices', [ProductSettingsController::class, 'storePrice'])->name('products.prices.store');
         Route::delete('products/{product}/prices/{price}', [ProductSettingsController::class, 'destroyPrice'])->name('products.prices.destroy');
@@ -157,6 +199,7 @@ Route::middleware(['auth'])->group(function () {
         Route::delete('products/{product}/min-stocks/{stock}', [ProductSettingsController::class, 'destroyMinStock'])->name('products.min-stocks.destroy');
 
         Route::post('products/{product}/kit-components', [ProductSettingsController::class, 'syncKitComponents'])->name('products.kit-components.sync');
+    });
 });
 
 require __DIR__.'/settings.php';

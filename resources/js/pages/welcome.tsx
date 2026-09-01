@@ -7,11 +7,36 @@ type PageProps = {
             name?: string;
             email?: string;
         } | null;
+        roles?: string[];
+        permissions?: string[];
     };
 };
 
 export default function Welcome() {
     const { auth } = usePage<PageProps>().props;
+
+    const isSuperAdmin = auth?.roles?.includes('Super Admin');
+    const hasPerm = (perm: string) => isSuperAdmin || auth?.permissions?.includes(perm);
+
+    let mainRoute = '/profile';
+    let mainLabel = 'Ir al perfil';
+
+    if (hasPerm('view_dashboard')) {
+        mainRoute = '/dashboard';
+        mainLabel = 'Ir al dashboard';
+    } else if (hasPerm('view_inventory') || hasPerm('view_inventory_general')) {
+        mainRoute = '/inventory';
+        mainLabel = 'Ir al inventario';
+    } else if (hasPerm('view_sales')) {
+        mainRoute = '/sales';
+        mainLabel = 'Ir a ventas';
+    } else if (hasPerm('view_purchases')) {
+        mainRoute = '/purchases';
+        mainLabel = 'Ir a compras';
+    } else if (hasPerm('view_products')) {
+        mainRoute = '/products';
+        mainLabel = 'Ir al catálogo';
+    }
 
     return (
         <>
@@ -52,10 +77,10 @@ export default function Welcome() {
 
                         {auth?.user ? (
                             <Link
-                                href="/dashboard"
+                                href={mainRoute}
                                 className="rounded-full border border-white/20 bg-midnight-950/95 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(4,22,46,0.22)] transition hover:-translate-y-0.5 hover:bg-midnight-900 hover:shadow-[0_12px_28px_rgba(4,22,46,0.28)]"
                             >
-                                Dashboard
+                                {mainLabel}
                             </Link>
                         ) : (
                             <Link
@@ -125,10 +150,10 @@ export default function Welcome() {
                             <div className="mt-8 flex items-center justify-center gap-6">
                                 {auth?.user ? (
                                     <Link
-                                        href="/dashboard"
+                                        href={mainRoute}
                                         className="group inline-flex items-center gap-2 rounded-full border border-white/20 bg-midnight-950 px-5 py-3 text-xs font-semibold text-white shadow-[0_10px_24px_rgba(4,22,46,0.24)] transition hover:-translate-y-0.5 hover:bg-midnight-900 hover:shadow-[0_14px_30px_rgba(4,22,46,0.30)]"
                                     >
-                                        Ir al dashboard
+                                        {mainLabel}
                                         <ArrowRight className="size-3.5 transition group-hover:translate-x-1" />
                                     </Link>
                                 ) : (

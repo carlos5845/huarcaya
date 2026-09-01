@@ -23,6 +23,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'view_suppliers',
             'view_products',
             'view_inventory',
+            'view_inventory_general',
             'view_purchases',
             'view_sales',
             'view_adjustments',

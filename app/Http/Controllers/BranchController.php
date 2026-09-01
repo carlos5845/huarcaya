@@ -33,18 +33,28 @@ class BranchController extends Controller
     /**
      * Store a newly created resource in storage.
      */
-    public function store(StoreBranchRequest $request)
+        public function store(StoreBranchRequest $request)
     {
         $data = $request->validated();
+        $prefix = $data['code_prefix'];
+        unset($data['code_prefix']);
+        
         $data['uuid'] = Str::uuid()->toString();
         $data['company_id'] = auth()->user()->company_id;
 
         $branch = Branch::create($data);
         
-        if (empty($branch->code)) {
-            $branch->code = 'SUC-' . str_pad($branch->id, 3, '0', STR_PAD_LEFT);
-            $branch->save();
-        }
+        // Count branches with same prefix to get the auto-increment number
+        // or just use the ID. Let's use count for better sequential numbers per prefix:
+        $count = Branch::where('company_id', $data['company_id'])
+            ->whereLikeAccentInsensitive('code', $prefix . '-%')
+            ->count();
+        // Since we just created one, if it's the only one it will be 0 before this?
+        // Wait, the new branch doesn't have code yet.
+        // It's safer to just get the max number or count + 1.
+        
+        $branch->code = $prefix . '-' . str_pad($count + 1, 3, '0', STR_PAD_LEFT);
+        $branch->save();
 
         return redirect()->route('branches.index')->with('success', 'Sucursal creada exitosamente.');
     }
