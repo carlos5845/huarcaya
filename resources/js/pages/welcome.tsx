@@ -141,7 +141,7 @@ export default function Welcome() {
                             </h1>
 
                             <p className="mt-7 max-w-2xl  px-5 py-3 text-base leading-7 text-black-haze-800  sm:text-lg">
-                                SIMAQ es un sistema de inventario de maquinaria
+                                SIMAQ es un sistema de inventario de repuestos para maquinaria
                                 que te ayuda a administrar productos, compras,
                                 ventas, usuarios y sucursales desde un solo
                                 lugar.
