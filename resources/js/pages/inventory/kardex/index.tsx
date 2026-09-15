@@ -4,6 +4,12 @@ import React, { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { ChevronsUpDown, X } from 'lucide-react';
+import { useEffect } from 'react';
+import { cn } from '@/lib/utils';
+
 
 interface KardexEntry {
     id: number;
@@ -41,10 +47,10 @@ interface PaginationData {
     links: { url: string | null; label: string; active: boolean }[];
 }
 
-export default function KardexIndex({ entries, branches, products, filters, canSeeAllBranches = false }: { canSeeAllBranches?: boolean, 
+export default function KardexIndex({ entries, branches, selectedProduct, filters, canSeeAllBranches = false }: { canSeeAllBranches?: boolean, 
     entries: PaginationData, 
     branches: any[], 
-    products: any[], 
+    selectedProduct: any | null, 
     filters: any 
 }) {
     const [branchId, setBranchId] = useState(filters.branch_id || '');
@@ -52,6 +58,35 @@ export default function KardexIndex({ entries, branches, products, filters, canS
     const [search, setSearch] = useState(filters.search || '');
     const [dateFrom, setDateFrom] = useState(filters.date_from || '');
     const [dateTo, setDateTo] = useState(filters.date_to || '');
+
+    const [searchProductQuery, setSearchProductQuery] = useState('');
+    const [productResults, setProductResults] = useState<any[]>([]);
+    const [isSearchingProduct, setIsSearchingProduct] = useState(false);
+    const [openProductCombo, setOpenProductCombo] = useState(false);
+    const [displayProductName, setDisplayProductName] = useState(selectedProduct ? `${selectedProduct.primary_reference || selectedProduct.internal_code || 'Sin cód'} - ${selectedProduct.name}` : 'Todos los productos');
+
+    useEffect(() => {
+        if (searchProductQuery.length < 2) {
+            setProductResults([]);
+            return;
+        }
+
+        const delayDebounceFn = setTimeout(() => {
+            setIsSearchingProduct(true);
+            fetch(`/products/search?q=${encodeURIComponent(searchProductQuery)}`, {
+                headers: { 'Accept': 'application/json' }
+            })
+            .then(res => res.json())
+            .then(data => {
+                setProductResults(data);
+                setIsSearchingProduct(false);
+            })
+            .catch(() => setIsSearchingProduct(false));
+        }, 300);
+
+        return () => clearTimeout(delayDebounceFn);
+    }, [searchProductQuery]);
+
 
     const handleFilter = (e: React.FormEvent) => {
         e.preventDefault();
@@ -128,7 +163,7 @@ return '-';
                             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                             <Input
                                 type="search"
-                                placeholder="Buscar usuario, prod, cód, ref..."
+                                placeholder="Buscar por usuario o referencia..."
                                 className="pl-8"
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
@@ -146,17 +181,77 @@ return '-';
                                 ))}
                             </select>
                         </div>
-                        <div className="flex-1 min-w-[200px]">
-                            <select 
-                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                value={productId}
-                                onChange={e => setProductId(e.target.value)}
-                            >
-                                <option value="">Todos los productos</option>
-                                {products.map(p => (
-                                    <option key={p.id} value={p.id}>{p.primary_reference} - {p.name}</option>
-                                ))}
-                            </select>
+                        <div className="flex-1 min-w-[250px]">
+                            <Popover open={openProductCombo} onOpenChange={setOpenProductCombo}>
+                                <PopoverTrigger asChild>
+                                    <Button
+                                        variant="outline"
+                                        role="combobox"
+                                        aria-expanded={openProductCombo}
+                                        className="w-full justify-between font-normal"
+                                    >
+                                        <span className="truncate mr-2">
+                                            {displayProductName}
+                                        </span>
+                                        {productId ? (
+                                            <X 
+                                                className="ml-2 h-4 w-4 shrink-0 opacity-50 hover:opacity-100" 
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setProductId('');
+                                                    setDisplayProductName('Todos los productos');
+                                                }}
+                                            />
+                                        ) : (
+                                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                        )}
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-[400px] p-0" align="start">
+                                    <Command shouldFilter={false}>
+                                        <CommandInput 
+                                            placeholder="Buscar producto..." 
+                                            value={searchProductQuery}
+                                            onValueChange={setSearchProductQuery}
+                                        />
+                                        <CommandList>
+                                            {isSearchingProduct && <CommandEmpty>Buscando...</CommandEmpty>}
+                                            {!isSearchingProduct && productResults.length === 0 && searchProductQuery.length >= 2 && (
+                                                <CommandEmpty>No se encontraron productos.</CommandEmpty>
+                                            )}
+                                            {!isSearchingProduct && searchProductQuery.length < 2 && (
+                                                <div className="py-6 text-center text-sm text-muted-foreground">
+                                                    Escribe al menos 2 caracteres...
+                                                </div>
+                                            )}
+                                            <CommandGroup>
+                                                {productResults.map((product) => {
+                                                    const totalStock = product.inventories?.reduce((acc: number, inv: any) => acc + Number(inv.quantity), 0) || 0;
+                                                    const sku = product.primary_reference || product.internal_code || 'Sin SKU';
+                                                    
+                                                    return (
+                                                        <CommandItem
+                                                            key={product.id}
+                                                            value={product.id.toString()}
+                                                            onSelect={() => {
+                                                                setProductId(product.id.toString());
+                                                                setDisplayProductName(`${sku} - ${product.name}`);
+                                                                setOpenProductCombo(false);
+                                                            }}
+                                                            className="flex flex-col items-start py-2"
+                                                        >
+                                                            <div className="font-medium">{product.name}</div>
+                                                            <div className="text-xs text-muted-foreground mt-1">
+                                                                SKU: {sku} | Stock: {totalStock}
+                                                            </div>
+                                                        </CommandItem>
+                                                    );
+                                                })}
+                                            </CommandGroup>
+                                        </CommandList>
+                                    </Command>
+                                </PopoverContent>
+                            </Popover>
                         </div>
                         <div className="flex items-center gap-2">
                             <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-[130px]" />

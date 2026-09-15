@@ -75,7 +75,7 @@ class KardexController extends Controller
             'entries' => $entries,
             'branches' => $branches,
             'canSeeAllBranches' => $canSeeAllBranches,
-            'products' => Product::all(), // En producción esto debería ser un buscador asíncrono
+            'selectedProduct' => Product::find($request->input('product_id')),
             'filters' => $request->only(['branch_id', 'product_id', 'search', 'date_from', 'date_to'])
         ]);
     }

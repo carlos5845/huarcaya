@@ -50,6 +50,15 @@ class InventoryController extends Controller
                         $bq->whereLikeAccentInsensitive('name', "%{$search}%");
                     });
             });
+        } else {
+            // Si no hay búsqueda, por defecto solo mostrar productos que tengan stock físico > 0 en las sucursales seleccionadas
+            $query->whereHas('inventories', function ($q) use ($branchId, $allowedBranchIds) {
+                if ($branchId && $branchId !== 'ALL') {
+                    $q->where('branch_id', $branchId)->where('physical_quantity', '>', 0);
+                } else {
+                    $q->whereIn('branch_id', $allowedBranchIds)->where('physical_quantity', '>', 0);
+                }
+            });
         }
 
         if ($branchId && $branchId !== 'ALL') {
