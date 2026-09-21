@@ -44,14 +44,14 @@ class PurchaseController extends Controller
                     $q->whereLikeAccentInsensitive('purchase_number', "%{$search}%")
                         ->orWhereHas('supplier', function ($sq) use ($search) {
                             $sq->whereLikeAccentInsensitive('legal_name', "%{$search}%")
-                               ->orWhereLikeAccentInsensitive('document_number', "%{$search}%");
+                                ->orWhereLikeAccentInsensitive('document_number', "%{$search}%");
                         })
                         ->orWhereHas('lines.product', function ($pq) use ($search) {
                             $pq->whereLikeAccentInsensitive('name', "%{$search}%")
-                               ->orWhereLikeAccentInsensitive('primary_reference', "%{$search}%")
-                               ->orWhereHas('brand', function($bq) use ($search) {
-                                   $bq->whereLikeAccentInsensitive('name', "%{$search}%");
-                               });
+                                ->orWhereLikeAccentInsensitive('primary_reference', "%{$search}%")
+                                ->orWhereHas('brand', function ($bq) use ($search) {
+                                    $bq->whereLikeAccentInsensitive('name', "%{$search}%");
+                                });
                         });
                 });
             })
@@ -81,14 +81,17 @@ class PurchaseController extends Controller
 
     public function create()
     {
-        $suppliers = Supplier::where('company_id', Auth::user()->company_id)->where('status', 'ACTIVE')->get();
+        $user = Auth::user();
+        $suppliers = Supplier::where('company_id', $user->company_id)->where('status', 'ACTIVE')->orderBy('legal_name')->get();
+        $defaultBranch = $user->default_branch_id ? Branch::find($user->default_branch_id) : Branch::where('company_id', $user->company_id)->first();
 
         return Inertia::render('purchases/create', [
             'suppliers' => $suppliers,
+            'defaultBranch' => $defaultBranch,
         ]);
     }
 
-    public function store(Request $request)
+    public function store(Request $request, KardexService $kardexService)
     {
         $validated = $request->validate([
             'supplier_id' => ['required', 'exists:suppliers,id'],
@@ -105,6 +108,7 @@ class PurchaseController extends Controller
             'currency_code' => ['required', 'string', 'in:PEN,USD'],
             'exchange_rate' => ['required_if:currency_code,USD', 'numeric', 'min:0.01'],
             'document_file' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'], // Max 5MB
+            'action' => ['nullable', 'string', 'in:DRAFT,CONFIRM'],
         ]);
 
         $companyId = Auth::user()->company_id;
@@ -175,7 +179,7 @@ class PurchaseController extends Controller
 
             foreach ($validated['lines'] as $lineData) {
                 $baseInput = $lineData['quantity'] * $lineData['unit_cost'];
-                
+
                 $lineSubtotal = $baseInput;
                 $lineTax = 0;
                 $lineFinalTotal = $baseInput;
@@ -204,9 +208,49 @@ class PurchaseController extends Controller
                 ]);
             }
 
+            // Direct confirmation option
+            if ($request->input('action') === 'CONFIRM') {
+                $purchase->update([
+                    'status' => 'CONFIRMED',
+                    'confirmed_at' => now(),
+                    'approved_by' => Auth::id(),
+                ]);
+
+                foreach ($purchase->lines as $line) {
+                    $line->update([
+                        'received_quantity' => $line->ordered_quantity,
+                    ]);
+
+                    $lotNumber = 'LOT-'.date('Ymd').'-'.strtoupper(Str::random(4));
+                    Lot::create([
+                        'uuid' => (string) Str::uuid(),
+                        'branch_id' => $purchase->branch_id,
+                        'product_id' => $line->product_id,
+                        'lot_number' => $lotNumber,
+                        'original_quantity' => $line->received_quantity,
+                        'current_quantity' => $line->received_quantity,
+                        'unit_cost' => $line->unit_cost_base,
+                        'status' => 'ACTIVE',
+                    ]);
+
+                    $kardexService->recordEntry([
+                        'product_id' => $line->product_id,
+                        'branch_id' => $purchase->branch_id,
+                        'quantity' => (int) $line->received_quantity,
+                        'unit_cost' => $line->unit_cost_base,
+                        'operation_type' => 'COMPRA',
+                        'reference' => 'COMPRA: '.$purchase->purchase_number,
+                    ]);
+                }
+            }
+
             DB::commit();
 
-            return redirect()->route('purchases.show', $purchase->id)->with('success', 'Compra en borrador creada exitosamente.');
+            $msg = $request->input('action') === 'CONFIRM'
+                ? 'Compra registrada y confirmada en Kardex exitosamente.'
+                : 'Compra en borrador creada exitosamente.';
+
+            return redirect()->route('purchases.show', $purchase->id)->with('success', $msg);
         } catch (\Exception $e) {
             DB::rollBack();
             throw $e;
@@ -215,7 +259,7 @@ class PurchaseController extends Controller
 
     public function show(Purchase $purchase)
     {
-        $purchase->load(['supplier', 'lines.product', 'creator']);
+        $purchase->load(['supplier', 'lines.product.brand', 'lines.product.unit', 'creator', 'approver', 'branch']);
 
         return Inertia::render('purchases/show', [
             'purchase' => $purchase,
@@ -228,8 +272,8 @@ class PurchaseController extends Controller
             return redirect()->route('purchases.index')->with('error', 'Solo se pueden editar compras en estado borrador.');
         }
 
-        $purchase->load(['lines.product']);
-        $suppliers = \App\Models\Supplier::where('company_id', \Illuminate\Support\Facades\Auth::user()->company_id)->where('status', 'ACTIVE')->get();
+        $purchase->load(['lines.product.brand', 'lines.product.unit', 'branch']);
+        $suppliers = Supplier::where('company_id', Auth::user()->company_id)->where('status', 'ACTIVE')->orderBy('legal_name')->get();
 
         return Inertia::render('purchases/edit', [
             'purchase' => $purchase,
@@ -237,7 +281,7 @@ class PurchaseController extends Controller
         ]);
     }
 
-    public function update(Request $request, Purchase $purchase)
+    public function update(Request $request, Purchase $purchase, KardexService $kardexService)
     {
         if ($purchase->status !== 'DRAFT') {
             return redirect()->back()->with('error', 'Solo se pueden editar compras en estado borrador.');
@@ -258,13 +302,14 @@ class PurchaseController extends Controller
             'currency_code' => ['required', 'string', 'in:PEN,USD'],
             'exchange_rate' => ['required_if:currency_code,USD', 'numeric', 'min:0.01'],
             'document_file' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
+            'action' => ['nullable', 'string', 'in:DRAFT,CONFIRM'],
         ]);
 
-        $companyId = \Illuminate\Support\Facades\Auth::user()->company_id;
+        $companyId = Auth::user()->company_id;
 
         // Check document uniqueness if changed
         if ($validated['supplier_document_type'] && $validated['supplier_document_series'] && $validated['supplier_document_number']) {
-            $exists = \App\Models\Purchase::where('company_id', $companyId)
+            $exists = Purchase::where('company_id', $companyId)
                 ->where('supplier_id', $validated['supplier_id'])
                 ->where('supplier_document_type', $validated['supplier_document_type'])
                 ->where('supplier_document_series', $validated['supplier_document_series'])
@@ -273,13 +318,13 @@ class PurchaseController extends Controller
                 ->exists();
 
             if ($exists) {
-                throw \Illuminate\Validation\ValidationException::withMessages([
+                throw ValidationException::withMessages([
                     'supplier_document_number' => 'Ya existe una compra con este comprobante para el proveedor seleccionado.',
                 ]);
             }
         }
 
-        \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $request, $purchase) {
+        DB::transaction(function () use ($validated, $request, $purchase, $kardexService) {
             $linesTotal = 0;
             $taxMode = $validated['tax_mode'];
 
@@ -287,10 +332,10 @@ class PurchaseController extends Controller
 
             foreach ($validated['lines'] as $lineData) {
                 $lineSubtotal = $lineData['quantity'] * $lineData['unit_cost'];
-                
+
                 $lineTax = 0;
                 $lineFinalTotal = 0;
-                
+
                 if ($taxMode === 'INCLUDED') {
                     $lineFinalTotal = $lineSubtotal;
                     $lineSubtotal = $lineFinalTotal / 1.18;
@@ -305,7 +350,7 @@ class PurchaseController extends Controller
                 $linesTotal += $lineFinalTotal;
 
                 $purchase->lines()->create([
-                    'uuid' => (string) \Illuminate\Support\Str::uuid(),
+                    'uuid' => (string) Str::uuid(),
                     'product_id' => $lineData['product_id'],
                     'ordered_quantity' => $lineData['quantity'],
                     'unit_cost_original' => $lineData['unit_cost'],
@@ -353,9 +398,48 @@ class PurchaseController extends Controller
             }
 
             $purchase->update($updateData);
+
+            if ($request->input('action') === 'CONFIRM') {
+                $purchase->update([
+                    'status' => 'CONFIRMED',
+                    'confirmed_at' => now(),
+                    'approved_by' => Auth::id(),
+                ]);
+
+                foreach ($purchase->lines as $line) {
+                    $line->update([
+                        'received_quantity' => $line->ordered_quantity,
+                    ]);
+
+                    $lotNumber = 'LOT-'.date('Ymd').'-'.strtoupper(Str::random(4));
+                    Lot::create([
+                        'uuid' => (string) Str::uuid(),
+                        'branch_id' => $purchase->branch_id,
+                        'product_id' => $line->product_id,
+                        'lot_number' => $lotNumber,
+                        'original_quantity' => $line->received_quantity,
+                        'current_quantity' => $line->received_quantity,
+                        'unit_cost' => $line->unit_cost_base,
+                        'status' => 'ACTIVE',
+                    ]);
+
+                    $kardexService->recordEntry([
+                        'product_id' => $line->product_id,
+                        'branch_id' => $purchase->branch_id,
+                        'quantity' => (int) $line->received_quantity,
+                        'unit_cost' => $line->unit_cost_base,
+                        'operation_type' => 'COMPRA',
+                        'reference' => 'COMPRA: '.$purchase->purchase_number,
+                    ]);
+                }
+            }
         });
 
-        return redirect()->route('purchases.show', $purchase)->with('success', 'Compra actualizada exitosamente.');
+        $msg = $request->input('action') === 'CONFIRM'
+            ? 'Compra actualizada y confirmada en inventario Kardex exitosamente.'
+            : 'Compra actualizada exitosamente.';
+
+        return redirect()->route('purchases.show', $purchase)->with('success', $msg);
     }
 
     public function confirm(Purchase $purchase, KardexService $kardexService)

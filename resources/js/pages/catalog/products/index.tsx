@@ -1,9 +1,41 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { PackageOpen, Plus, Edit, Power, PowerOff, Search, Box, Layers, Hash, Settings } from 'lucide-react';
-import React from 'react';
+import { 
+    useReactTable, 
+    getCoreRowModel, 
+    getSortedRowModel, 
+    flexRender, 
+    type ColumnDef, 
+    type SortingState, 
+    type VisibilityState 
+} from '@tanstack/react-table';
+import { 
+    PackageOpen, 
+    Plus, 
+    Edit, 
+    Power, 
+    PowerOff, 
+    Search, 
+    Box, 
+    Layers, 
+    Hash, 
+    Settings, 
+    SlidersHorizontal, 
+    ArrowUpDown, 
+    ArrowUp, 
+    ArrowDown 
+} from 'lucide-react';
+import React, { useState, useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+    DropdownMenu,
+    DropdownMenuCheckboxItem,
+    DropdownMenuContent,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 type Brand = { id: number; name: string };
 type Category = { id: number; name: string };
@@ -41,8 +73,18 @@ type Props = {
     };
 };
 
+const columnLabels: Record<string, string> = {
+    primary_reference: 'Referencia / Código',
+    name: 'Nombre del Repuesto',
+    classification: 'Clasificación',
+    product_type: 'Tipo de Producto',
+    actions: 'Acciones',
+};
+
 export default function ProductsIndex({ products, filters, flash }: Props) {
-    const [searchTerm, setSearchTerm] = React.useState(filters.search || '');
+    const [searchTerm, setSearchTerm] = useState(filters.search || '');
+    const [sorting, setSorting] = useState<SortingState>([]);
+    const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
@@ -58,32 +100,216 @@ export default function ProductsIndex({ products, filters, flash }: Props) {
     const renderTypeBadge = (type: string) => {
         switch (type) {
             case 'SIMPLE':
-                return <Badge variant="outline" className="flex w-fit items-center gap-1 bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400"><Box className="h-3 w-3" /> Simple</Badge>;
+                return <Badge variant="outline" className="flex w-fit items-center gap-1 bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30"><Box className="h-3 w-3" /> Simple</Badge>;
             case 'KIT_UNICO':
-                return <Badge variant="outline" className="flex w-fit items-center gap-1 bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-400"><Layers className="h-3 w-3" /> Kit Único</Badge>;
+                return <Badge variant="outline" className="flex w-fit items-center gap-1 bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/30"><Layers className="h-3 w-3" /> Kit Único</Badge>;
             case 'KIT_COMPONENTES':
-                return <Badge variant="outline" className="flex w-fit items-center gap-1 bg-orange-50 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400"><Layers className="h-3 w-3" /> Kit Comp.</Badge>;
+                return <Badge variant="outline" className="flex w-fit items-center gap-1 bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30"><Layers className="h-3 w-3" /> Kit Comp.</Badge>;
             default:
                 return <Badge>{type}</Badge>;
         }
     };
 
+    const productList = useMemo(() => products.data || [], [products.data]);
+
+    const columns = useMemo<ColumnDef<Product>[]>(() => [
+        {
+            id: 'primary_reference',
+            accessorFn: row => row.primary_reference,
+            header: ({ column }) => (
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+                    className="-ml-3 h-8 text-xs font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+                >
+                    <span>Referencia</span>
+                    {column.getIsSorted() === "desc" ? (
+                        <ArrowDown className="ml-1.5 h-3.5 w-3.5 text-primary" />
+                    ) : column.getIsSorted() === "asc" ? (
+                        <ArrowUp className="ml-1.5 h-3.5 w-3.5 text-primary" />
+                    ) : (
+                        <ArrowUpDown className="ml-1.5 h-3 w-3 opacity-40 hover:opacity-100" />
+                    )}
+                </Button>
+            ),
+            cell: ({ row }) => {
+                const p = row.original;
+                return (
+                    <div>
+                        <div className="font-bold text-sm text-foreground">{p.primary_reference}</div>
+                        {p.internal_code && (
+                            <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5 font-mono">
+                                <Hash className="h-3 w-3" /> {p.internal_code}
+                            </div>
+                        )}
+                    </div>
+                );
+            },
+        },
+        {
+            id: 'name',
+            accessorFn: row => row.name,
+            header: ({ column }) => (
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+                    className="-ml-3 h-8 text-xs font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+                >
+                    <span>Nombre</span>
+                    {column.getIsSorted() === "desc" ? (
+                        <ArrowDown className="ml-1.5 h-3.5 w-3.5 text-primary" />
+                    ) : column.getIsSorted() === "asc" ? (
+                        <ArrowUp className="ml-1.5 h-3.5 w-3.5 text-primary" />
+                    ) : (
+                        <ArrowUpDown className="ml-1.5 h-3 w-3 opacity-40 hover:opacity-100" />
+                    )}
+                </Button>
+            ),
+            cell: ({ row }) => (
+                <div className="font-medium text-xs text-foreground max-w-[320px] truncate" title={row.original.name}>
+                    {row.original.name}
+                </div>
+            ),
+        },
+        {
+            id: 'classification',
+            accessorFn: row => `${row.brand?.name || ''} ${row.category?.name || ''}`,
+            header: ({ column }) => (
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+                    className="-ml-3 h-8 text-xs font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+                >
+                    <span>Clasificación</span>
+                    {column.getIsSorted() === "desc" ? (
+                        <ArrowDown className="ml-1.5 h-3.5 w-3.5 text-primary" />
+                    ) : column.getIsSorted() === "asc" ? (
+                        <ArrowUp className="ml-1.5 h-3.5 w-3.5 text-primary" />
+                    ) : (
+                        <ArrowUpDown className="ml-1.5 h-3 w-3 opacity-40 hover:opacity-100" />
+                    )}
+                </Button>
+            ),
+            cell: ({ row }) => {
+                const p = row.original;
+                return (
+                    <div className="text-xs space-y-0.5">
+                        <div><span className="text-muted-foreground">Marca:</span> <span className="font-medium text-foreground">{p.brand?.name ?? 'S/M'}</span></div>
+                        <div><span className="text-muted-foreground">Cat:</span> <span className="font-medium text-foreground">{p.category?.name ?? 'S/C'}</span></div>
+                        <div><span className="text-muted-foreground">Und:</span> <span className="font-medium text-foreground">{p.unit?.code ?? 'N/A'}</span></div>
+                    </div>
+                );
+            },
+        },
+        {
+            id: 'product_type',
+            accessorFn: row => row.product_type,
+            header: ({ column }) => (
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+                    className="-ml-3 h-8 text-xs font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+                >
+                    <span>Tipo</span>
+                    {column.getIsSorted() === "desc" ? (
+                        <ArrowDown className="ml-1.5 h-3.5 w-3.5 text-primary" />
+                    ) : column.getIsSorted() === "asc" ? (
+                        <ArrowUp className="ml-1.5 h-3.5 w-3.5 text-primary" />
+                    ) : (
+                        <ArrowUpDown className="ml-1.5 h-3 w-3 opacity-40 hover:opacity-100" />
+                    )}
+                </Button>
+            ),
+            cell: ({ row }) => {
+                const p = row.original;
+                return (
+                    <div className="flex flex-col gap-1.5">
+                        {renderTypeBadge(p.product_type)}
+                        {p.status !== 'ACTIVE' && (
+                            <Badge variant="outline" className="text-[10px] bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30 w-fit">INACTIVO</Badge>
+                        )}
+                    </div>
+                );
+            },
+        },
+        {
+            id: 'actions',
+            enableHiding: false,
+            enableSorting: false,
+            header: () => (
+                <div className="text-right text-xs font-bold uppercase tracking-wider text-muted-foreground py-2">
+                    Acciones
+                </div>
+            ),
+            cell: ({ row }) => {
+                const product = row.original;
+                return (
+                    <div className="flex justify-end gap-1.5">
+                        <Button variant="outline" size="sm" className="h-8 w-8 p-0" asChild title="Detalles">
+                            <Link href={`/products/${product.id}`}>
+                                <Settings className="h-3.5 w-3.5" />
+                            </Link>
+                        </Button>
+                        <Button variant="outline" size="sm" className="h-8 w-8 p-0" asChild title="Editar">
+                            <Link href={`/products/${product.id}/edit`}>
+                                <Edit className="h-3.5 w-3.5" />
+                            </Link>
+                        </Button>
+                        <Button 
+                            variant={product.status === 'ACTIVE' ? "outline" : "secondary"} 
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={() => toggleStatus(product)}
+                            title={product.status === 'ACTIVE' ? 'Desactivar' : 'Reactivar'}
+                        >
+                            {product.status === 'ACTIVE' ? <PowerOff className="h-3.5 w-3.5 text-rose-500" /> : <Power className="h-3.5 w-3.5 text-emerald-500" />}
+                        </Button>
+                    </div>
+                );
+            },
+        },
+    ], []);
+
+    const table = useReactTable({
+        data: productList,
+        columns,
+        state: {
+            sorting,
+            columnVisibility,
+        },
+        onSortingChange: setSorting,
+        onColumnVisibilityChange: setColumnVisibility,
+        getCoreRowModel: getCoreRowModel(),
+        getSortedRowModel: getSortedRowModel(),
+    });
+
     return (
         <>
             <Head title="Repuestos" />
             
-            <div className="flex h-full flex-1 flex-col gap-6 p-4 lg:p-8">
+            <div className="flex h-full flex-1 flex-col gap-5 p-4 max-w-7xl mx-auto w-full">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
-                        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                            <Link href="/dashboard" className="hover:text-foreground transition-colors">Dashboard</Link>
+                            <span>&rsaquo;</span>
+                            <span className="text-foreground font-medium">Catálogo</span>
+                            <span>&rsaquo;</span>
+                            <span className="text-foreground font-medium">Repuestos</span>
+                        </div>
+                        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2 text-foreground">
                             <PackageOpen className="h-6 w-6 text-primary" />
                             Catálogo de Repuestos
                         </h1>
-                        <p className="text-muted-foreground text-sm mt-1">
-                            El registro maestro único de productos de la empresa.
+                        <p className="text-muted-foreground text-xs mt-0.5">
+                            El registro maestro único de repuestos y productos de la empresa
                         </p>
                     </div>
-                    <Button asChild className="flex items-center gap-2">
+                    <Button asChild className="bg-primary text-primary-foreground font-semibold shadow-xs gap-2">
                         <Link href="/products/create">
                             <Plus className="h-4 w-4" />
                             Nuevo Repuesto
@@ -91,87 +317,77 @@ export default function ProductsIndex({ products, filters, flash }: Props) {
                     </Button>
                 </div>
 
-                <div className="flex justify-between items-center bg-card p-4 rounded-xl shadow border">
+                <div className="flex flex-wrap justify-between items-center bg-card p-4 rounded-xl shadow-xs border border-border gap-3">
                     <form onSubmit={handleSearch} className="flex w-full max-w-md items-center gap-2">
                         <Input 
                             placeholder="Buscar por referencia, nombre, código o alias..." 
                             value={searchTerm}
                             onChange={e => setSearchTerm(e.target.value)}
-                            className="flex-1"
+                            className="flex-1 h-9 text-xs bg-background border-input"
                         />
-                        <Button type="submit" variant="secondary">
-                            <Search className="h-4 w-4 mr-2" />
+                        <Button type="submit" variant="secondary" size="sm" className="h-9 gap-1.5 text-xs font-semibold">
+                            <Search className="h-3.5 w-3.5" />
                             Buscar
                         </Button>
                     </form>
+
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm" className="h-9 gap-1.5 text-xs font-medium">
+                                <SlidersHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
+                                <span>Columnas</span>
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-[190px] bg-popover text-popover-foreground border-border">
+                            <DropdownMenuLabel className="text-xs font-semibold">Visibilidad de Columnas</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            {table
+                                .getAllColumns()
+                                .filter((col) => typeof col.accessorFn !== 'undefined' && col.getCanHide())
+                                .map((col) => (
+                                    <DropdownMenuCheckboxItem
+                                        key={col.id}
+                                        className="text-xs cursor-pointer capitalize"
+                                        checked={col.getIsVisible()}
+                                        onCheckedChange={(val) => col.toggleVisibility(!!val)}
+                                    >
+                                        {columnLabels[col.id] || col.id}
+                                    </DropdownMenuCheckboxItem>
+                                ))}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                 </div>
 
-                <div className="rounded-xl border bg-card text-card-foreground shadow overflow-hidden">
+                <div className="rounded-xl border border-border bg-card text-card-foreground shadow-xs overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm text-left">
-                            <thead className="bg-muted/50 text-muted-foreground uppercase text-xs">
-                                <tr>
-                                    <th className="px-6 py-3 font-medium">Referencia</th>
-                                    <th className="px-6 py-3 font-medium">Nombre</th>
-                                    <th className="px-6 py-3 font-medium">Clasificación</th>
-                                    <th className="px-6 py-3 font-medium">Tipo</th>
-                                    <th className="px-6 py-3 font-medium text-right">Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y">
-                                {products.data.map((product) => (
-                                    <tr key={product.id} className="hover:bg-muted/30 transition-colors">
-                                        <td className="px-6 py-4">
-                                            <div className="font-bold text-base">{product.primary_reference}</div>
-                                            {product.internal_code && (
-                                                <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                                                    <Hash className="h-3 w-3" /> {product.internal_code}
-                                                </div>
-                                            )}
-                                        </td>
-                                        <td className="px-6 py-4 font-medium max-w-[300px] truncate" title={product.name}>
-                                            {product.name}
-                                        </td>
-                                        <td className="px-6 py-4 text-xs">
-                                            <div><span className="text-muted-foreground">Marca:</span> {product.brand?.name ?? 'S/M'}</div>
-                                            <div><span className="text-muted-foreground">Cat:</span> {product.category?.name ?? 'S/C'}</div>
-                                            <div><span className="text-muted-foreground">Und:</span> {product.unit?.code ?? 'N/A'}</div>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex flex-col gap-2">
-                                                {renderTypeBadge(product.product_type)}
-                                                {product.status !== 'ACTIVE' && (
-                                                    <Badge variant="secondary" className="bg-red-100 text-red-700 w-fit dark:bg-red-900/30 dark:text-red-400">INACTIVO</Badge>
-                                                )}
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <div className="flex justify-end gap-2">
-                                                <Button variant="outline" size="sm" asChild>
-                                                    <Link href={`/products/${product.id}`}>
-                                                        <Settings className="h-4 w-4" />
-                                                    </Link>
-                                                </Button>
-                                                <Button variant="outline" size="sm" asChild>
-                                                    <Link href={`/products/${product.id}/edit`}>
-                                                        <Edit className="h-4 w-4" />
-                                                    </Link>
-                                                </Button>
-                                                <Button 
-                                                    variant={product.status === 'ACTIVE' ? "destructive" : "secondary"} 
-                                                    size="sm" 
-                                                    onClick={() => toggleStatus(product)}
-                                                    title={product.status === 'ACTIVE' ? 'Desactivar' : 'Reactivar'}
-                                                >
-                                                    {product.status === 'ACTIVE' ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
-                                                </Button>
-                                            </div>
-                                        </td>
+                            <thead className="bg-muted/40 border-b border-border">
+                                {table.getHeaderGroups().map((headerGroup) => (
+                                    <tr key={headerGroup.id}>
+                                        {headerGroup.headers.map((header) => (
+                                            <th key={header.id} className="px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-muted-foreground align-middle">
+                                                {header.isPlaceholder
+                                                    ? null
+                                                    : flexRender(header.column.columnDef.header, header.getContext())}
+                                            </th>
+                                        ))}
                                     </tr>
                                 ))}
-                                {products.data.length === 0 && (
+                            </thead>
+                            <tbody className="divide-y divide-border/60">
+                                {table.getRowModel().rows.length > 0 ? (
+                                    table.getRowModel().rows.map((row) => (
+                                        <tr key={row.id} className="hover:bg-muted/30 transition-colors">
+                                            {row.getVisibleCells().map((cell) => (
+                                                <td key={cell.id} className="px-6 py-3.5 align-middle">
+                                                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    ))
+                                ) : (
                                     <tr>
-                                        <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">
+                                        <td colSpan={columns.length} className="px-6 py-12 text-center text-xs text-muted-foreground">
                                             {filters.search 
                                                 ? "No se encontraron productos que coincidan con tu búsqueda."
                                                 : "Aún no hay repuestos registrados en el catálogo maestro."}
@@ -181,10 +397,11 @@ export default function ProductsIndex({ products, filters, flash }: Props) {
                             </tbody>
                         </table>
                     </div>
+
                     {/* Pagination */}
                     {products.last_page > 1 && (
-                        <div className="flex items-center justify-between px-6 py-3 border-t bg-muted/20">
-                            <div className="text-sm text-muted-foreground">
+                        <div className="flex items-center justify-between px-6 py-3 border-t border-border bg-muted/20">
+                            <div className="text-xs text-muted-foreground">
                                 Mostrando {products.data.length} de {products.total} resultados
                             </div>
                             <div className="flex gap-1">
@@ -195,7 +412,7 @@ export default function ProductsIndex({ products, filters, flash }: Props) {
                                         size="sm"
                                         asChild={!!link.url}
                                         disabled={!link.url}
-                                        className={!link.url ? "opacity-50" : ""}
+                                        className={!link.url ? "opacity-50 h-8 text-xs" : "h-8 text-xs"}
                                     >
                                         {link.url ? (
                                             <Link href={link.url} dangerouslySetInnerHTML={{ __html: link.label }} />

@@ -11,7 +11,12 @@ use App\Models\KardexEntry;
 use App\Models\KitVersion;
 use App\Models\Lot;
 use App\Models\LotAllocation;
+use App\Models\Payment;
+use App\Models\PaymentAllocation;
+use App\Models\PaymentMethod;
+use App\Models\PaymentMethodLine;
 use App\Models\Product;
+use App\Models\Receivable;
 use App\Models\Sale;
 use App\Models\SaleLine;
 use App\Services\KardexService;
@@ -50,17 +55,17 @@ class SaleController extends Controller
                     $q->whereLikeAccentInsensitive('sale_number', "%{$search}%")
                         ->orWhereHas('customer', function ($cq) use ($search) {
                             $cq->whereLikeAccentInsensitive('legal_name', "%{$search}%")
-                               ->orWhereLikeAccentInsensitive('document_number', "%{$search}%");
+                                ->orWhereLikeAccentInsensitive('document_number', "%{$search}%");
                         })
                         ->orWhereHas('lines', function ($lq) use ($search) {
                             $lq->whereLikeAccentInsensitive('product_name_snapshot', "%{$search}%")
                                 ->orWhereLikeAccentInsensitive('product_reference_snapshot', "%{$search}%")
                                 ->orWhereHas('product', function ($pq) use ($search) {
                                     $pq->whereLikeAccentInsensitive('name', "%{$search}%")
-                                       ->orWhereLikeAccentInsensitive('primary_reference', "%{$search}%")
-                                       ->orWhereHas('brand', function($bq) use ($search) {
-                                           $bq->whereLikeAccentInsensitive('name', "%{$search}%");
-                                       });
+                                        ->orWhereLikeAccentInsensitive('primary_reference', "%{$search}%")
+                                        ->orWhereHas('brand', function ($bq) use ($search) {
+                                            $bq->whereLikeAccentInsensitive('name', "%{$search}%");
+                                        });
                                 });
                         });
                 });
@@ -91,34 +96,50 @@ class SaleController extends Controller
 
     public function create()
     {
-        
+
         $genericCustomer = Customer::firstOrCreate(
             [
                 'company_id' => Auth::user()->company_id,
-                'document_number' => '00000000'
+                'document_number' => '00000000',
             ],
             [
                 'uuid' => (string) Str::uuid(),
                 'document_type' => 'DNI',
                 'legal_name' => 'Clientes Varios / Público en General',
                 'status' => 'ACTIVE',
-                'created_by' => Auth::id()
+                'created_by' => Auth::id(),
             ]
         );
+
         return Inertia::render('sales/create', [
             'customers' => Customer::where('company_id', Auth::user()->company_id)
-                ->orderBy('legal_name')->get(),
+                ->orderBy('legal_name')
+                ->get()
+                ->map(function ($customer) {
+                    $debt = Receivable::where('customer_id', $customer->id)
+                        ->whereIn('status', ['PENDING', 'PARTIAL'])
+                        ->sum('balance_amount');
+                    $customer->total_debt = $debt;
+
+                    return $customer;
+                }),
+            'payment_methods' => PaymentMethod::where('company_id', Auth::user()->company_id)->where('is_active', true)->get(),
             'generic_customer_id' => $genericCustomer->id,
         ]);
     }
 
-    public function store(Request $request)
+    public function store(Request $request, KardexService $kardexService)
     {
         $validated = $request->validate([
             'customer_id' => ['required', 'exists:customers,id'],
             'sale_type' => ['required', 'string', 'max:20'],
+            'payment_type' => ['required', 'string', 'in:CASH,CREDIT'],
+            'payment_method_id' => ['nullable'],
+            'due_date' => ['required_if:payment_type,CREDIT', 'nullable', 'date'],
+            'initial_payment_amount' => ['nullable', 'numeric', 'min:0'],
             'operation_date' => ['required', 'date'],
             'notes' => ['nullable', 'string'],
+            'action' => ['nullable', 'string', 'in:CONFIRM,DRAFT'],
             'lines' => ['required', 'array', 'min:1'],
             'lines.*.product_id' => ['required', 'exists:products,id'],
             'lines.*.quantity' => ['required', 'numeric', 'min:1'],
@@ -132,6 +153,7 @@ class SaleController extends Controller
 
         $companyId = Auth::user()->company_id;
         $branchId = Auth::user()->default_branch_id ?? Branch::where('company_id', $companyId)->first()->id;
+        $action = $request->input('action', 'CONFIRM');
 
         DB::beginTransaction();
         try {
@@ -147,6 +169,11 @@ class SaleController extends Controller
                 'customer_id' => $validated['customer_id'],
                 'sale_number' => $saleNumber,
                 'sale_type' => $validated['sale_type'],
+                'payment_type' => $validated['payment_type'],
+                'payment_method_id' => $validated['payment_method_id'] ?? null,
+                'due_date' => $validated['due_date'] ?? null,
+                'initial_payment_amount' => $validated['initial_payment_amount'] ?? 0,
+                'payment_status' => $validated['payment_type'] === 'CASH' ? 'PAID' : 'UNPAID',
                 'external_document_type' => $validated['sale_type'],
                 'external_document_series' => $validated['external_document_series'] ?? null,
                 'external_document_number' => $validated['external_document_number'] ?? null,
@@ -175,7 +202,7 @@ class SaleController extends Controller
 
                 $minPrice = $product->minPrices->first();
                 if ($minPrice && $lineData['unit_price'] < $minPrice->amount) {
-                    throw new \Exception("El precio de '{$product->name}' (S/ ".number_format($lineData['unit_price'], 2).") es menor al permitido (S/ ".number_format($minPrice->amount, 2)."). Autorización requerida.");
+                    throw new \Exception("El precio de '{$product->name}' (S/ ".number_format($lineData['unit_price'], 2).') es menor al permitido (S/ '.number_format($minPrice->amount, 2).'). Autorización requerida.');
                 }
 
                 $lineTotal = $lineData['quantity'] * $lineData['unit_price'];
@@ -214,6 +241,21 @@ class SaleController extends Controller
                 'total_amount' => $subtotal,
             ]);
 
+            if ($action === 'CONFIRM') {
+                $this->executeSaleConfirmation($sale, $kardexService);
+                DB::commit();
+
+                $msg = 'Venta emitida y confirmada exitosamente. Stock deducido en Kardex.';
+                if ($sale->payment_type === 'CREDIT') {
+                    $initPay = (float) ($sale->initial_payment_amount ?? 0);
+                    $remDebt = (float) $sale->total_amount - $initPay;
+                    $currencySym = $sale->currency_code === 'USD' ? '$' : 'S/';
+                    $msg .= " Registrada en Cuentas por Cobrar con un saldo pendiente de {$currencySym} ".number_format($remDebt, 2).'.';
+                }
+
+                return redirect()->route('sales.show', $sale->id)->with('success', $msg);
+            }
+
             DB::commit();
 
             return redirect()->route('sales.show', $sale->id)
@@ -221,20 +263,32 @@ class SaleController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
 
-            return back()->with('error', 'Error al crear la venta: '.$e->getMessage());
+            return back()->with('error', 'Error al procesar la venta: '.$e->getMessage());
         }
     }
 
     public function show(Sale $sale)
     {
-        $sale->load(['customer', 'lines.product', 'creator']);
+        $sale->load([
+            'customer',
+            'creator',
+            'confirmedBy',
+            'branch',
+            'paymentMethod',
+            'receivable',
+            'lines.product.brand',
+            'lines.product.category',
+            'lines.product.unit',
+            'lines.product.inventories' => function ($q) use ($sale) {
+                $q->where('branch_id', $sale->branch_id);
+            },
+        ]);
 
         return Inertia::render('sales/show', [
             'sale' => $sale,
         ]);
     }
 
-    
     public function edit(Sale $sale)
     {
         if ($sale->status !== 'DRAFT') {
@@ -242,38 +296,56 @@ class SaleController extends Controller
         }
 
         $sale->load(['lines.product']);
-        $customers = Customer::where('company_id', \Illuminate\Support\Facades\Auth::user()->company_id)->orderBy('legal_name')->get();
-        
+        $customers = Customer::where('company_id', Auth::user()->company_id)
+            ->orderBy('legal_name')
+            ->get()
+            ->map(function ($customer) {
+                $debt = Receivable::where('customer_id', $customer->id)
+                    ->whereIn('status', ['PENDING', 'PARTIAL'])
+                    ->sum('balance_amount');
+                $customer->total_debt = $debt;
+
+                return $customer;
+            });
+
         $genericCustomer = Customer::firstOrCreate(
             [
                 'company_id' => Auth::user()->company_id,
-                'document_number' => '00000000'
+                'document_number' => '00000000',
             ],
             [
                 'uuid' => (string) Str::uuid(),
                 'document_type' => 'DNI',
                 'legal_name' => 'Clientes Varios / Público en General',
                 'status' => 'ACTIVE',
-                'created_by' => Auth::id()
+                'created_by' => Auth::id(),
             ]
         );
 
         return Inertia::render('sales/edit', [
             'sale' => $sale,
             'customers' => $customers,
+            'payment_methods' => PaymentMethod::where('company_id', Auth::user()->company_id)->where('is_active', true)->get(),
             'generic_customer_id' => $genericCustomer->id,
         ]);
     }
 
-    public function update(Request $request, Sale $sale)
+    public function update(Request $request, Sale $sale, KardexService $kardexService)
     {
         if ($sale->status !== 'DRAFT') {
             return redirect()->back()->with('error', 'Solo se pueden editar ventas en estado borrador.');
         }
 
+        $action = $request->input('action', 'DRAFT');
+
         $validated = $request->validate([
+            'action' => ['nullable', 'string', 'in:CONFIRM,DRAFT'],
             'customer_id' => ['required', 'exists:customers,id'],
             'sale_type' => ['required', 'string', 'max:20'],
+            'payment_type' => ['required', 'string', 'in:CASH,CREDIT'],
+            'payment_method_id' => ['nullable'],
+            'due_date' => ['required_if:payment_type,CREDIT', 'nullable', 'date'],
+            'initial_payment_amount' => ['nullable', 'numeric', 'min:0'],
             'operation_date' => ['required', 'date'],
             'notes' => ['nullable', 'string'],
             'lines' => ['required', 'array', 'min:1'],
@@ -287,7 +359,7 @@ class SaleController extends Controller
             'external_document_number' => ['nullable', 'string', 'max:20'],
         ]);
 
-        $companyId = \Illuminate\Support\Facades\Auth::user()->company_id;
+        $companyId = Auth::user()->company_id;
         $branchId = $sale->branch_id;
 
         DB::beginTransaction();
@@ -297,6 +369,11 @@ class SaleController extends Controller
             $sale->update([
                 'customer_id' => $validated['customer_id'],
                 'sale_type' => $validated['sale_type'],
+                'payment_type' => $validated['payment_type'],
+                'payment_method_id' => $validated['payment_method_id'] ?? null,
+                'due_date' => $validated['due_date'] ?? null,
+                'initial_payment_amount' => $validated['initial_payment_amount'] ?? 0,
+                'payment_status' => $validated['payment_type'] === 'CASH' ? 'PAID' : 'UNPAID',
                 'external_document_type' => $validated['sale_type'],
                 'external_document_series' => $validated['external_document_series'] ?? null,
                 'external_document_number' => $validated['external_document_number'] ?? null,
@@ -322,7 +399,7 @@ class SaleController extends Controller
 
                 $minPrice = $product->minPrices->first();
                 if ($minPrice && $lineData['unit_price'] < $minPrice->amount) {
-                    throw new \Exception("El precio de '{$product->name}' (S/ ".number_format($lineData['unit_price'], 2).") es menor al permitido (S/ ".number_format($minPrice->amount, 2)."). Autorización requerida.");
+                    throw new \Exception("El precio de '{$product->name}' (S/ ".number_format($lineData['unit_price'], 2).'). Autorización requerida.');
                 }
 
                 $lineTotal = $lineData['quantity'] * $lineData['unit_price'];
@@ -361,6 +438,21 @@ class SaleController extends Controller
                 'total_amount' => $subtotal,
             ]);
 
+            if ($action === 'CONFIRM') {
+                $this->executeSaleConfirmation($sale, $kardexService);
+                DB::commit();
+
+                $msg = 'Venta actualizada y emitida exitosamente. Stock deducido en Kardex.';
+                if ($sale->payment_type === 'CREDIT') {
+                    $initPay = (float) ($sale->initial_payment_amount ?? 0);
+                    $remDebt = (float) $sale->total_amount - $initPay;
+                    $currencySym = $sale->currency_code === 'USD' ? '$' : 'S/';
+                    $msg .= " Registrada en Cuentas por Cobrar con un saldo pendiente de {$currencySym} ".number_format($remDebt, 2).'.';
+                }
+
+                return redirect()->route('sales.show', $sale->id)->with('success', $msg);
+            }
+
             DB::commit();
 
             return redirect()->route('sales.show', $sale->id)
@@ -377,7 +469,7 @@ class SaleController extends Controller
         if ($sale->status !== 'DRAFT') {
             return redirect()->back()->with('error', 'Solo se pueden eliminar ventas en estado borrador.');
         }
-        
+
         $sale->lines()->delete();
         $sale->delete();
 
@@ -392,146 +484,7 @@ class SaleController extends Controller
 
         DB::beginTransaction();
         try {
-            $sale->load('lines');
-
-            // Preparar items a deducir (descomponiendo kits si es necesario)
-            $itemsToDeduct = [];
-            $requiredQuantities = []; // Para validación agrupada
-
-            foreach ($sale->lines as $line) {
-                if ($line->product_type_snapshot === 'KIT_COMPONENTES') {
-                    $activeKitVersion = KitVersion::with('components')
-                        ->where('product_id', $line->product_id)
-                        ->where('status', 'ACTIVE')
-                        ->first();
-
-                    if (! $activeKitVersion) {
-                        throw new \Exception("El producto '{$line->product_name_snapshot}' es un KIT pero no tiene una versión activa.");
-                    }
-                    if ($activeKitVersion->components->isEmpty()) {
-                        throw new \Exception("La versión activa del KIT '{$line->product_name_snapshot}' no tiene componentes configurados.");
-                    }
-
-                    foreach ($activeKitVersion->components as $component) {
-                        $componentQty = (float) $line->quantity * (float) $component->quantity;
-                        $itemsToDeduct[] = [
-                            'product_id' => $component->product_id,
-                            'quantity' => $componentQty,
-                        ];
-                        $requiredQuantities[$component->product_id] = ($requiredQuantities[$component->product_id] ?? 0) + $componentQty;
-                    }
-                } else {
-                    $itemsToDeduct[] = [
-                        'product_id' => $line->product_id,
-                        'quantity' => (float) $line->quantity,
-                    ];
-                    $requiredQuantities[$line->product_id] = ($requiredQuantities[$line->product_id] ?? 0) + (float) $line->quantity;
-                }
-            }
-
-            // 1. Validar disponibilidad global agrupada
-            foreach ($requiredQuantities as $productId => $qty) {
-                $inventory = Inventory::where('branch_id', $sale->branch_id)
-                    ->where('product_id', $productId)
-                    ->lockForUpdate()
-                    ->first();
-
-                if (! $inventory || $inventory->physical_quantity < $qty) {
-                    $prodName = Product::find($productId)?->name ?? 'ID '.$productId;
-                    throw new \Exception("Stock insuficiente para el producto '{$prodName}'. Solicitado: {$qty}. Disponible: ".($inventory->physical_quantity ?? 0));
-                }
-            }
-
-            // 2. Crear Movimiento de Inventario
-            $movement = InventoryMovement::create([
-                'uuid' => (string) Str::uuid(),
-                'branch_id' => $sale->branch_id,
-                'movement_type' => 'OUT',
-                'reference_type' => Sale::class,
-                'reference_id' => $sale->id,
-                'operation_date' => now(),
-                'notes' => 'Salida por Venta '.$sale->sale_number,
-                'created_by' => Auth::id(),
-            ]);
-
-            // 3. Procesar las salidas (itemsToDeduct)
-            foreach ($itemsToDeduct as $item) {
-                // Obtener costo promedio vigente ANTES de la salida para costearla
-                $inventory = Inventory::where('branch_id', $sale->branch_id)
-                    ->where('product_id', $item['product_id'])
-                    ->first();
-                $unitCost = $inventory ? (float) $inventory->average_cost : 0;
-
-                // Crear línea de movimiento
-                $movementLine = InventoryMovementLine::create([
-                    'uuid' => (string) Str::uuid(),
-                    'inventory_movement_id' => $movement->id,
-                    'product_id' => $item['product_id'],
-                    'direction' => 'OUT',
-                    'quantity' => $item['quantity'],
-                    'unit_cost' => $unitCost,
-                    'total_cost' => $item['quantity'] * $unitCost,
-                ]);
-
-                // Registrar Salida en Kardex (descuenta stock global)
-                $kardexService->recordExit([
-                    'uuid' => (string) Str::uuid(),
-                    'branch_id' => $sale->branch_id,
-                    'product_id' => $item['product_id'],
-                    'inventory_movement_line_id' => $movementLine->id,
-                    'sequence_number' => KardexEntry::max('sequence_number') + 1,
-                    'user_id' => Auth::id(),
-                    'operation_date' => now(),
-                    'operation_type' => 'VENTA',
-                    'reference' => 'Venta '.$sale->sale_number,
-                    'quantity' => $item['quantity'],
-                ]);
-
-                // 5. Descarga de Lotes (PEPS/FIFO)
-                $remainingQuantityToDeduct = $item['quantity'];
-
-                $lots = Lot::where('branch_id', $sale->branch_id)
-                    ->where('product_id', $item['product_id'])
-                    ->where('current_quantity', '>', 0)
-                    ->orderBy('created_at', 'asc')
-                    ->lockForUpdate()
-                    ->get();
-
-                foreach ($lots as $lot) {
-                    if ($remainingQuantityToDeduct <= 0) {
-                        break;
-                    }
-
-                    $availableInLot = (float) $lot->current_quantity;
-                    $toDeduct = min($availableInLot, $remainingQuantityToDeduct);
-
-                    // Actualizar Lote
-                    $lot->current_quantity = $availableInLot - $toDeduct;
-                    $lot->save();
-
-                    // Registrar Asignación de Lote a este movimiento
-                    LotAllocation::create([
-                        'uuid' => (string) Str::uuid(),
-                        'inventory_movement_line_id' => $movementLine->id,
-                        'lot_id' => $lot->id,
-                        'quantity' => $toDeduct,
-                    ]);
-
-                    $remainingQuantityToDeduct -= $toDeduct;
-                }
-
-                if ($remainingQuantityToDeduct > 0.000001) { // Margen de error flotante
-                    $prodName = Product::find($item['product_id'])?->name ?? 'ID '.$item['product_id'];
-                    throw new \Exception("Inconsistencia crítica: El inventario reportó stock disponible, pero no hay suficientes lotes con saldo para el producto '{$prodName}'.");
-                }
-            }
-
-            $sale->update([
-                'status' => 'CONFIRMED',
-                'confirmed_at' => now(),
-                'confirmed_by' => Auth::id(),
-            ]);
-
+            $this->executeSaleConfirmation($sale, $kardexService);
             DB::commit();
 
             return redirect()->route('sales.show', $sale->id)
@@ -541,5 +494,216 @@ class SaleController extends Controller
 
             return back()->with('error', 'Error al confirmar la venta: '.$e->getMessage());
         }
+    }
+
+    /**
+     * Executes the sale confirmation routine: validates stock, registers Kardex exit,
+     * discharges FIFO lots, creates payment/receivable, and updates sale status.
+     */
+    private function executeSaleConfirmation(Sale $sale, KardexService $kardexService): void
+    {
+        $sale->load('lines');
+
+        // Preparar items a deducir (descomponiendo kits si es necesario)
+        $itemsToDeduct = [];
+        $requiredQuantities = []; // Para validación agrupada
+
+        foreach ($sale->lines as $line) {
+            if ($line->product_type_snapshot === 'KIT_COMPONENTES') {
+                $activeKitVersion = KitVersion::with('components')
+                    ->where('product_id', $line->product_id)
+                    ->where('status', 'ACTIVE')
+                    ->first();
+
+                if (! $activeKitVersion) {
+                    throw new \Exception("El producto '{$line->product_name_snapshot}' es un KIT pero no tiene una versión activa.");
+                }
+                if ($activeKitVersion->components->isEmpty()) {
+                    throw new \Exception("La versión activa del KIT '{$line->product_name_snapshot}' no tiene componentes configurados.");
+                }
+
+                foreach ($activeKitVersion->components as $component) {
+                    $componentQty = (float) $line->quantity * (float) $component->quantity;
+                    $itemsToDeduct[] = [
+                        'product_id' => $component->product_id,
+                        'quantity' => $componentQty,
+                    ];
+                    $requiredQuantities[$component->product_id] = ($requiredQuantities[$component->product_id] ?? 0) + $componentQty;
+                }
+            } else {
+                $itemsToDeduct[] = [
+                    'product_id' => $line->product_id,
+                    'quantity' => (float) $line->quantity,
+                ];
+                $requiredQuantities[$line->product_id] = ($requiredQuantities[$line->product_id] ?? 0) + (float) $line->quantity;
+            }
+        }
+
+        // 1. Validar disponibilidad global agrupada
+        foreach ($requiredQuantities as $productId => $qty) {
+            $inventory = Inventory::where('branch_id', $sale->branch_id)
+                ->where('product_id', $productId)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $inventory || $inventory->physical_quantity < $qty) {
+                $prodName = Product::find($productId)?->name ?? 'ID '.$productId;
+                throw new \Exception("Stock insuficiente para el producto '{$prodName}'. Solicitado: {$qty}. Disponible: ".($inventory->physical_quantity ?? 0));
+            }
+        }
+
+        // 2. Crear Movimiento de Inventario
+        $movement = InventoryMovement::create([
+            'uuid' => (string) Str::uuid(),
+            'branch_id' => $sale->branch_id,
+            'movement_type' => 'OUT',
+            'reference_type' => Sale::class,
+            'reference_id' => $sale->id,
+            'operation_date' => now(),
+            'notes' => 'Salida por Venta '.$sale->sale_number,
+            'created_by' => Auth::id(),
+        ]);
+
+        // 3. Procesar las salidas (itemsToDeduct)
+        foreach ($itemsToDeduct as $item) {
+            // Obtener costo promedio vigente ANTES de la salida para costearla
+            $inventory = Inventory::where('branch_id', $sale->branch_id)
+                ->where('product_id', $item['product_id'])
+                ->first();
+            $unitCost = $inventory ? (float) $inventory->average_cost : 0;
+
+            // Crear línea de movimiento
+            $movementLine = InventoryMovementLine::create([
+                'uuid' => (string) Str::uuid(),
+                'inventory_movement_id' => $movement->id,
+                'product_id' => $item['product_id'],
+                'direction' => 'OUT',
+                'quantity' => $item['quantity'],
+                'unit_cost' => $unitCost,
+                'total_cost' => $item['quantity'] * $unitCost,
+            ]);
+
+            // Registrar Salida en Kardex (descuenta stock global)
+            $kardexService->recordExit([
+                'uuid' => (string) Str::uuid(),
+                'branch_id' => $sale->branch_id,
+                'product_id' => $item['product_id'],
+                'inventory_movement_line_id' => $movementLine->id,
+                'sequence_number' => KardexEntry::max('sequence_number') + 1,
+                'user_id' => Auth::id(),
+                'operation_date' => now(),
+                'operation_type' => 'VENTA',
+                'reference' => 'Venta '.$sale->sale_number,
+                'quantity' => $item['quantity'],
+            ]);
+
+            // 5. Descarga de Lotes (PEPS/FIFO)
+            $remainingQuantityToDeduct = $item['quantity'];
+
+            $lots = Lot::where('branch_id', $sale->branch_id)
+                ->where('product_id', $item['product_id'])
+                ->where('current_quantity', '>', 0)
+                ->orderBy('created_at', 'asc')
+                ->lockForUpdate()
+                ->get();
+
+            foreach ($lots as $lot) {
+                if ($remainingQuantityToDeduct <= 0) {
+                    break;
+                }
+
+                $availableInLot = (float) $lot->current_quantity;
+                $toDeduct = min($availableInLot, $remainingQuantityToDeduct);
+
+                // Actualizar Lote
+                $lot->current_quantity = $availableInLot - $toDeduct;
+                $lot->save();
+
+                // Registrar Asignación de Lote a este movimiento
+                LotAllocation::create([
+                    'uuid' => (string) Str::uuid(),
+                    'inventory_movement_line_id' => $movementLine->id,
+                    'lot_id' => $lot->id,
+                    'quantity' => $toDeduct,
+                ]);
+
+                $remainingQuantityToDeduct -= $toDeduct;
+            }
+
+            if ($remainingQuantityToDeduct > 0.000001) { // Margen de error flotante
+                $prodName = Product::find($item['product_id'])?->name ?? 'ID '.$item['product_id'];
+                throw new \Exception("Inconsistencia crítica: El inventario reportó stock disponible, pero no hay suficientes lotes con saldo para el producto '{$prodName}'.");
+            }
+        }
+
+        if ($sale->payment_type === 'CASH' || $sale->payment_type === 'CREDIT') {
+            $isCash = $sale->payment_type === 'CASH';
+
+            $initialPayment = $isCash ? $sale->total_amount : ($sale->initial_payment_amount ?? 0);
+            $balance = $sale->total_amount - $initialPayment;
+            $status = $balance <= 0 ? 'PAID' : 'ACTIVE';
+
+            // Generar Cuentas por Cobrar (Receivable)
+            $receivable = Receivable::create([
+                'uuid' => (string) Str::uuid(),
+                'branch_id' => $sale->branch_id,
+                'customer_id' => $sale->customer_id,
+                'sale_id' => $sale->id,
+                'reference_type' => Sale::class,
+                'reference_id' => $sale->id,
+                'issue_date' => $sale->operation_date,
+                'due_date' => $sale->due_date ?? $sale->operation_date,
+                'currency_code' => $sale->currency_code,
+                'original_amount' => $sale->total_amount,
+                'balance_amount' => $balance,
+                'status' => $status,
+                'notes' => $isCash ? 'Generado automáticamente por Venta al Contado' : 'Generado por Venta al Crédito',
+                'created_by' => Auth::id(),
+            ]);
+
+            if ($initialPayment > 0) {
+                // Generar Pago (Payment)
+                $payment = Payment::create([
+                    'uuid' => (string) Str::uuid(),
+                    'branch_id' => $sale->branch_id,
+                    'customer_id' => $sale->customer_id,
+                    'payment_number' => 'P'.date('Ymd').'-'.strtoupper(Str::random(6)),
+                    'operation_date' => now(),
+                    'currency_code' => $sale->currency_code,
+                    'exchange_rate' => $sale->exchange_rate,
+                    'total_amount' => $initialPayment,
+                    'status' => 'CONFIRMED',
+                    'notes' => $isCash ? ('Pago por Venta al Contado '.$sale->sale_number) : ('Pago inicial por Venta al Crédito '.$sale->sale_number),
+                    'created_by' => Auth::id(),
+                ]);
+
+                // Asociar Método de Pago
+                if ($sale->payment_method_id) {
+                    PaymentMethodLine::create([
+                        'uuid' => (string) Str::uuid(),
+                        'payment_id' => $payment->id,
+                        'payment_method_id' => $sale->payment_method_id,
+                        'amount' => $initialPayment,
+                    ]);
+                }
+
+                // Asignar Pago a la Cuenta por Cobrar
+                PaymentAllocation::create([
+                    'uuid' => (string) Str::uuid(),
+                    'payment_id' => $payment->id,
+                    'receivable_id' => $receivable->id,
+                    'allocated_amount' => $initialPayment,
+                ]);
+            }
+
+            $sale->payment_status = $balance <= 0 ? 'PAID' : ($initialPayment > 0 ? 'PARTIAL' : 'UNPAID');
+            $sale->save();
+        }
+
+        $sale->update([
+            'status' => 'CONFIRMED',
+            'confirmed_at' => now(),
+            'confirmed_by' => Auth::id(),
+        ]);
     }
 }

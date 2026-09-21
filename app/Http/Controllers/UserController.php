@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Models\UserBranch;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -18,7 +19,7 @@ class UserController extends Controller
     public function index()
     {
         $activeSessionTime = now()->subMinutes(config('session.lifetime', 120))->getTimestamp();
-        $activeUserIds = \Illuminate\Support\Facades\DB::table('sessions')
+        $activeUserIds = DB::table('sessions')
             ->whereNotNull('user_id')
             ->where('last_activity', '>=', $activeSessionTime)
             ->pluck('user_id')
@@ -44,7 +45,7 @@ class UserController extends Controller
             ];
         });
 
-        $roles = Role::with('permissions')->get()->map(function($role) {
+        $roles = Role::with('permissions')->get()->map(function ($role) {
             return [
                 'id' => $role->id,
                 'name' => $role->name,
@@ -64,6 +65,8 @@ class UserController extends Controller
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
+            'last_name' => ['nullable', 'string', 'max:255'],
+            'mother_last_name' => ['nullable', 'string', 'max:255'],
             'dni' => ['required', 'string', 'size:8', 'unique:users,dni'],
             'phone' => ['nullable', 'string', 'max:20'],
             'email' => ['nullable', 'email', 'unique:users,email'],
@@ -102,7 +105,7 @@ class UserController extends Controller
         return back()->with('success', 'Usuario creado correctamente.');
     }
 
-        public function update(Request $request, User $user)
+    public function update(Request $request, User $user)
     {
         if ($user->hasRole('Super Admin') && $request->input('role') !== 'Super Admin') {
             return back()->with('error', 'No se puede quitar el rol de Super Admin a este usuario.');
@@ -111,8 +114,11 @@ class UserController extends Controller
         if ($user->hasRole('Super Admin') && $request->input('status') === 'INACTIVE') {
             return back()->with('error', 'No se puede desactivar a un Super Admin.');
         }
+
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
+            'last_name' => ['nullable', 'string', 'max:255'],
+            'mother_last_name' => ['nullable', 'string', 'max:255'],
             'dni' => ['required', 'string', 'size:8', Rule::unique('users')->ignore($user->id)],
             'phone' => ['nullable', 'string', 'max:20'],
             'email' => ['nullable', 'email', Rule::unique('users')->ignore($user->id)],
@@ -136,11 +142,11 @@ class UserController extends Controller
         $user->syncRoles([$validated['role']]);
 
         // Eliminar las otras sucursales asignadas anteriormente (el sistema actual permite 1 sucursal principal)
-        \App\Models\UserBranch::where('user_id', $user->id)
+        UserBranch::where('user_id', $user->id)
             ->where('branch_id', '!=', $validated['branch_id'])
             ->delete();
 
-        \App\Models\UserBranch::updateOrCreate(
+        UserBranch::updateOrCreate(
             ['user_id' => $user->id, 'branch_id' => $validated['branch_id']],
             ['is_default' => true, 'status' => 'ACTIVE']
         );
@@ -148,7 +154,7 @@ class UserController extends Controller
         return back()->with('success', 'Usuario actualizado correctamente.');
     }
 
-        public function destroy(User $user)
+    public function destroy(User $user)
     {
         if ($user->hasRole('Super Admin')) {
             return back()->with('error', 'No se puede modificar el estado de un Super Admin.');

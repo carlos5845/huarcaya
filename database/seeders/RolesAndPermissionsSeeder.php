@@ -3,8 +3,8 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
-use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 
 class RolesAndPermissionsSeeder extends Seeder
@@ -26,6 +26,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'view_inventory_general',
             'view_purchases',
             'view_sales',
+            'view_transfers',
             'view_adjustments',
             'view_kardex',
             'view_import',
@@ -36,7 +37,7 @@ class RolesAndPermissionsSeeder extends Seeder
         }
 
         // 2. Create roles and assign permissions
-        
+
         // Super Admin gets all permissions
         $superAdmin = Role::firstOrCreate(['name' => 'Super Admin', 'guard_name' => 'web']);
         $superAdmin->syncPermissions(Permission::all());

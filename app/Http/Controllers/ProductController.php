@@ -126,31 +126,32 @@ class ProductController extends Controller
     public function search(Request $request)
     {
         $search = $request->input('q');
-        $branchId = \Illuminate\Support\Facades\Auth::user()->default_branch_id 
-                    ?? \App\Models\Branch::where('company_id', \Illuminate\Support\Facades\Auth::user()->company_id)->first()->id;
 
-                $products = Product::with([
+        $branchId = $request->input('branch_id') ?: (Auth::user()->default_branch_id
+                    ?? Branch::where('company_id', Auth::user()->company_id)->first()->id);
+
+        $products = Product::with([
             'brand',
-            'prices' => function($q) use ($branchId) {
+            'prices' => function ($q) use ($branchId) {
                 $q->where('status', 'ACTIVE')
-                  ->where(function ($query) use ($branchId) {
-                      $query->where('branch_id', $branchId)->orWhereNull('branch_id');
-                  })
-                  ->orderBy('id', 'desc');
+                    ->where(function ($query) use ($branchId) {
+                        $query->where('branch_id', $branchId)->orWhereNull('branch_id');
+                    })
+                    ->orderBy('id', 'desc');
             },
-            'inventories' => function($q) use ($branchId) {
+            'inventories' => function ($q) use ($branchId) {
                 $q->where('branch_id', $branchId);
-            }
+            },
         ])
             ->where('status', 'ACTIVE')
             ->when($search, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
                     $q->whereLikeAccentInsensitive('primary_reference', "%{$search}%")
-                      ->orWhereLikeAccentInsensitive('normalized_reference', '%'.Str::upper(preg_replace('/[^A-Za-z0-9]/', '', $search)).'%')
-                      ->orWhereLikeAccentInsensitive('name', "%{$search}%")
-                      ->orWhereHas('brand', function ($brandQuery) use ($search) {
-                          $brandQuery->whereLikeAccentInsensitive('name', "%{$search}%");
-                      });
+                        ->orWhereLikeAccentInsensitive('normalized_reference', '%'.Str::upper(preg_replace('/[^A-Za-z0-9]/', '', $search)).'%')
+                        ->orWhereLikeAccentInsensitive('name', "%{$search}%")
+                        ->orWhereHas('brand', function ($brandQuery) use ($search) {
+                            $brandQuery->whereLikeAccentInsensitive('name', "%{$search}%");
+                        });
                 });
             })
             ->limit(20)
@@ -159,9 +160,9 @@ class ProductController extends Controller
         $products->transform(function ($product) {
             $price = $product->prices->first();
             $inventory = $product->inventories->first();
-            
+
             $suggestedPrice = $price ? $price->amount : ($inventory && $inventory->average_cost > 0 ? $inventory->average_cost * 1.30 : 0);
-            
+
             return [
                 'id' => $product->id,
                 'primary_reference' => $product->primary_reference,
@@ -180,15 +181,15 @@ class ProductController extends Controller
     {
         $user = auth()->user();
         $isSuperAdmin = $user->hasRole('Super Admin');
-        
-        $branches = $isSuperAdmin 
-            ? \App\Models\Branch::orderBy('name')->get() 
+
+        $branches = $isSuperAdmin
+            ? Branch::orderBy('name')->get()
             : $user->branches()->orderBy('name')->get();
-            
+
         if ($branches->isEmpty() && $user->default_branch_id) {
-            $branches = \App\Models\Branch::where('id', $user->default_branch_id)->get();
+            $branches = Branch::where('id', $user->default_branch_id)->get();
         }
-        
+
         $allowedBranchIds = $branches->pluck('id')->toArray();
 
         $product->load([
@@ -201,35 +202,35 @@ class ProductController extends Controller
             },
             'lots' => function ($q) use ($allowedBranchIds, $isSuperAdmin) {
                 $q->with('location');
-                if (!$isSuperAdmin) {
+                if (! $isSuperAdmin) {
                     $q->whereIn('branch_id', $allowedBranchIds);
                 }
             },
             'prices' => function ($q) use ($allowedBranchIds, $isSuperAdmin) {
                 $q->with('branch')->orderBy('id', 'desc');
-                if (!$isSuperAdmin) {
-                    $q->where(function($sub) use ($allowedBranchIds) {
+                if (! $isSuperAdmin) {
+                    $q->where(function ($sub) use ($allowedBranchIds) {
                         $sub->whereIn('branch_id', $allowedBranchIds)->orWhereNull('branch_id');
                     });
                 }
             },
             'minPrices' => function ($q) use ($allowedBranchIds, $isSuperAdmin) {
                 $q->with('branch')->orderBy('id', 'desc');
-                if (!$isSuperAdmin) {
-                    $q->where(function($sub) use ($allowedBranchIds) {
+                if (! $isSuperAdmin) {
+                    $q->where(function ($sub) use ($allowedBranchIds) {
                         $sub->whereIn('branch_id', $allowedBranchIds)->orWhereNull('branch_id');
                     });
                 }
             },
             'minStocks' => function ($q) use ($allowedBranchIds, $isSuperAdmin) {
                 $q->with('branch')->orderBy('id', 'desc');
-                if (!$isSuperAdmin) {
+                if (! $isSuperAdmin) {
                     $q->whereIn('branch_id', $allowedBranchIds);
                 }
             },
             'inventories' => function ($q) use ($allowedBranchIds, $isSuperAdmin) {
                 $q->with(['branch']);
-                if (!$isSuperAdmin) {
+                if (! $isSuperAdmin) {
                     $q->whereIn('branch_id', $allowedBranchIds);
                 }
             },

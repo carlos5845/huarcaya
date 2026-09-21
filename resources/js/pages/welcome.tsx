@@ -30,6 +30,9 @@ export default function Welcome() {
     } else if (hasPerm('view_sales')) {
         mainRoute = '/sales';
         mainLabel = 'Ir a ventas';
+    } else if (hasPerm('view_transfers')) {
+        mainRoute = '/transfers';
+        mainLabel = 'Ir a transferencias';
     } else if (hasPerm('view_purchases')) {
         mainRoute = '/purchases';
         mainLabel = 'Ir a compras';

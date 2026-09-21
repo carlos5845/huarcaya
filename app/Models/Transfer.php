@@ -52,4 +52,9 @@ class Transfer extends Model
     {
         return $this->hasMany(TransferReceipt::class);
     }
+
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
 }

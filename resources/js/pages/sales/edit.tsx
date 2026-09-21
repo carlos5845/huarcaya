@@ -1,32 +1,50 @@
-import { Check, ChevronsUpDown, UserPlus } from 'lucide-react';
+import { 
+    Check, 
+    ChevronsUpDown, 
+    UserPlus, 
+    Search, 
+    Plus, 
+    Trash2, 
+    ArrowLeft,
+    CheckCircle,
+    User,
+    FileText,
+    Phone,
+    MapPin,
+    CreditCard,
+    Package,
+    Save,
+    Pencil
+} from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn, normalizeSearch } from '@/lib/utils';
-import { Head, useForm, Link, usePage } from '@inertiajs/react';
-import { Search, Plus, Trash2, ArrowLeft } from 'lucide-react';
+import { Head, useForm, Link, usePage, router } from '@inertiajs/react';
 import { useState, useEffect } from 'react';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import type { BreadcrumbItem } from '@/types';
 
-const breadcrumbs: BreadcrumbItem[] = [
-    { title: 'Dashboard', href: '/dashboard' },
-    { title: 'Ventas', href: '/sales' },
-    { title: 'Editar Venta', href: '#' },
-];
-
-export default function SaleEdit({ sale, customers }: { sale: any; customers: any[] }) {
+export default function SaleEdit({ 
+    sale, 
+    customers, 
+    payment_methods, 
+    generic_customer_id 
+}: { 
+    sale: any; 
+    customers: any[]; 
+    payment_methods: any[]; 
+    generic_customer_id: number 
+}) {
     const { company_settings } = usePage<any>().props;
     const globalExchangeRate = company_settings?.exchange_rate ? parseFloat(company_settings.exchange_rate) : 3.80;
 
-    
     const [openCustomerCombobox, setOpenCustomerCombobox] = useState(false);
     const [openCustomerDialog, setOpenCustomerDialog] = useState(false);
 
@@ -48,27 +66,41 @@ export default function SaleEdit({ sale, customers }: { sale: any; customers: an
         });
     };
 
-    const { data, setData, put, processing, errors } = useForm({
-        customer_id: sale.customer_id?.toString() || '',
+    const initialTaxMode = (() => {
+        if (!sale.lines || sale.lines.length === 0) return 'INCLUDED';
+        const hasTax = sale.lines.some((l: any) => Number(l.tax_amount) > 0);
+        if (hasTax) {
+            return (Number(sale.total_amount) > Number(sale.subtotal_amount)) ? 'PLUS_TAX' : 'INCLUDED';
+        }
+        return 'EXEMPT';
+    })();
+
+    const { data, setData, processing, errors } = useForm({
+        customer_id: sale.customer_id ? sale.customer_id.toString() : (generic_customer_id?.toString() || ''),
         sale_type: sale.sale_type || 'BOLETA',
+        payment_type: sale.payment_type || 'CASH',
+        payment_method_id: sale.payment_method_id ? sale.payment_method_id.toString() : (payment_methods && payment_methods.length > 0 ? payment_methods[0].id.toString() : ''),
         operation_date: sale.operation_date ? sale.operation_date.split(' ')[0] : new Date().toISOString().split('T')[0],
+        due_date: sale.due_date ? sale.due_date.split('T')[0].split(' ')[0] : new Date().toISOString().split('T')[0],
+        initial_payment_amount: sale.initial_payment_amount ? Number(sale.initial_payment_amount).toString() : '',
+        amount_received: sale.payment_type === 'CASH' && Number(sale.total_amount) > 0 ? Number(sale.total_amount).toFixed(2) : '',
         external_document_series: sale.external_document_series || '',
         external_document_number: sale.external_document_number || '',
         currency_code: sale.currency_code || 'PEN',
-        exchange_rate: sale.exchange_rate || 1.0,
+        exchange_rate: sale.exchange_rate ? parseFloat(sale.exchange_rate) : (sale.currency_code === 'USD' ? globalExchangeRate : 1.0),
         notes: sale.notes || '',
-        tax_mode: sale.lines?.[0]?.tax_amount > 0 ? (sale.total_amount > sale.subtotal_amount ? 'PLUS_TAX' : 'INCLUDED') : 'EXEMPT',
+        tax_mode: initialTaxMode,
         lines: (sale.lines || []).map((l: any) => ({
             product_id: l.product_id,
-            product_name: l.product_name_snapshot,
-            internal_code: l.product_reference_snapshot,
-            quantity: Number(l.quantity),
-            unit_price: Number(l.unit_price)
+            product_name: l.product_name_snapshot || l.product?.name || 'Producto',
+            internal_code: l.product_reference_snapshot || l.product?.primary_reference || l.product?.internal_code || 'S/C',
+            quantity: Number(l.quantity) || 1,
+            unit_price: Number(l.unit_price) || 0
         })) as { product_id: number; product_name: string; internal_code: string; quantity: number; unit_price: number }[],
     });
 
     useEffect(() => {
-        if (data.currency_code === 'USD') {
+        if (data.currency_code === 'USD' && (!data.exchange_rate || data.exchange_rate === 1)) {
             setData('exchange_rate', globalExchangeRate);
         } else if (data.currency_code === 'PEN') {
             setData('exchange_rate', 1.0);
@@ -85,14 +117,13 @@ export default function SaleEdit({ sale, customers }: { sale: any; customers: an
             case 'BOLETA': return 'B001';
             case 'TICKET': return 'TK01';
             case 'ORDEN_COMPRA': return 'OC01';
-            default: return 'Serie...';
+            default: return 'F001';
         }
     };
 
     useEffect(() => {
         if (searchQuery.length < 2) {
             setSearchResults([]);
-
             return;
         }
 
@@ -102,8 +133,8 @@ export default function SaleEdit({ sale, customers }: { sale: any; customers: an
                 headers: { 'Accept': 'application/json' }
             })
             .then(res => res.json())
-            .then(data => {
-                setSearchResults(data);
+            .then(resultData => {
+                setSearchResults(resultData);
                 setIsSearching(false);
             })
             .catch(() => setIsSearching(false));
@@ -113,353 +144,791 @@ export default function SaleEdit({ sale, customers }: { sale: any; customers: an
     }, [searchQuery]);
 
     const addProduct = (product: any) => {
-        if (data.lines.find(l => l.product_id === product.id)) {
-return;
-}
-
-        setData('lines', [
-            ...data.lines,
-            { product_id: product.id, product_name: product.name, internal_code: product.primary_reference || product.internal_code || 'Sin código', quantity: 1, unit_price: product.suggested_price || 0 }
-        ]);
+        const existingIndex = data.lines.findIndex(l => l.product_id === product.id);
+        if (existingIndex >= 0) {
+            updateLine(existingIndex, 'quantity', data.lines[existingIndex].quantity + 1);
+        } else {
+            setData('lines', [
+                ...data.lines,
+                {
+                    product_id: product.id,
+                    product_name: product.name,
+                    internal_code: product.primary_reference || product.internal_code || 'S/C',
+                    quantity: 1,
+                    unit_price: parseFloat(product.sale_price) || 0,
+                }
+            ]);
+        }
         setSearchQuery('');
-        searchResults.length = 0;
+        setSearchResults([]);
     };
 
-    const updateLine = (index: number, field: string, value: number) => {
+    const removeLine = (index: number) => {
+        setData('lines', data.lines.filter((_, idx) => idx !== index));
+    };
+
+    const updateLine = (index: number, field: string, value: any) => {
         const newLines = [...data.lines];
         newLines[index] = { ...newLines[index], [field]: value };
         setData('lines', newLines);
     };
 
-    const removeLine = (index: number) => {
-        setData('lines', data.lines.filter((_, i) => i !== index));
-    };
+    const selectedCustomer = customers.find((s) => s.id.toString() === data.customer_id);
+    const isGenericCustomer = data.customer_id === generic_customer_id?.toString();
 
-    const total = data.lines.reduce((acc, line) => acc + (line.quantity * line.unit_price), 0);
+    // Financial calculations
+    const rawSubtotal = data.lines.reduce((sum, line) => sum + (line.quantity * line.unit_price), 0);
+    let subtotalAmount = rawSubtotal;
+    let taxAmount = 0;
+    let finalTotal = rawSubtotal;
 
-    const submit = (e: React.FormEvent) => {
-        e.preventDefault();
-        put(`/sales/${sale.id}`);
+    if (data.tax_mode === 'INCLUDED') {
+        taxAmount = rawSubtotal - (rawSubtotal / 1.18);
+        subtotalAmount = rawSubtotal - taxAmount;
+        finalTotal = rawSubtotal;
+    } else if (data.tax_mode === 'PLUS_TAX') {
+        taxAmount = rawSubtotal * 0.18;
+        subtotalAmount = rawSubtotal;
+        finalTotal = rawSubtotal + taxAmount;
+    } else if (data.tax_mode === 'EXEMPT') {
+        taxAmount = 0;
+        subtotalAmount = rawSubtotal;
+        finalTotal = rawSubtotal;
+    }
+
+    const currencySymbol = data.currency_code === 'USD' ? '$' : 'S/';
+    const changeAmount = Math.max(0, (parseFloat(data.amount_received) || 0) - finalTotal);
+    const initialPay = parseFloat(data.initial_payment_amount || '0');
+    const debtAmount = Math.max(0, finalTotal - initialPay);
+
+    const handleFormSubmit = (chosenAction: 'CONFIRM' | 'DRAFT') => {
+        if (data.lines.length === 0) {
+            alert('Debe agregar al menos un producto a la venta.');
+            return;
+        }
+
+        if (data.payment_type === 'CREDIT' && isGenericCustomer) {
+            alert('El Público en General solo puede comprar al contado. Seleccione o cree un cliente con RUC/DNI para ventas al crédito.');
+            return;
+        }
+
+        router.put(`/sales/${sale.id}`, {
+            ...data,
+            action: chosenAction,
+        });
     };
 
     return (
         <>
-            <Head title="Editar Venta" />
+            <Head title={`Editar Venta ${sale.sale_number}`} />
 
-            <div className="flex h-full flex-1 flex-col gap-6 rounded-xl p-4 max-w-5xl mx-auto w-full">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <Link href="/sales">
-                            <Button variant="outline" size="icon">
-                                <ArrowLeft className="h-4 w-4" />
+            <div className="flex h-full flex-1 flex-col gap-6 rounded-xl p-4 max-w-6xl mx-auto w-full">
+                {/* Header with Navigation & Actions */}
+                <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Link href="/dashboard" className="hover:text-foreground transition-colors">Dashboard</Link>
+                        <span>&rsaquo;</span>
+                        <Link href="/sales" className="hover:text-foreground transition-colors">Todas las Ventas</Link>
+                        <span>&rsaquo;</span>
+                        <Link href={`/sales/${sale.id}`} className="hover:text-foreground transition-colors">Venta {sale.sale_number}</Link>
+                        <span>&rsaquo;</span>
+                        <span className="bg-muted px-2.5 py-0.5 rounded-full font-medium text-foreground text-xs">
+                            Editar
+                        </span>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1">
+                        <div className="flex items-center gap-4">
+                            <Link href={`/sales/${sale.id}`}>
+                                <Button variant="outline" size="icon" className="h-9 w-9">
+                                    <ArrowLeft className="h-4 w-4" />
+                                </Button>
+                            </Link>
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <h1 className="text-2xl font-bold tracking-tight text-foreground">
+                                        Editar Venta: {sale.sale_number}
+                                    </h1>
+                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                                        Borrador
+                                    </span>
+                                </div>
+                                <p className="text-sm text-muted-foreground">
+                                    Modifica los detalles, productos o condiciones de pago de este comprobante en borrador.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                            <Link href={`/sales/${sale.id}`}>
+                                <Button type="button" variant="outline" size="sm">
+                                    Cancelar
+                                </Button>
+                            </Link>
+                            <Button 
+                                type="button" 
+                                variant="outline"
+                                size="sm" 
+                                onClick={() => handleFormSubmit('DRAFT')}
+                                disabled={processing || data.lines.length === 0 || (data.payment_type === 'CREDIT' && isGenericCustomer)}
+                                className="gap-2"
+                            >
+                                <Save className="h-3.5 w-3.5" /> Guardar Cambios
                             </Button>
-                        </Link>
-                        <div>
-                            <h2 className="text-xl font-semibold leading-tight text-gray-800 dark:text-gray-200">Editar Venta</h2>
-                            <p className="text-sm text-gray-500">Registra una nueva entrada de productos.</p>
+                            <Button 
+                                type="button" 
+                                size="sm" 
+                                onClick={() => handleFormSubmit('CONFIRM')}
+                                disabled={processing || data.lines.length === 0 || (data.payment_type === 'CREDIT' && isGenericCustomer)}
+                                className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                            >
+                                <CheckCircle className="h-3.5 w-3.5" /> Guardar y Emitir
+                            </Button>
                         </div>
                     </div>
                 </div>
 
-                <form onSubmit={submit} className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white dark:bg-zinc-900 p-6 rounded-lg shadow-sm border">
-                        <div className="space-y-4">
-                            <h3 className="font-medium border-b pb-2">Datos del Comprobante</h3>
-                            
-                            <div className="space-y-2 flex flex-col">
-                                <Label htmlFor="customer_id">Cliente <span className="text-red-500">*</span></Label>
-                                <div className="flex items-center gap-2">
-                                    <Popover open={openCustomerCombobox} onOpenChange={setOpenCustomerCombobox}>
-                                        <PopoverTrigger asChild>
-                                            <Button
-                                                variant="outline"
-                                                role="combobox"
-                                                aria-expanded={openCustomerCombobox}
-                                                className="flex-1 justify-between"
-                                            >
-                                                {data.customer_id
-                                                    ? customers.find((s) => s.id.toString() === data.customer_id)?.legal_name || 'Cliente desconocido'
-                                                    : "Buscar cliente..."}
-                                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                            </Button>
-                                        </PopoverTrigger>
-                                        <PopoverContent className="w-[400px] p-0" align="start">
-                                            <Command filter={(value, search) => value.includes(normalizeSearch(search)) ? 1 : 0}>
-                                                <CommandInput placeholder="Buscar por nombre o documento..." />
-                                                <CommandList>
-                                                    <CommandEmpty>No se encontraron clientes.</CommandEmpty>
-                                                    <CommandGroup>
-                                                        {customers.map((s) => (
-                                                            <CommandItem
-                                                                key={s.id}
-                                                                value={`${normalizeSearch(s.legal_name)} ${s.document_number}`}
-                                                                onSelect={() => {
-                                                                    setData('customer_id', s.id.toString());
-                                                                    setOpenCustomerCombobox(false);
-                                                                }}
-                                                            >
-                                                                <Check
-                                                                    className={cn(
-                                                                        "mr-2 h-4 w-4",
-                                                                        data.customer_id === s.id.toString() ? "opacity-100" : "opacity-0"
-                                                                    )}
-                                                                />
-                                                                {s.legal_name} {s.document_number ? `(${s.document_number})` : ''}
-                                                            </CommandItem>
-                                                        ))}
-                                                    </CommandGroup>
-                                                </CommandList>
-                                                <div className="p-2 border-t flex gap-2">
-                                                    <Button 
-                                                        variant="ghost" 
-                                                        className="w-full justify-start text-sm text-blue-600 dark:text-blue-400" 
-                                                        onClick={() => {
-                                                            setData('customer_id', generic_customer_id.toString());
-                                                            setOpenCustomerCombobox(false);
-                                                        }}
-                                                    >
-                                                        <UserPlus className="mr-2 h-4 w-4" />
-                                                        Usar Cliente Genérico
-                                                    </Button>
-                                                    <Button 
-                                                        variant="ghost" 
-                                                        className="w-full justify-start text-sm text-green-600 dark:text-green-400" 
-                                                        onClick={() => {
-                                                            setOpenCustomerCombobox(false);
-                                                            setOpenCustomerDialog(true);
-                                                        }}
-                                                    >
-                                                        <Plus className="mr-2 h-4 w-4" />
-                                                        Nuevo Cliente
-                                                    </Button>
-                                                </div>
-                                            </Command>
-                                        </PopoverContent>
-                                    </Popover>
-                                </div>
-                                <InputError message={errors.customer_id} />
+                <form onSubmit={(e) => { e.preventDefault(); handleFormSubmit('DRAFT'); }} className="space-y-6">
+                    {/* Top Card: Basic Details */}
+                    <div className="bg-card text-card-foreground border border-border rounded-xl p-6 shadow-xs">
+                        <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider mb-4">
+                            Detalles Principales del Comprobante
+                        </h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 text-sm">
+                            {/* Tipo de Documento */}
+                            <div className="space-y-1.5">
+                                <Label htmlFor="sale_type" className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
+                                    Tipo de Documento
+                                </Label>
+                                <Select value={data.sale_type} onValueChange={(v) => setData('sale_type', v)}>
+                                    <SelectTrigger id="sale_type" className="h-9">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="FACTURA">Factura</SelectItem>
+                                        <SelectItem value="BOLETA">Boleta</SelectItem>
+                                        <SelectItem value="TICKET">Ticket</SelectItem>
+                                        <SelectItem value="ORDEN_COMPRA">Orden de Compra</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <InputError message={errors.sale_type} />
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="sale_type">Tipo de Documento</Label>
-                                    <Select value={data.sale_type} onValueChange={(v) => setData('sale_type', v)}>
-                                        <SelectTrigger>
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="FACTURA">Factura</SelectItem>
-                                            <SelectItem value="BOLETA">Boleta</SelectItem>
-                                            <SelectItem value="TICKET">Ticket</SelectItem>
-                                            <SelectItem value="ORDEN_COMPRA">Orden de Compra</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                    <InputError message={errors.sale_type} />
+                            {/* Serie y Número */}
+                            <div className="space-y-1.5">
+                                <Label className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
+                                    Serie y Número
+                                </Label>
+                                <div className="flex gap-2">
+                                    <Input 
+                                        type="text" 
+                                        id="external_document_series" 
+                                        placeholder={getSeriesPlaceholder(data.sale_type)} 
+                                        value={data.external_document_series} 
+                                        onChange={e => setData('external_document_series', e.target.value)} 
+                                        className="w-20 h-9 font-mono uppercase"
+                                    />
+                                    <Input 
+                                        type="text" 
+                                        id="external_document_number" 
+                                        placeholder="000123" 
+                                        value={data.external_document_number} 
+                                        onChange={e => setData('external_document_number', e.target.value)} 
+                                        className="flex-1 h-9 font-mono"
+                                    />
                                 </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="operation_date">Fecha de Venta</Label>
-                                    <Input type="date" id="operation_date" value={data.operation_date} onChange={e => setData('operation_date', e.target.value)} />
-                                    <InputError message={errors.operation_date} />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="currency_code">Moneda</Label>
+                                <InputError message={errors.external_document_series || errors.external_document_number} />
+                            </div>
+
+                            {/* Fecha de Emisión */}
+                            <div className="space-y-1.5">
+                                <Label htmlFor="operation_date" className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
+                                    Fecha de Emisión
+                                </Label>
+                                <Input 
+                                    type="date" 
+                                    id="operation_date" 
+                                    value={data.operation_date} 
+                                    onChange={e => setData('operation_date', e.target.value)} 
+                                    className="h-9"
+                                />
+                                <InputError message={errors.operation_date} />
+                            </div>
+
+                            {/* Moneda & Tipo de Cambio */}
+                            <div className="space-y-1.5">
+                                <Label htmlFor="currency_code" className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
+                                    Moneda {data.currency_code === 'USD' && '(T.C.)'}
+                                </Label>
+                                <div className="flex gap-2">
                                     <Select value={data.currency_code} onValueChange={(v) => setData('currency_code', v)}>
-                                        <SelectTrigger id="currency_code">
-                                            <SelectValue placeholder="Seleccione Moneda" />
+                                        <SelectTrigger id="currency_code" className="h-9 flex-1">
+                                            <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="PEN">Soles (PEN)</SelectItem>
                                             <SelectItem value="USD">Dólares (USD)</SelectItem>
                                         </SelectContent>
                                     </Select>
-                                    <InputError message={errors.currency_code} />
+                                    {data.currency_code === 'USD' && (
+                                        <Input 
+                                            id="exchange_rate" 
+                                            type="number" 
+                                            step="0.001" 
+                                            min="0.01" 
+                                            placeholder="3.80"
+                                            value={data.exchange_rate} 
+                                            onChange={e => setData('exchange_rate', parseFloat(e.target.value) || 1)} 
+                                            className="w-20 h-9 font-mono text-right" 
+                                            required 
+                                        />
+                                    )}
                                 </div>
-                                {data.currency_code === 'USD' && (
-                                    <div className="space-y-2">
-                                        <Label htmlFor="exchange_rate">Tipo de Cambio</Label>
-                                        <Input id="exchange_rate" type="number" step="0.001" min="0.01" value={data.exchange_rate} onChange={e => setData('exchange_rate', parseFloat(e.target.value) || 1)} required />
-                                        <InputError message={errors.exchange_rate} />
-                                    </div>
-                                )}
+                                <InputError message={errors.currency_code || errors.exchange_rate} />
                             </div>
-                            
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="external_document_series">Serie</Label>
-                                    <Input 
-                                        type="text" 
-                                        id="external_document_series" 
-                                        placeholder={getSeriesPlaceholder(data.sale_type)}
-                                        value={data.external_document_series} 
-                                        onChange={e => setData('external_document_series', e.target.value)} 
-                                    />
-                                    <InputError message={errors.external_document_series} />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="external_document_number">Número</Label>
-                                    <Input 
-                                        type="text" 
-                                        id="external_document_number" 
-                                        placeholder="000123"
-                                        value={data.external_document_number} 
-                                        onChange={e => setData('external_document_number', e.target.value)} 
-                                    />
-                                    <InputError message={errors.external_document_number} />
-                                </div>
-                            </div>
-                        </div>
 
-                        <div className="space-y-4">
-                            <h3 className="font-medium border-b pb-2">Información Adicional</h3>
-                            <div className="space-y-2">
-                                <Label htmlFor="notes">Notas / Observaciones</Label>
-                                <Textarea id="notes" rows={5} value={data.notes} onChange={e => setData('notes', e.target.value)} placeholder="Detalles sobre la venta..." />
+                            {/* Modalidad de Impuestos (IGV) */}
+                            <div className="space-y-1.5">
+                                <Label htmlFor="tax_mode" className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
+                                    Modalidad IGV
+                                </Label>
+                                <Select value={data.tax_mode} onValueChange={(v) => setData('tax_mode', v)}>
+                                    <SelectTrigger id="tax_mode" className="h-9">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="INCLUDED">Precios Incluyen IGV</SelectItem>
+                                        <SelectItem value="PLUS_TAX">Precios Más IGV (+18%)</SelectItem>
+                                        <SelectItem value="EXEMPT">Operación Exonerada</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <InputError message={errors.tax_mode} />
                             </div>
                         </div>
                     </div>
 
-                    <div className="bg-white dark:bg-zinc-900 p-6 rounded-lg shadow-sm border space-y-4">
-                        <div className="flex justify-between items-end border-b pb-2">
-                            <h3 className="font-medium">Detalle de Productos</h3>
-                            <div className="w-1/2 relative">
-                                <div className="relative">
-                                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                                    <Input
-                                        type="search"
-                                        placeholder="Buscar por nombre, marca o código..."
-                                        className="pl-8"
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                    />
-                                </div>
-                                {searchResults.length > 0 && (
-                                    <div className="absolute z-10 w-full mt-1 bg-white dark:bg-zinc-800 border rounded-md shadow-lg max-h-60 overflow-y-auto">
-                                        {searchResults.map(p => (
-                                            <div 
-                                                key={p.id} 
-                                                className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-700 cursor-pointer flex justify-between items-center"
-                                                onClick={() => addProduct(p)}
-                                            >
-                                                <div>
-                                                    <div className="font-medium text-sm">{p.name}</div>
-                                                    <div className="text-xs text-gray-500">
-                                                        {p.primary_reference || p.internal_code || 'Sin código'} | {p.brand?.name || 'Sin marca'}
-                                                        <span className={`ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold ${p.available_quantity > 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
-                                                            Stock: {p.available_quantity || 0}
-                                                        </span>
+                    {/* 2-Column Main Section */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+                        {/* LEFT COLUMN: Products + Payment & Settlement */}
+                        <div className="lg:col-span-2 space-y-6">
+                            {/* Product Information Card */}
+                            <div className="bg-card text-card-foreground border border-border rounded-xl p-6 shadow-xs space-y-4">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3">
+                                    <div>
+                                        <h3 className="font-semibold text-base text-foreground">
+                                            Productos de la Venta
+                                        </h3>
+                                        <span className="text-xs text-muted-foreground">
+                                            {data.lines.length} {data.lines.length === 1 ? 'producto agregado' : 'productos agregados'}
+                                        </span>
+                                    </div>
+
+                                    {/* Search Bar */}
+                                    <div className="w-full sm:w-80 relative">
+                                        <div className="relative">
+                                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                            <Input
+                                                type="search"
+                                                placeholder="Buscar por nombre, código o marca..."
+                                                className="pl-8 h-9"
+                                                value={searchQuery}
+                                                onChange={(e) => setSearchQuery(e.target.value)}
+                                            />
+                                        </div>
+                                        {searchResults.length > 0 && (
+                                            <div className="absolute z-20 w-full mt-1 bg-popover text-popover-foreground border border-border rounded-lg shadow-xl max-h-64 overflow-y-auto">
+                                                {searchResults.map(p => (
+                                                    <div 
+                                                        key={p.id} 
+                                                        className="p-2.5 hover:bg-muted/70 cursor-pointer flex justify-between items-center transition-colors border-b last:border-b-0"
+                                                        onClick={() => addProduct(p)}
+                                                    >
+                                                        <div className="min-w-0 flex-1 pr-2">
+                                                            <div className="font-semibold text-sm text-foreground truncate">{p.name}</div>
+                                                            <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
+                                                                <span>{p.primary_reference || p.internal_code || 'S/C'}</span>
+                                                                {p.brand?.name && <span>| {p.brand.name}</span>}
+                                                                <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${p.available_quantity > 0 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-400' : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-400'}`}>
+                                                                    Stock: {p.available_quantity || 0}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                        <Button size="icon" variant="ghost" className="h-7 w-7 rounded-full shrink-0">
+                                                            <Plus className="h-4 w-4 text-emerald-600" />
+                                                        </Button>
                                                     </div>
-                                                </div>
-                                                <Button size="sm" variant="ghost" className="h-6 w-6 p-0 rounded-full">
-                                                    <Plus className="h-4 w-4" />
-                                                </Button>
+                                                ))}
                                             </div>
-                                        ))}
+                                        )}
                                     </div>
-                                )}
+                                </div>
+
+                                <InputError message={errors.lines} />
+
+                                <div className="overflow-x-auto">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow className="border-b">
+                                                <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Código / Ref</TableHead>
+                                                <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Producto</TableHead>
+                                                <TableHead className="text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground w-28">Cantidad</TableHead>
+                                                <TableHead className="text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground w-32">Precio Unit.</TableHead>
+                                                <TableHead className="text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground w-28">Subtotal</TableHead>
+                                                <TableHead className="w-12"></TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {data.lines.length > 0 ? (
+                                                data.lines.map((line, idx) => (
+                                                    <TableRow key={idx} className="hover:bg-muted/40 transition-colors">
+                                                        <TableCell className="font-mono text-xs text-muted-foreground">
+                                                            {line.internal_code}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center text-muted-foreground shrink-0">
+                                                                    <Package className="h-4 w-4" />
+                                                                </div>
+                                                                <div className="font-semibold text-sm text-foreground">
+                                                                    {line.product_name}
+                                                                </div>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell className="text-center">
+                                                            <Input 
+                                                                type="number" 
+                                                                min="1" 
+                                                                step="1" 
+                                                                value={line.quantity} 
+                                                                onChange={e => updateLine(idx, 'quantity', parseInt(e.target.value) || 0)} 
+                                                                className="h-8 text-center font-semibold"
+                                                            />
+                                                        </TableCell>
+                                                        <TableCell className="text-right">
+                                                            <Input 
+                                                                type="number" 
+                                                                min="0" 
+                                                                step="0.01" 
+                                                                value={line.unit_price} 
+                                                                onChange={e => updateLine(idx, 'unit_price', parseFloat(e.target.value) || 0)} 
+                                                                className="h-8 text-right font-mono"
+                                                            />
+                                                        </TableCell>
+                                                        <TableCell className="text-right font-semibold text-sm">
+                                                            {currencySymbol} {(line.quantity * line.unit_price).toFixed(2)}
+                                                        </TableCell>
+                                                        <TableCell className="text-center">
+                                                            <Button 
+                                                                type="button" 
+                                                                variant="ghost" 
+                                                                size="icon" 
+                                                                className="h-8 w-8 text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40" 
+                                                                onClick={() => removeLine(idx)}
+                                                            >
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </Button>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))
+                                            ) : (
+                                                <TableRow>
+                                                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                                                        <div className="flex flex-col items-center justify-center gap-2">
+                                                            <Package className="h-8 w-8 text-muted-foreground/50" />
+                                                            <p className="text-sm font-medium">No hay productos agregados a la venta</p>
+                                                            <p className="text-xs text-muted-foreground">Utiliza el buscador superior para agregar productos de almacén.</p>
+                                                        </div>
+                                                    </TableCell>
+                                                </TableRow>
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                </div>
                             </div>
-                        </div>
 
-                        <InputError message={errors.lines} />
+                            {/* Payment Conditions & Settlement Card */}
+                            <div className="bg-card text-card-foreground border border-border rounded-xl p-6 shadow-xs space-y-4">
+                                <div className="flex items-center justify-between border-b pb-3">
+                                    <h3 className="font-semibold text-base text-foreground">
+                                        Condiciones de Pago y Liquidación
+                                    </h3>
+                                    <div>
+                                        {data.payment_type === 'CASH' ? (
+                                            <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                                                Cobro Inmediato (Contado)
+                                            </span>
+                                        ) : (
+                                            <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                                                Genera Cuenta por Cobrar (Crédito)
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
 
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Producto</TableHead>
-                                    <TableHead className="w-32">Cantidad</TableHead>
-                                    <TableHead className="w-32">Precio Unitario</TableHead>
-                                    <TableHead className="w-32 text-right">Subtotal</TableHead>
-                                    <TableHead className="w-16"></TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {data.lines.length > 0 ? (
-                                    data.lines.map((line, idx) => (
-                                        <TableRow key={idx}>
-                                            <TableCell>
-                                                <div className="font-medium">{line.product_name}</div>
-                                                <div className="text-xs text-muted-foreground">{line.internal_code}</div>
-                                            </TableCell>
-                                            <TableCell>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="payment_type" className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
+                                            Condición de Pago
+                                        </Label>
+                                        <Select value={data.payment_type} onValueChange={v => { setData('payment_type', v); if(v === 'CASH') setData('initial_payment_amount', ''); }}>
+                                            <SelectTrigger id="payment_type" className="h-9">
+                                                <SelectValue placeholder="Seleccione..." />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="CASH">Al Contado</SelectItem>
+                                                <SelectItem value="CREDIT">Al Crédito</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <InputError message={errors.payment_type} />
+                                    </div>
+
+                                    {(data.payment_type === 'CASH' || (data.payment_type === 'CREDIT' && parseFloat(data.initial_payment_amount) > 0)) && (
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="payment_method_id" className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
+                                                Método de Pago
+                                            </Label>
+                                            <Select value={data.payment_method_id} onValueChange={v => setData('payment_method_id', v)}>
+                                                <SelectTrigger id="payment_method_id" className="h-9">
+                                                    <SelectValue placeholder="Seleccione..." />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {payment_methods.map(pm => (
+                                                        <SelectItem key={pm.id} value={pm.id.toString()}>{pm.name}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                            <InputError message={errors.payment_method_id} />
+                                        </div>
+                                    )}
+                                    
+                                    {data.payment_type === 'CREDIT' && (
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="due_date" className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
+                                                Fecha de Vencimiento
+                                            </Label>
+                                            <Input 
+                                                type="date" 
+                                                id="due_date" 
+                                                value={data.due_date} 
+                                                onChange={e => setData('due_date', e.target.value)} 
+                                                className="h-9"
+                                            />
+                                            <InputError message={errors.due_date} />
+                                        </div>
+                                    )}
+
+                                    {data.payment_type === 'CREDIT' && (
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="initial_payment_amount" className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
+                                                Enganche / Adelanto Inicial
+                                            </Label>
+                                            <Input 
+                                                type="number" 
+                                                step="0.01" 
+                                                min="0" 
+                                                id="initial_payment_amount" 
+                                                placeholder="0.00" 
+                                                value={data.initial_payment_amount} 
+                                                onChange={e => setData('initial_payment_amount', e.target.value)} 
+                                                className="h-9 font-mono"
+                                            />
+                                            <InputError message={errors.initial_payment_amount} />
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Financial Summary Breakdown */}
+                                <div className="pt-4 border-t space-y-2.5 text-sm">
+                                    <div className="flex justify-between items-center text-muted-foreground">
+                                        <span>Op. Gravada / Subtotal:</span>
+                                        <span className="font-medium text-foreground">{currencySymbol} {subtotalAmount.toFixed(2)}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-muted-foreground">
+                                        <span>IGV (18%):</span>
+                                        <span className="font-medium text-foreground">{currencySymbol} {taxAmount.toFixed(2)}</span>
+                                    </div>
+                                    <div className="pt-2 border-t flex justify-between items-center text-base">
+                                        <span className="font-bold text-foreground">Total de Venta:</span>
+                                        <span className="font-extrabold text-xl text-foreground">{currencySymbol} {finalTotal.toFixed(2)}</span>
+                                    </div>
+                                </div>
+
+                                {/* Dynamic Settlement Box (Cash vs Credit) */}
+                                {data.payment_type === 'CASH' ? (
+                                    <div className="mt-4 p-4 rounded-xl bg-muted/50 border border-border space-y-3 text-sm">
+                                        <div className="flex items-center justify-between">
+                                            <Label htmlFor="amount_received" className="font-medium text-foreground">Paga con:</Label>
+                                            <div className="w-36">
                                                 <Input 
                                                     type="number" 
-                                                    min="1" 
-                                                    step="1" 
-                                                    value={line.quantity} 
-                                                    onChange={e => updateLine(idx, 'quantity', parseInt(e.target.value) || 0)} 
-                                                />
-                                            </TableCell>
-                                            <TableCell>
-                                                <Input 
-                                                    type="number" 
-                                                    min="0" 
                                                     step="0.01" 
-                                                    value={line.unit_price} 
-                                                    onChange={e => updateLine(idx, 'unit_price', parseFloat(e.target.value) || 0)} 
+                                                    min="0" 
+                                                    id="amount_received" 
+                                                    placeholder="0.00" 
+                                                    value={data.amount_received} 
+                                                    onChange={e => setData('amount_received', e.target.value)} 
+                                                    className="h-9 text-right font-mono font-semibold" 
                                                 />
-                                            </TableCell>
-                                            <TableCell className="text-right font-medium">
-                                                {data.currency_code === 'USD' ? '$' : 'S/'} {(line.quantity * line.unit_price).toFixed(2)}
-                                            </TableCell>
-                                            <TableCell>
-                                                <Button type="button" variant="ghost" size="icon" className="text-red-500" onClick={() => removeLine(idx)}>
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center justify-between pt-2 border-t">
+                                            <span className="font-medium text-muted-foreground">Vuelto a Entregar:</span>
+                                            <span className="font-extrabold text-lg text-emerald-600 dark:text-emerald-400">
+                                                {currencySymbol} {changeAmount.toFixed(2)}
+                                            </span>
+                                        </div>
+                                    </div>
                                 ) : (
-                                    <TableRow>
-                                        <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                                            Busca y agrega productos a la venta.
-                                        </TableCell>
-                                    </TableRow>
+                                    <div className="mt-4 p-4 rounded-xl bg-muted/50 border border-border space-y-2.5 text-sm">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-muted-foreground">Adelanto inicial pactado:</span>
+                                            <span className="font-semibold text-emerald-600 dark:text-emerald-400">{currencySymbol} {initialPay.toFixed(2)}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-muted-foreground">Saldo Deudor por Cobrar:</span>
+                                            <span className="font-bold text-rose-600 dark:text-rose-400 text-base">{currencySymbol} {debtAmount.toFixed(2)}</span>
+                                        </div>
+                                        {data.due_date && (
+                                            <div className="flex justify-between items-center text-xs text-muted-foreground pt-1 border-t">
+                                                <span>Fecha Límite de Vencimiento:</span>
+                                                <span className="font-semibold text-foreground">{new Date(data.due_date).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
+                                            </div>
+                                        )}
+                                    </div>
                                 )}
-                            </TableBody>
-                        </Table>
-
-                        <div className="flex flex-col md:flex-row justify-between pt-4 border-t gap-6">
-                            <div className="flex-1 max-w-sm">
-                                <h4 className="text-sm font-medium mb-3 text-muted-foreground">Configuración de Impuestos</h4>
-                                <RadioGroup value={data.tax_mode} onValueChange={(v) => setData('tax_mode', v)} className="space-y-2">
-                                    <div className="flex items-center space-x-2">
-                                        <RadioGroupItem value="INCLUDED" id="tax_included" />
-                                        <Label htmlFor="tax_included" className="cursor-pointer">Los precios incluyen IGV (Extracción)</Label>
-                                    </div>
-                                    <div className="flex items-center space-x-2">
-                                        <RadioGroupItem value="PLUS_TAX" id="tax_plus" />
-                                        <Label htmlFor="tax_plus" className="cursor-pointer">Los precios NO incluyen IGV (Adición)</Label>
-                                    </div>
-                                    <div className="flex items-center space-x-2">
-                                        <RadioGroupItem value="EXEMPT" id="tax_exempt" />
-                                        <Label htmlFor="tax_exempt" className="cursor-pointer">Operación Exonerada / Inafecta</Label>
-                                    </div>
-                                </RadioGroup>
-                            </div>
-
-                            <div className="text-right space-y-2 w-72">
-                                <div className="flex justify-between text-sm items-center">
-                                    <span className="text-muted-foreground">Op. Gravada:</span>
-                                    <span>{data.currency_code === 'USD' ? '$' : 'S/'} {(data.tax_mode === 'INCLUDED' ? (total / 1.18) : total).toFixed(2)}</span>
-                                </div>
-                                <div className="flex justify-between text-sm items-center">
-                                    <span className="text-muted-foreground">IGV (18%):</span>
-                                    <span>{data.currency_code === 'USD' ? '$' : 'S/'} {(data.tax_mode === 'INCLUDED' ? (total - (total / 1.18)) : data.tax_mode === 'PLUS_TAX' ? (total * 0.18) : 0).toFixed(2)}</span>
-                                </div>
-                                <div className="flex justify-between text-xl font-bold pt-2 border-t mt-2">
-                                    <span>Total a Pagar:</span>
-                                    <span>{data.currency_code === 'USD' ? '$' : 'S/'} {(data.tax_mode === 'PLUS_TAX' ? (total * 1.18) : total).toFixed(2)}</span>
-                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    <div className="flex justify-end gap-4">
-                        <Link href="/sales">
-                            <Button type="button" variant="outline">Cancelar</Button>
-                        </Link>
-                        <Button type="submit" disabled={processing || data.lines.length === 0}>
-                            Actualizar Venta
-                        </Button>
+                        {/* RIGHT COLUMN: Customer Information + Notes + Submit */}
+                        <div className="lg:col-span-1 space-y-6">
+                            {/* Customer Information Card */}
+                            <div className="bg-card text-card-foreground border border-border rounded-xl p-6 shadow-xs space-y-4">
+                                <div className="flex items-center justify-between border-b pb-3">
+                                    <h3 className="font-semibold text-base text-foreground">
+                                        Información del Cliente
+                                    </h3>
+                                </div>
+
+                                {/* Customer Selection Combobox */}
+                                <div className="space-y-2">
+                                    <div className="flex items-center gap-2">
+                                        <Popover open={openCustomerCombobox} onOpenChange={setOpenCustomerCombobox}>
+                                            <PopoverTrigger asChild>
+                                                <Button
+                                                    variant="outline"
+                                                    role="combobox"
+                                                    aria-expanded={openCustomerCombobox}
+                                                    className="w-full justify-between h-10 font-normal"
+                                                >
+                                                    <span className="truncate">
+                                                        {data.customer_id
+                                                            ? customers.find((s) => s.id.toString() === data.customer_id)?.legal_name || 'Cliente desconocido'
+                                                            : "Buscar cliente..."}
+                                                    </span>
+                                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                                </Button>
+                                            </PopoverTrigger>
+                                            <PopoverContent className="w-[380px] p-0" align="start">
+                                                <Command filter={(value, search) => value.includes(normalizeSearch(search)) ? 1 : 0}>
+                                                    <CommandInput placeholder="Buscar por nombre o documento..." />
+                                                    <CommandList>
+                                                        <CommandEmpty>No se encontraron clientes.</CommandEmpty>
+                                                        <CommandGroup>
+                                                            {customers.map((s) => (
+                                                                <CommandItem
+                                                                    key={s.id}
+                                                                    value={`${normalizeSearch(s.legal_name)} ${s.document_number}`}
+                                                                    onSelect={() => {
+                                                                        setData('customer_id', s.id.toString());
+                                                                        setOpenCustomerCombobox(false);
+                                                                    }}
+                                                                >
+                                                                    <Check
+                                                                        className={cn(
+                                                                            "mr-2 h-4 w-4",
+                                                                            data.customer_id === s.id.toString() ? "opacity-100" : "opacity-0"
+                                                                        )}
+                                                                    />
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <div className="truncate font-medium">{s.legal_name}</div>
+                                                                        <div className="text-xs text-muted-foreground">{s.document_number ? `(${s.document_number})` : ''}</div>
+                                                                    </div>
+                                                                </CommandItem>
+                                                            ))}
+                                                        </CommandGroup>
+                                                    </CommandList>
+                                                    <div className="p-2 border-t flex gap-2">
+                                                        <Button 
+                                                            variant="ghost" 
+                                                            className="w-full justify-start text-xs text-blue-600 dark:text-blue-400" 
+                                                            onClick={() => {
+                                                                setData('customer_id', generic_customer_id.toString());
+                                                                setOpenCustomerCombobox(false);
+                                                            }}
+                                                        >
+                                                            <UserPlus className="mr-2 h-3.5 w-3.5" />
+                                                            Cliente Genérico
+                                                        </Button>
+                                                        <Button 
+                                                            variant="ghost" 
+                                                            className="w-full justify-start text-xs text-emerald-600 dark:text-emerald-400" 
+                                                            onClick={() => {
+                                                                setOpenCustomerCombobox(false);
+                                                                setOpenCustomerDialog(true);
+                                                            }}
+                                                        >
+                                                            <Plus className="mr-2 h-3.5 w-3.5" />
+                                                            Nuevo Cliente
+                                                        </Button>
+                                                    </div>
+                                                </Command>
+                                            </PopoverContent>
+                                        </Popover>
+                                    </div>
+                                    <InputError message={errors.customer_id} />
+                                </div>
+
+                                {/* Pending Debt Alert */}
+                                {selectedCustomer && selectedCustomer.total_debt && parseFloat(selectedCustomer.total_debt) > 0 && (
+                                    <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2">
+                                        <span className="text-sm">⚠️</span>
+                                        <div>
+                                            Este cliente tiene una deuda pendiente de <strong>{currencySymbol} {parseFloat(selectedCustomer.total_debt).toFixed(2)}</strong>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Generic Customer Warning */}
+                                {isGenericCustomer && (
+                                    <div className="p-2.5 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 rounded-lg text-xs text-blue-700 dark:text-blue-300">
+                                        Público en General: solo se permite comprar al contado.
+                                    </div>
+                                )}
+
+                                {/* Customer Detailed Profile Cards */}
+                                <div className="space-y-4 pt-2">
+                                    <div className="flex items-start gap-3">
+                                        <div className="p-2.5 rounded-lg bg-muted flex items-center justify-center shrink-0 text-muted-foreground mt-0.5">
+                                            <User className="h-4 w-4" />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="text-xs text-muted-foreground font-medium">Nombre o Razón Social</div>
+                                            <div className="font-semibold text-sm text-foreground truncate">
+                                                {selectedCustomer?.legal_name || 'Clientes Varios / Público en General'}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-start gap-3">
+                                        <div className="p-2.5 rounded-lg bg-muted flex items-center justify-center shrink-0 text-muted-foreground mt-0.5">
+                                            <FileText className="h-4 w-4" />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="text-xs text-muted-foreground font-medium">Documento de Identidad</div>
+                                            <div className="font-semibold text-sm text-foreground">
+                                                {selectedCustomer?.document_type || 'DOC'}: {selectedCustomer?.document_number || '00000000'}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-start gap-3">
+                                        <div className="p-2.5 rounded-lg bg-muted flex items-center justify-center shrink-0 text-muted-foreground mt-0.5">
+                                            <Phone className="h-4 w-4" />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="text-xs text-muted-foreground font-medium">Teléfono de Contacto</div>
+                                            <div className="font-semibold text-sm text-foreground">
+                                                {selectedCustomer?.phone || 'No registrado'}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-start gap-3">
+                                        <div className="p-2.5 rounded-lg bg-muted flex items-center justify-center shrink-0 text-muted-foreground mt-0.5">
+                                            <MapPin className="h-4 w-4" />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="text-xs text-muted-foreground font-medium">Dirección de Entrega / Fiscal</div>
+                                            <div className="font-semibold text-sm text-foreground break-words">
+                                                {selectedCustomer?.address || 'Sin dirección registrada'}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-start gap-3">
+                                        <div className="p-2.5 rounded-lg bg-muted flex items-center justify-center shrink-0 text-muted-foreground mt-0.5">
+                                            <CreditCard className="h-4 w-4" />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="text-xs text-muted-foreground font-medium">Condición Comercial</div>
+                                            <div className="font-semibold text-sm text-foreground">
+                                                {data.payment_type === 'CASH' ? 'Al Contado' : 'Línea de Crédito'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Notes Card */}
+                            <div className="bg-card text-card-foreground border border-border rounded-xl p-6 shadow-xs space-y-3">
+                                <h3 className="font-semibold text-base text-foreground border-b pb-3">
+                                    Notas u Observaciones
+                                </h3>
+                                <Textarea 
+                                    id="notes" 
+                                    rows={4} 
+                                    value={data.notes} 
+                                    onChange={e => setData('notes', e.target.value)} 
+                                    placeholder="Instrucciones de entrega, detalles especiales de la venta..." 
+                                    className="resize-none"
+                                />
+                                <div className="pt-2 text-xs text-muted-foreground/80 leading-normal">
+                                    Estas notas se imprimirán en el comprobante comercial y en la guía de salida de almacén.
+                                </div>
+                            </div>
+
+                            {/* Action & Submit Card */}
+                            <div className="bg-card text-card-foreground border border-border rounded-xl p-6 shadow-xs space-y-4">
+                                <h3 className="font-semibold text-base text-foreground border-b pb-3">
+                                    Acciones de Guardado
+                                </h3>
+                                
+                                <div className="space-y-1.5">
+                                    <Button 
+                                        type="button" 
+                                        onClick={() => handleFormSubmit('CONFIRM')}
+                                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-2 font-semibold shadow-xs h-11" 
+                                        disabled={processing || data.lines.length === 0 || (data.payment_type === 'CREDIT' && isGenericCustomer)}
+                                    >
+                                        <CheckCircle className="h-4 w-4" /> Guardar y Emitir Venta
+                                    </Button>
+                                    <p className="text-[11px] text-muted-foreground text-center">
+                                        Guarda los cambios, descuenta stock de Kardex y envía la deuda a Cuentas por Cobrar.
+                                    </p>
+                                </div>
+
+                                <div className="space-y-1.5 pt-2 border-t">
+                                    <Button 
+                                        type="button" 
+                                        variant="outline"
+                                        onClick={() => handleFormSubmit('DRAFT')}
+                                        className="w-full gap-2 font-medium h-9" 
+                                        disabled={processing || data.lines.length === 0 || (data.payment_type === 'CREDIT' && isGenericCustomer)}
+                                    >
+                                        <Save className="h-3.5 w-3.5" /> Guardar Cambios (Borrador)
+                                    </Button>
+                                    <p className="text-[11px] text-muted-foreground text-center">
+                                        Mantiene la venta como borrador para seguir editándola posteriormente.
+                                    </p>
+                                </div>
+
+                                <Link href={`/sales/${sale.id}`} className="block w-full pt-1">
+                                    <Button type="button" variant="ghost" className="w-full h-8 text-xs text-muted-foreground hover:text-foreground">
+                                        Cancelar y Regresar
+                                    </Button>
+                                </Link>
+                            </div>
+                        </div>
                     </div>
                 </form>
             </div>
@@ -523,7 +992,10 @@ return;
     );
 }
 
-
 SaleEdit.layout = {
-    breadcrumbs,
+    breadcrumbs: [
+        { title: 'Dashboard', href: '/dashboard' },
+        { title: 'Ventas', href: '/sales' },
+        { title: 'Editar Venta', href: '#' },
+    ],
 };

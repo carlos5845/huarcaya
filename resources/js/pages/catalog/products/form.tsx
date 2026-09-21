@@ -1,18 +1,38 @@
-import { Head, Link, useForm, router } from '@inertiajs/react';
-import { PackageOpen, ArrowLeft, Save, Plus, Trash2, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Head, Link, useForm } from '@inertiajs/react';
+import { 
+    PackageOpen, 
+    ArrowLeft, 
+    Save, 
+    Plus, 
+    Trash2, 
+    AlertTriangle, 
+    CheckCircle2, 
+    Package, 
+    Boxes, 
+    Layers, 
+    Check, 
+    ShieldCheck, 
+    Barcode, 
+    Tag, 
+    FileText, 
+    Eye,
+    Loader2
+} from 'lucide-react';
 import React, { useState, useEffect } from 'react';
 import InputError from '@/components/input-error';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from "@/components/ui/checkbox";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
+import { cn } from '@/lib/utils';
 import { BrandManager } from './components/brand-manager';
 import { CategoryManager } from './components/category-manager';
 import { UnitManager } from './components/unit-manager';
+
 type Brand = { id: number; name: string };
 type Category = { id: number; name: string };
 type Unit = { id: number; code: string; name: string };
@@ -60,13 +80,13 @@ export default function ProductForm({ brands, categories, units, product }: Prop
     });
 
     const [similarityStatus, setSimilarityStatus] = useState<'idle' | 'checking' | 'exists' | 'ok'>('idle');
-    const [similarProduct, setSimilarProduct] = useState<{ reference: string, name: string } | null>(null);
+    const [similarProduct, setSimilarProduct] = useState<{ reference: string; name: string } | null>(null);
+    const [showAliases, setShowAliases] = useState(data.aliases.length > 0);
 
     // Debounce reference check
     useEffect(() => {
         if (!data.primary_reference || data.primary_reference.trim().length < 3) {
             setSimilarityStatus('idle');
-
             return;
         }
 
@@ -110,7 +130,7 @@ export default function ProductForm({ brands, categories, units, product }: Prop
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         
-        // Hardcode inventory settings to true as requested
+        // Hardcode inventory settings to true as required by business logic
         data.requires_lot_tracking = true;
         data.fifo_enabled = true;
         
@@ -123,6 +143,7 @@ export default function ProductForm({ brands, categories, units, product }: Prop
 
     const addAlias = () => {
         setData('aliases', [...data.aliases, { alias: '' }]);
+        setShowAliases(true);
     };
 
     const updateAlias = (index: number, value: string) => {
@@ -137,257 +158,591 @@ export default function ProductForm({ brands, categories, units, product }: Prop
         setData('aliases', newAliases);
     };
 
+    const selectedBrand = brands.find((b) => b.id.toString() === data.brand_id);
+    const selectedCategory = categories.find((c) => c.id.toString() === data.category_id);
+    const selectedUnit = units.find((u) => u.id.toString() === data.unit_id);
+
     return (
         <>
-            <Head title={isEditing ? 'Editar Repuesto' : 'Nuevo Repuesto'} />
+            <Head title={isEditing ? `Editar: ${product.primary_reference}` : 'Nuevo Repuesto'} />
             
-            <form onSubmit={handleSubmit} className="flex h-full flex-1 flex-col gap-6 p-4 lg:p-8 max-w-5xl mx-auto w-full">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <form onSubmit={handleSubmit} className="flex flex-col gap-6 p-4 lg:p-8 max-w-7xl mx-auto w-full">
+                {/* Header */}
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-2 border-b">
                     <div className="flex items-center gap-3">
-                        <Button variant="outline" size="icon" asChild>
+                        <Button variant="outline" size="icon" asChild className="h-9 w-9">
                             <Link href="/products">
                                 <ArrowLeft className="h-4 w-4" />
                             </Link>
                         </Button>
                         <div>
-                            <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-                                <PackageOpen className="h-6 w-6 text-primary" />
-                                {isEditing ? 'Editar Repuesto' : 'Nuevo Repuesto'}
-                            </h1>
-                            <p className="text-muted-foreground text-sm mt-1">
-                                Completa el formulario para registrar un producto en el catálogo maestro.
+                            <div className="flex items-center gap-2">
+                                <h1 className="text-2xl font-bold tracking-tight">
+                                    {isEditing ? 'Editar Repuesto' : 'Nuevo Repuesto'}
+                                </h1>
+                                <Badge variant={data.status === 'ACTIVE' ? 'outline' : 'secondary'} className={data.status === 'ACTIVE' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' : ''}>
+                                    {data.status === 'ACTIVE' ? 'Activo' : 'Inactivo'}
+                                </Badge>
+                            </div>
+                            <p className="text-muted-foreground text-sm mt-0.5">
+                                {isEditing 
+                                    ? `Modificando especificaciones y clasificación de ${product.primary_reference}.` 
+                                    : 'Completa los datos para dar de alta un producto en el catálogo maestro.'}
                             </p>
                         </div>
                     </div>
-                    <div className="flex gap-2">
-                        <Button variant="outline" type="button" asChild>
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                        <Button variant="outline" type="button" asChild className="flex-1 sm:flex-initial">
                             <Link href="/products">Cancelar</Link>
                         </Button>
-                        <Button type="submit" disabled={processing}>
-                            <Save className="h-4 w-4 mr-2" />
-                            Guardar Producto
+                        <Button type="submit" disabled={processing} className="flex-1 sm:flex-initial">
+                            {processing ? (
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            ) : (
+                                <Save className="h-4 w-4 mr-2" />
+                            )}
+                            {isEditing ? 'Guardar Cambios' : 'Registrar Repuesto'}
                         </Button>
                     </div>
                 </div>
 
-                <div className="bg-card border rounded-xl shadow-sm">
-                    <Tabs defaultValue="general" className="w-full">
-                        <TabsList className="w-full justify-start rounded-none border-b bg-transparent p-0">
-                            <TabsTrigger value="general" className="rounded-none border-b-2 border-transparent px-6 py-3 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">
-                                Datos Generales
-                            </TabsTrigger>
-                            <TabsTrigger value="aliases" className="rounded-none border-b-2 border-transparent px-6 py-3 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">
-                                Códigos y Alias ({data.aliases.length})
-                            </TabsTrigger>
-                            <TabsTrigger value="config" className="rounded-none border-b-2 border-transparent px-6 py-3 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">
-                                Configuración Comercial
-                            </TabsTrigger>
-                        </TabsList>
+                {/* Main 2-column Grid */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                    
+                    {/* Left Column: Form Sections (8 cols) */}
+                    <div className="lg:col-span-8 space-y-6">
                         
-                        <div className="p-6">
-                            <TabsContent value="general" className="mt-0 space-y-6">
-                                {/* Similarity Alert */}
+                        {/* Bloque 1: Identificación y Referencias */}
+                        <Card>
+                            <CardHeader className="pb-4">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                                            <Barcode className="h-5 w-5" />
+                                        </div>
+                                        <div>
+                                            <CardTitle className="text-base font-semibold">Identificación y Referencias</CardTitle>
+                                            <CardDescription className="text-xs">
+                                                Códigos clave para búsqueda, rotulado y control de inventario.
+                                            </CardDescription>
+                                        </div>
+                                    </div>
+                                    {similarityStatus === 'checking' && (
+                                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/50 px-2.5 py-1 rounded-full">
+                                            <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                                            <span>Verificando...</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </CardHeader>
+                            <CardContent className="space-y-5">
+                                
+                                {/* Live Similarity Alerts */}
                                 {similarityStatus === 'exists' && (
-                                    <Alert variant="destructive" className="bg-red-50 text-red-900 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-900">
+                                    <Alert variant="destructive" className="bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20 py-3">
                                         <AlertTriangle className="h-4 w-4" />
-                                        <AlertTitle>Posible Duplicado Encontrado</AlertTitle>
-                                        <AlertDescription>
-                                            El sistema detectó que la referencia <strong>{data.primary_reference}</strong> es muy similar al producto existente: 
-                                            <br/><strong>{similarProduct?.reference} - {similarProduct?.name}</strong>.
-                                            <br/><br/>
-                                            Recuerda que no deben existir referencias duplicadas en el sistema. Puedes continuar bajo tu propia responsabilidad.
-                                        </AlertDescription>
-                                    </Alert>
-                                )}
-                                {similarityStatus === 'ok' && data.primary_reference.trim().length > 0 && (
-                                    <Alert className="bg-green-50 text-green-900 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-900">
-                                        <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-500" />
-                                        <AlertTitle>Referencia Libre</AlertTitle>
-                                        <AlertDescription>
-                                            No se detectaron duplicados para esta referencia.
+                                        <AlertTitle className="text-sm font-semibold">Posible Duplicado Encontrado</AlertTitle>
+                                        <AlertDescription className="text-xs mt-1">
+                                            La referencia <strong>{data.primary_reference}</strong> coincide o es muy similar al repuesto existente:
+                                            <div className="mt-1 font-mono font-medium text-foreground bg-background/80 p-1.5 rounded border">
+                                                {similarProduct?.reference} — {similarProduct?.name}
+                                            </div>
+                                            <span className="text-[11px] opacity-80 block mt-1">
+                                                Evita duplicar códigos para mantener la integridad de existencias y costos.
+                                            </span>
                                         </AlertDescription>
                                     </Alert>
                                 )}
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {similarityStatus === 'ok' && data.primary_reference.trim().length >= 3 && (
+                                    <div className="flex items-center gap-2 text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 rounded-md">
+                                        <CheckCircle2 className="h-4 w-4 shrink-0" />
+                                        <span>Referencia única disponible para registrar en el catálogo.</span>
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div className="grid gap-2">
-                                        <Label htmlFor="primary_reference">Referencia Principal <span className="text-red-500">*</span></Label>
+                                        <Label htmlFor="primary_reference" className="flex items-center justify-between">
+                                            <span>Referencia Principal <span className="text-red-500">*</span></span>
+                                            <span className="text-[11px] text-muted-foreground font-mono">Único</span>
+                                        </Label>
                                         <Input 
                                             id="primary_reference" 
                                             value={data.primary_reference} 
                                             onChange={(e) => setData('primary_reference', e.target.value)} 
                                             required 
-                                            placeholder="Ej. RK-428"
-                                            className="font-mono uppercase text-lg"
+                                            placeholder="Ej. RK-428, 1R-0716..."
+                                            className="font-mono uppercase font-semibold text-base"
                                         />
                                         <InputError message={errors.primary_reference} />
                                     </div>
+
                                     <div className="grid gap-2">
-                                        <Label htmlFor="internal_code">Código Interno (Opcional)</Label>
+                                        <Label htmlFor="internal_code" className="flex items-center justify-between">
+                                            <span>Código Interno (Opcional)</span>
+                                            <span className="text-[11px] text-muted-foreground">SKU / Barra</span>
+                                        </Label>
                                         <Input 
                                             id="internal_code" 
                                             value={data.internal_code} 
                                             onChange={(e) => setData('internal_code', e.target.value)} 
                                             placeholder="Ej. PRD-000285"
+                                            className="font-mono"
                                         />
                                         <InputError message={errors.internal_code} />
                                     </div>
-                                    
-                                    <div className="grid gap-2 md:col-span-2">
-                                        <Label htmlFor="name">Nombre del Repuesto <span className="text-red-500">*</span></Label>
-                                        <Input 
-                                            id="name" 
-                                            value={data.name} 
-                                            onChange={(e) => setData('name', e.target.value)} 
-                                            required 
-                                            placeholder="Ej. ACC BLOQUE DE ORBITROL"
-                                        />
-                                        <InputError message={errors.name} />
+                                </div>
+
+                                <div className="grid gap-2">
+                                    <Label htmlFor="name">Nombre Comercial del Repuesto <span className="text-red-500">*</span></Label>
+                                    <Input 
+                                        id="name" 
+                                        value={data.name} 
+                                        onChange={(e) => setData('name', e.target.value)} 
+                                        required 
+                                        placeholder="Ej. BLOQUE DE ORBITROL DE DIRECCIÓN HIDRÁULICA"
+                                        className="uppercase"
+                                    />
+                                    <InputError message={errors.name} />
+                                </div>
+
+                                {/* Seccion Alias / Referencias Secundarias */}
+                                <div className="pt-2">
+                                    <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40 border">
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm font-medium">Referencias Secundarias y Alias</span>
+                                                <Badge variant="secondary" className="text-xs font-mono">
+                                                    {data.aliases.length}
+                                                </Badge>
+                                            </div>
+                                            <p className="text-xs text-muted-foreground mt-0.5">
+                                                Códigos equivalentes u originales con los que clientes o proveedores buscan esta pieza.
+                                            </p>
+                                        </div>
+                                        <Button 
+                                            type="button" 
+                                            variant="outline" 
+                                            size="sm" 
+                                            onClick={addAlias}
+                                            className="h-8 text-xs shrink-0"
+                                        >
+                                            <Plus className="h-3.5 w-3.5 mr-1" />
+                                            Añadir Alias
+                                        </Button>
                                     </div>
 
-                                    <div className="grid gap-2">
-                                        <Label>Marca <span className="text-red-500">*</span></Label>
-                                        <BrandManager
-                                            brands={brands}
-                                            value={data.brand_id}
-                                            onChange={(v) => setData('brand_id', v)}
-                                            error={errors.brand_id}
-                                        />
-                                    </div>
+                                    {data.aliases.length > 0 && (
+                                        <div className="mt-3 space-y-2.5 pl-1">
+                                            {data.aliases.map((alias, idx) => (
+                                                <div key={idx} className="flex items-center gap-2">
+                                                    <Badge variant="outline" className="h-8 w-8 rounded flex items-center justify-center font-mono text-xs text-muted-foreground shrink-0">
+                                                        #{idx + 1}
+                                                    </Badge>
+                                                    <div className="flex-1">
+                                                        <Input 
+                                                            value={alias.alias} 
+                                                            onChange={e => updateAlias(idx, e.target.value)} 
+                                                            placeholder="Ej. RK 428, ORB-428-ALT, 150-1284..."
+                                                            className="font-mono uppercase h-9 text-sm"
+                                                        />
+                                                        <InputError message={(errors as any)[`aliases.${idx}.alias`]} />
+                                                    </div>
+                                                    <Button 
+                                                        type="button" 
+                                                        variant="ghost" 
+                                                        size="icon" 
+                                                        onClick={() => removeAlias(idx)} 
+                                                        className="h-9 w-9 text-muted-foreground hover:text-red-600 hover:bg-red-500/10 shrink-0"
+                                                        title="Eliminar alias"
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </CardContent>
+                        </Card>
 
-                                    <div className="grid gap-2">
-                                        <Label>Categoría <span className="text-red-500">*</span></Label>
-                                        <CategoryManager
-                                            categories={categories}
-                                            value={data.category_id}
-                                            onChange={(v) => setData('category_id', v)}
-                                            error={errors.category_id}
-                                        />
+                        {/* Bloque 2: Clasificación Técnica */}
+                        <Card>
+                            <CardHeader className="pb-4">
+                                <div className="flex items-center gap-2">
+                                    <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                                        <Tag className="h-5 w-5" />
                                     </div>
-
-                                    <div className="grid gap-2">
-                                        <Label>Unidad de Medida <span className="text-red-500">*</span></Label>
-                                        <UnitManager
-                                            units={units}
-                                            value={data.unit_id}
-                                            onChange={(v) => setData('unit_id', v)}
-                                            error={errors.unit_id}
-                                        />
-                                    </div>
-
-                                    <div className="grid gap-2 md:col-span-2">
-                                        <Label htmlFor="description">Descripción Adicional</Label>
-                                        <Textarea 
-                                            id="description" 
-                                            value={data.description || ''} 
-                                            onChange={(e) => setData('description', e.target.value)} 
-                                            placeholder="Detalles técnicos, dimensiones, etc."
-                                            rows={3}
-                                        />
-                                        <InputError message={errors.description} />
+                                    <div>
+                                        <CardTitle className="text-base font-semibold">Clasificación Técnica</CardTitle>
+                                        <CardDescription className="text-xs">
+                                            Fabricante, familia de producto y unidad de medida oficial.
+                                        </CardDescription>
                                     </div>
                                 </div>
-                            </TabsContent>
+                            </CardHeader>
+                            <CardContent className="space-y-5">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                                    <BrandManager
+                                        brands={brands}
+                                        value={data.brand_id}
+                                        onChange={(v) => setData('brand_id', v)}
+                                        error={errors.brand_id}
+                                        label="Marca"
+                                        required
+                                    />
 
-                            <TabsContent value="aliases" className="mt-0 space-y-6">
-                                <div className="flex justify-between items-center border-b pb-4">
-                                    <div>
-                                        <h3 className="text-lg font-medium">Referencias Secundarias y Alias</h3>
-                                        <p className="text-sm text-muted-foreground">
-                                            Añade aquí otros códigos con los que el cliente o proveedor podría buscar este repuesto.
-                                        </p>
+                                    <CategoryManager
+                                        categories={categories}
+                                        value={data.category_id}
+                                        onChange={(v) => setData('category_id', v)}
+                                        error={errors.category_id}
+                                        label="Categoría"
+                                        required
+                                    />
+
+                                    <UnitManager
+                                        units={units}
+                                        value={data.unit_id}
+                                        onChange={(v) => setData('unit_id', v)}
+                                        error={errors.unit_id}
+                                        label="Unidad de Medida"
+                                        required
+                                    />
+                                </div>
+
+                                <div className="grid gap-2">
+                                    <Label htmlFor="description">Descripción Técnica / Observaciones</Label>
+                                    <Textarea 
+                                        id="description" 
+                                        value={data.description || ''} 
+                                        onChange={(e) => setData('description', e.target.value)} 
+                                        placeholder="Detalles dimensionales, rosca, material, modelos compatibles de maquinaria o notas del repuesto..."
+                                        rows={3}
+                                        className="resize-y text-sm"
+                                    />
+                                    <InputError message={errors.description} />
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        {/* Bloque 3: Clasificación Operativa y Estado */}
+                        <Card>
+                            <CardHeader className="pb-4">
+                                <div className="flex items-center gap-2">
+                                    <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                                        <Boxes className="h-5 w-5" />
                                     </div>
-                                    <Button type="button" onClick={addAlias} variant="secondary" size="sm">
-                                        <Plus className="h-4 w-4 mr-2" />
-                                        Añadir Alias
+                                    <div>
+                                        <CardTitle className="text-base font-semibold">Clasificación Operativa</CardTitle>
+                                        <CardDescription className="text-xs">
+                                            Define cómo se comporta el producto en inventarios, ventas y kits.
+                                        </CardDescription>
+                                    </div>
+                                </div>
+                            </CardHeader>
+                            <CardContent className="space-y-6">
+                                
+                                {/* Product Type Clickable Cards */}
+                                <div className="space-y-2">
+                                    <Label>Tipo de Producto <span className="text-red-500">*</span></Label>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                        
+                                        {/* SIMPLE */}
+                                        <div
+                                            onClick={() => setData('product_type', 'SIMPLE')}
+                                            className={cn(
+                                                "p-4 rounded-xl border-2 cursor-pointer transition-all flex flex-col justify-between",
+                                                data.product_type === 'SIMPLE'
+                                                    ? "border-primary bg-primary/5 shadow-sm"
+                                                    : "border-border hover:border-muted-foreground/40 bg-card"
+                                            )}
+                                        >
+                                            <div>
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <div className={cn(
+                                                        "p-2 rounded-lg",
+                                                        data.product_type === 'SIMPLE' ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                                                    )}>
+                                                        <Package className="h-4 w-4" />
+                                                    </div>
+                                                    {data.product_type === 'SIMPLE' && (
+                                                        <Check className="h-4 w-4 text-primary" />
+                                                    )}
+                                                </div>
+                                                <div className="font-semibold text-sm">Producto Simple</div>
+                                                <p className="text-xs text-muted-foreground mt-1">
+                                                    Repuesto individual estándar para compra, stock y venta directa.
+                                                </p>
+                                            </div>
+                                            <div className="mt-3 pt-2 border-t text-[11px] font-medium text-muted-foreground">
+                                                Stock directo individual
+                                            </div>
+                                        </div>
+
+                                        {/* KIT_UNICO */}
+                                        <div
+                                            onClick={() => setData('product_type', 'KIT_UNICO')}
+                                            className={cn(
+                                                "p-4 rounded-xl border-2 cursor-pointer transition-all flex flex-col justify-between",
+                                                data.product_type === 'KIT_UNICO'
+                                                    ? "border-primary bg-primary/5 shadow-sm"
+                                                    : "border-border hover:border-muted-foreground/40 bg-card"
+                                            )}
+                                        >
+                                            <div>
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <div className={cn(
+                                                        "p-2 rounded-lg",
+                                                        data.product_type === 'KIT_UNICO' ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                                                    )}>
+                                                        <Boxes className="h-4 w-4" />
+                                                    </div>
+                                                    {data.product_type === 'KIT_UNICO' && (
+                                                        <Check className="h-4 w-4 text-primary" />
+                                                    )}
+                                                </div>
+                                                <div className="font-semibold text-sm">Kit Único (Pre-armado)</div>
+                                                <p className="text-xs text-muted-foreground mt-1">
+                                                    Conjunto ensamblado que ingresa y se gestiona como una sola unidad con lote propio.
+                                                </p>
+                                            </div>
+                                            <div className="mt-3 pt-2 border-t text-[11px] font-medium text-muted-foreground">
+                                                Lote y costo consolidado
+                                            </div>
+                                        </div>
+
+                                        {/* KIT_COMPONENTES */}
+                                        <div
+                                            onClick={() => setData('product_type', 'KIT_COMPONENTES')}
+                                            className={cn(
+                                                "p-4 rounded-xl border-2 cursor-pointer transition-all flex flex-col justify-between",
+                                                data.product_type === 'KIT_COMPONENTES'
+                                                    ? "border-primary bg-primary/5 shadow-sm"
+                                                    : "border-border hover:border-muted-foreground/40 bg-card"
+                                            )}
+                                        >
+                                            <div>
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <div className={cn(
+                                                        "p-2 rounded-lg",
+                                                        data.product_type === 'KIT_COMPONENTES' ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                                                    )}>
+                                                        <Layers className="h-4 w-4" />
+                                                    </div>
+                                                    {data.product_type === 'KIT_COMPONENTES' && (
+                                                        <Check className="h-4 w-4 text-primary" />
+                                                    )}
+                                                </div>
+                                                <div className="font-semibold text-sm">Kit por Componentes</div>
+                                                <p className="text-xs text-muted-foreground mt-1">
+                                                    Conjunto virtual que al venderse descuenta el stock de sus repuestos componentes.
+                                                </p>
+                                            </div>
+                                            <div className="mt-3 pt-2 border-t text-[11px] font-medium text-muted-foreground">
+                                                Descuento dinámico
+                                            </div>
+                                        </div>
+
+                                    </div>
+                                    <InputError message={errors.product_type} />
+                                </div>
+
+                                <Separator />
+
+                                {/* Estado de Catálogo */}
+                                <div className="space-y-2">
+                                    <Label>Estado en el Catálogo</Label>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <div
+                                            onClick={() => setData('status', 'ACTIVE')}
+                                            className={cn(
+                                                "p-3 rounded-lg border cursor-pointer transition-all flex items-center justify-between",
+                                                data.status === 'ACTIVE'
+                                                    ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                                                    : "border-border bg-card hover:bg-muted/50"
+                                            )}
+                                        >
+                                            <div className="flex items-center gap-2.5">
+                                                <div className={cn(
+                                                    "h-2.5 w-2.5 rounded-full",
+                                                    data.status === 'ACTIVE' ? "bg-emerald-500" : "bg-muted-foreground"
+                                                )} />
+                                                <div>
+                                                    <div className="font-medium text-sm">Activo / Operativo</div>
+                                                    <div className="text-xs opacity-80">Visible para cotizaciones, compras y ventas</div>
+                                                </div>
+                                            </div>
+                                            {data.status === 'ACTIVE' && <Check className="h-4 w-4 shrink-0" />}
+                                        </div>
+
+                                        <div
+                                            onClick={() => setData('status', 'INACTIVE')}
+                                            className={cn(
+                                                "p-3 rounded-lg border cursor-pointer transition-all flex items-center justify-between",
+                                                data.status === 'INACTIVE'
+                                                    ? "border-muted-foreground/50 bg-muted/60 text-foreground"
+                                                    : "border-border bg-card hover:bg-muted/50"
+                                            )}
+                                        >
+                                            <div className="flex items-center gap-2.5">
+                                                <div className={cn(
+                                                    "h-2.5 w-2.5 rounded-full",
+                                                    data.status === 'INACTIVE' ? "bg-red-500" : "bg-muted-foreground"
+                                                )} />
+                                                <div>
+                                                    <div className="font-medium text-sm">Inactivo / Bloqueado</div>
+                                                    <div className="text-xs opacity-80">Oculto para nuevas transacciones comerciales</div>
+                                                </div>
+                                            </div>
+                                            {data.status === 'INACTIVE' && <Check className="h-4 w-4 shrink-0" />}
+                                        </div>
+                                    </div>
+                                    <InputError message={errors.status} />
+                                </div>
+
+                            </CardContent>
+                        </Card>
+
+                    </div>
+
+                    {/* Right Column: Live Ficha Técnica / Summary (4 cols, Sticky) */}
+                    <div className="lg:col-span-4 space-y-6 lg:sticky lg:top-6">
+                        
+                        {/* Live Ficha Card */}
+                        <Card className="border-2 border-primary/20 shadow-sm overflow-hidden">
+                            <div className="bg-primary/5 px-4 py-3 border-b border-primary/10 flex items-center justify-between">
+                                <div className="flex items-center gap-1.5 text-xs font-semibold text-primary">
+                                    <Eye className="h-4 w-4" />
+                                    <span>Ficha Técnica en Vivo</span>
+                                </div>
+                                <span className="flex h-2 w-2 relative">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                                </span>
+                            </div>
+
+                            <CardContent className="p-5 space-y-4">
+                                
+                                {/* Product Primary Reference */}
+                                <div>
+                                    <div className="text-xs text-muted-foreground">Referencia Principal</div>
+                                    <div className="text-xl font-bold font-mono tracking-tight text-foreground break-words mt-0.5">
+                                        {data.primary_reference ? data.primary_reference.toUpperCase() : 'REF-PENDIENTE'}
+                                    </div>
+                                    {data.internal_code && (
+                                        <div className="text-xs font-mono text-muted-foreground mt-0.5">
+                                            SKU: {data.internal_code}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Commercial Name */}
+                                <div>
+                                    <div className="text-xs text-muted-foreground">Descripción Comercial</div>
+                                    <div className="text-sm font-medium text-foreground break-words uppercase mt-0.5">
+                                        {data.name || 'Sin nombre registrado'}
+                                    </div>
+                                </div>
+
+                                <Separator />
+
+                                {/* Badges Grid */}
+                                <div className="space-y-2.5 text-xs">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Estado:</span>
+                                        <Badge 
+                                            variant={data.status === 'ACTIVE' ? 'outline' : 'secondary'}
+                                            className={data.status === 'ACTIVE' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' : ''}
+                                        >
+                                            {data.status === 'ACTIVE' ? 'Activo' : 'Inactivo'}
+                                        </Badge>
+                                    </div>
+
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Tipo de Producto:</span>
+                                        <Badge variant="outline" className="font-medium">
+                                            {data.product_type === 'SIMPLE' && 'Producto Simple'}
+                                            {data.product_type === 'KIT_UNICO' && 'Kit Único'}
+                                            {data.product_type === 'KIT_COMPONENTES' && 'Kit por Componentes'}
+                                        </Badge>
+                                    </div>
+
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Marca:</span>
+                                        <span className="font-medium text-foreground truncate max-w-[160px] text-right">
+                                            {selectedBrand?.name || '—'}
+                                        </span>
+                                    </div>
+
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Categoría:</span>
+                                        <span className="font-medium text-foreground truncate max-w-[160px] text-right">
+                                            {selectedCategory?.name || '—'}
+                                        </span>
+                                    </div>
+
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Unidad:</span>
+                                        <span className="font-medium text-foreground">
+                                            {selectedUnit ? `${selectedUnit.name} (${selectedUnit.code})` : '—'}
+                                        </span>
+                                    </div>
+
+                                    {data.aliases.length > 0 && (
+                                        <div className="pt-1">
+                                            <span className="text-muted-foreground block mb-1">Alias / Equivalencias:</span>
+                                            <div className="flex flex-wrap gap-1">
+                                                {data.aliases.slice(0, 4).map((a, i) => a.alias.trim() && (
+                                                    <Badge key={i} variant="secondary" className="font-mono text-[10px]">
+                                                        {a.alias}
+                                                    </Badge>
+                                                ))}
+                                                {data.aliases.length > 4 && (
+                                                    <Badge variant="outline" className="text-[10px]">
+                                                        +{data.aliases.length - 4} más
+                                                    </Badge>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <Separator />
+
+                                {/* System Rules Notice */}
+                                <div className="rounded-lg bg-muted/50 p-3 text-xs space-y-1.5 border">
+                                    <div className="font-semibold text-foreground flex items-center gap-1.5">
+                                        <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                                        <span>Políticas de Inventario Huarcaya</span>
+                                    </div>
+                                    <div className="text-muted-foreground text-[11px] leading-relaxed">
+                                        • Trazabilidad por Lotes obligatoria.<br/>
+                                        • Salida bajo algoritmo FIFO automático.
+                                    </div>
+                                </div>
+
+                                {/* Form Submit in Sidebar */}
+                                <div className="pt-2 space-y-2">
+                                    <Button type="submit" disabled={processing} className="w-full">
+                                        {processing ? (
+                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                        ) : (
+                                            <Save className="h-4 w-4 mr-2" />
+                                        )}
+                                        {isEditing ? 'Guardar Cambios' : 'Registrar Repuesto'}
+                                    </Button>
+                                    <Button variant="outline" type="button" asChild className="w-full">
+                                        <Link href="/products">Cancelar</Link>
                                     </Button>
                                 </div>
 
-                                {data.aliases.length === 0 ? (
-                                    <div className="py-8 text-center border-2 border-dashed rounded-lg">
-                                        <p className="text-muted-foreground">No se han registrado alias adicionales.</p>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-3">
-                                        {data.aliases.map((alias, idx) => (
-                                            <div key={idx} className="flex items-start gap-3">
-                                                <div className="flex-1 grid gap-1">
-                                                    <Input 
-                                                        value={alias.alias} 
-                                                        onChange={e => updateAlias(idx, e.target.value)} 
-                                                        placeholder="Ej. RK 428, ORB-428..."
-                                                        className="font-mono uppercase"
-                                                    />
-                                                    <InputError message={(errors as any)[`aliases.${idx}.alias`]} />
-                                                </div>
-                                                <Button type="button" variant="ghost" size="icon" onClick={() => removeAlias(idx)} className="text-red-500 hover:text-red-700 hover:bg-red-50">
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </TabsContent>
+                            </CardContent>
+                        </Card>
 
-                            <TabsContent value="config" className="mt-0 space-y-8">
-                                
-                                <div>
-                                    <h3 className="text-lg font-medium mb-4 pb-2 border-b">Clasificación Operativa</h3>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        <div className="grid gap-2">
-                                            <Label>Tipo de Producto <span className="text-red-500">*</span></Label>
-                                            <Select value={data.product_type} onValueChange={(v: any) => setData('product_type', v)}>
-                                                <SelectTrigger className="w-full">
-                                                    <span className="truncate flex-1 text-left">
-                                                        <SelectValue>
-                                                            {data.product_type === 'SIMPLE' && 'Producto Simple'}
-                                                            {data.product_type === 'KIT_UNICO' && 'Kit Único (Pre-armado)'}
-                                                            {data.product_type === 'KIT_COMPONENTES' && 'Kit por Componentes'}
-                                                        </SelectValue>
-                                                    </span>
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="SIMPLE">
-                                                        <div className="font-medium">Producto Simple</div>
-                                                        <div className="text-xs text-muted-foreground">Un repuesto individual normal.</div>
-                                                    </SelectItem>
-                                                    <SelectItem value="KIT_UNICO">
-                                                        <div className="font-medium">Kit Único (Pre-armado)</div>
-                                                        <div className="text-xs text-muted-foreground">Conjunto que ya viene armado y tiene su propio stock y lote.</div>
-                                                    </SelectItem>
-                                                    <SelectItem value="KIT_COMPONENTES">
-                                                        <div className="font-medium">Kit por Componentes</div>
-                                                        <div className="text-xs text-muted-foreground">Conjunto que se arma desde otros repuestos (Descuenta stock de componentes).</div>
-                                                    </SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                            <InputError message={errors.product_type} />
-                                        </div>
+                    </div>
 
-                                        <div className="grid gap-2">
-                                            <Label>Estado de Catálogo</Label>
-                                            <Select value={data.status} onValueChange={(v: any) => setData('status', v)}>
-                                                <SelectTrigger className="w-full">
-                                                    <span className="truncate flex-1 text-left">
-                                                        <SelectValue>
-                                                            {data.status === 'ACTIVE' ? 'Activo - Disponible para operaciones' : 'Inactivo - Oculto y bloqueado'}
-                                                        </SelectValue>
-                                                    </span>
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="ACTIVE">Activo - Disponible para operaciones</SelectItem>
-                                                    <SelectItem value="INACTIVE">Inactivo - Oculto y bloqueado</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                            <InputError message={errors.status} />
-                                        </div>
-                                    </div>
-                                </div>
-
-
-                            </TabsContent>
-                        </div>
-                    </Tabs>
                 </div>
             </form>
         </>

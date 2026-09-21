@@ -1,4 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
+import { ArrowRightLeft, Landmark, Undo2 } from 'lucide-react';
 import { BookOpen, FolderGit2, LayoutGrid, Building, Users, Tags, LayoutList, Scale, PackageSearch, Box, FileSpreadsheet, ClipboardList } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
@@ -108,6 +109,26 @@ export function AppSidebar() {
             title: 'Ventas',
             href: '/sales',
             icon: FileSpreadsheet,
+        });
+        
+        mainNavItems.push({
+            title: 'Cuentas por Cobrar',
+            href: '/receivables',
+            icon: Landmark,
+        });
+        
+        mainNavItems.push({
+            title: 'Devoluciones',
+            href: '/customer-returns',
+            icon: Undo2,
+        });
+    }
+
+    if (hasPerm('view_transfers')) {
+        mainNavItems.push({
+            title: 'Transferencias',
+            href: '/transfers',
+            icon: ArrowRightLeft,
         });
     }
 

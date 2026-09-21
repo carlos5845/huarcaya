@@ -13,7 +13,7 @@ class Sale extends Model
 
     protected $fillable = [
         'uuid', 'company_id', 'branch_id', 'customer_id',
-        'sale_number', 'sale_type', 'operation_date', 'currency_code',
+        'sale_number', 'sale_type', 'payment_type', 'payment_status', 'payment_method_id', 'operation_date', 'currency_code',
         'exchange_rate', 'subtotal_amount', 'discount_amount', 'tax_amount',
         'total_amount', 'initial_payment_amount', 'credit_amount', 'due_date',
         'status', 'external_document_type', 'external_document_series',
@@ -61,5 +61,20 @@ class Sale extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function paymentMethod(): BelongsTo
+    {
+        return $this->belongsTo(PaymentMethod::class, 'payment_method_id');
+    }
+
+    public function receivable()
+    {
+        return $this->hasOne(Receivable::class);
+    }
+
+    public function confirmedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'confirmed_by');
     }
 }
