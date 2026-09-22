@@ -18,7 +18,8 @@ import {
     SlidersHorizontal, 
     ArrowUpDown, 
     ArrowUp, 
-    ArrowDown 
+    ArrowDown,
+    Plus 
 } from 'lucide-react';
 import {
     DropdownMenu,
@@ -273,6 +274,13 @@ export default function CustomerReturnsIndex({ returns }: { returns: any }) {
                     </div>
 
                     <div className="flex items-center gap-2.5">
+                        <Link href="/customer-returns/create">
+                            <Button size="sm" className="h-9 gap-1.5 text-xs font-semibold shadow-xs">
+                                <Plus className="h-3.5 w-3.5" />
+                                <span>Nueva Devolución</span>
+                            </Button>
+                        </Link>
+
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button variant="outline" size="sm" className="h-9 gap-1.5 text-xs font-medium">

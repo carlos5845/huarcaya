@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Branch;
 use App\Models\Customer;
+use App\Models\CustomerReturnLine;
 use App\Models\Inventory;
 use App\Models\InventoryMovement;
 use App\Models\InventoryMovementLine;
@@ -276,6 +277,7 @@ class SaleController extends Controller
             'branch',
             'paymentMethod',
             'receivable',
+            'customerReturns.lines',
             'lines.product.brand',
             'lines.product.category',
             'lines.product.unit',
@@ -283,6 +285,28 @@ class SaleController extends Controller
                 $q->where('branch_id', $sale->branch_id);
             },
         ]);
+
+        $existingReturnLines = CustomerReturnLine::whereHas('customerReturn', function ($q) use ($sale) {
+            $q->where('sale_id', $sale->id)->where('status', '!=', 'CANCELLED');
+        })->get();
+
+        $returnedBySaleLine = [];
+        foreach ($existingReturnLines as $retLine) {
+            $returnedBySaleLine[$retLine->sale_line_id] = ($returnedBySaleLine[$retLine->sale_line_id] ?? 0) + (float) $retLine->quantity;
+        }
+
+        $totalSaleQty = 0;
+        $totalReturnedQty = 0;
+        foreach ($sale->lines as $line) {
+            $retQty = $returnedBySaleLine[$line->id] ?? 0;
+            $line->already_returned_quantity = $retQty;
+            $line->available_return_quantity = max(0, (float) $line->quantity - $retQty);
+            $totalSaleQty += (float) $line->quantity;
+            $totalReturnedQty += $retQty;
+        }
+
+        $sale->can_be_returned = ($totalSaleQty - $totalReturnedQty) > 0.0001;
+        $sale->is_fully_returned = ($totalReturnedQty >= ($totalSaleQty - 0.0001)) && ($totalSaleQty > 0);
 
         return Inertia::render('sales/show', [
             'sale' => $sale,
@@ -617,6 +641,10 @@ class SaleController extends Controller
 
                 // Actualizar Lote
                 $lot->current_quantity = $availableInLot - $toDeduct;
+                if ($lot->current_quantity <= 0.000001) {
+                    $lot->current_quantity = 0;
+                    $lot->status = 'DEPLETED';
+                }
                 $lot->save();
 
                 // Registrar Asignación de Lote a este movimiento
@@ -630,9 +658,31 @@ class SaleController extends Controller
                 $remainingQuantityToDeduct -= $toDeduct;
             }
 
-            if ($remainingQuantityToDeduct > 0.000001) { // Margen de error flotante
-                $prodName = Product::find($item['product_id'])?->name ?? 'ID '.$item['product_id'];
-                throw new \Exception("Inconsistencia crítica: El inventario reportó stock disponible, pero no hay suficientes lotes con saldo para el producto '{$prodName}'.");
+            if ($remainingQuantityToDeduct > 0.000001) {
+                // Auto-recuperación: Crear lote de regularización para cubrir el remanente físico disponible
+                $inventory = Inventory::where('branch_id', $sale->branch_id)
+                    ->where('product_id', $item['product_id'])
+                    ->first();
+
+                $autoLot = Lot::create([
+                    'uuid' => (string) Str::uuid(),
+                    'branch_id' => $sale->branch_id,
+                    'product_id' => $item['product_id'],
+                    'lot_number' => 'LOT-REG-'.date('Ymd').'-'.strtoupper(Str::random(4)),
+                    'original_quantity' => $remainingQuantityToDeduct,
+                    'current_quantity' => 0,
+                    'unit_cost' => $inventory ? (float) $inventory->average_cost : 0,
+                    'status' => 'DEPLETED',
+                ]);
+
+                LotAllocation::create([
+                    'uuid' => (string) Str::uuid(),
+                    'inventory_movement_line_id' => $movementLine->id,
+                    'lot_id' => $autoLot->id,
+                    'quantity' => $remainingQuantityToDeduct,
+                ]);
+
+                $remainingQuantityToDeduct = 0;
             }
         }
 

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Branch;
+use App\Models\Inventory;
 use App\Models\Product;
 use App\Models\Transfer;
 use App\Models\TransferLine;
@@ -188,12 +189,20 @@ class TransferController extends Controller
             if ($transfer->status === 'IN_TRANSIT') {
                 $kardexService = new KardexService;
                 foreach ($transfer->lines as $line) {
+                    $reversalCost = (float) $line->unit_cost;
+                    if ($reversalCost <= 0) {
+                        $srcInv = Inventory::where('branch_id', $transfer->source_branch_id)
+                            ->where('product_id', $line->product_id)
+                            ->first();
+                        $reversalCost = $srcInv ? (float) $srcInv->average_cost : 0;
+                    }
+
                     // Si ya se despachó, devolvemos el stock a la sucursal de origen
                     $kardexService->recordEntry([
                         'branch_id' => $transfer->source_branch_id,
                         'product_id' => $line->product_id,
                         'quantity' => $line->shipped_quantity,
-                        'unit_cost' => $line->product->cost_price ?? 0,
+                        'unit_cost' => $reversalCost,
                         'operation_type' => 'TRANSFERENCIA_CANCELADA',
                         'reference' => 'CANCELACIÓN: '.$transfer->transfer_number,
                         'user_id' => $user->id,

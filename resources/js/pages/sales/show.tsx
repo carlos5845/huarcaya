@@ -10,7 +10,8 @@ import {
     MapPin, 
     CreditCard, 
     Package, 
-    Clock
+    Clock,
+    RotateCcw
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -121,13 +122,51 @@ export default function SaleShow({ sale }: { sale: any }) {
                             )}
 
                             {sale.status === 'CONFIRMED' && (
-                                <Button variant="outline" size="sm" onClick={() => window.print()} className="gap-2">
-                                    <Printer className="h-3.5 w-3.5" /> Imprimir Comprobante
-                                </Button>
+                                <div className="flex items-center gap-2">
+                                    {sale.can_be_returned !== false ? (
+                                        <Link href={`/customer-returns/create?sale_id=${sale.id}`}>
+                                            <Button variant="outline" size="sm" className="gap-2 border-amber-500/40 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10 font-medium">
+                                                <RotateCcw className="h-3.5 w-3.5" /> Nueva Devolución
+                                            </Button>
+                                        </Link>
+                                    ) : (
+                                        <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-xs px-2.5 py-1 gap-1 font-medium">
+                                            <CheckCircle className="h-3.5 w-3.5 text-emerald-600" /> Devolución Total Registrada
+                                        </Badge>
+                                    )}
+                                    <Button variant="outline" size="sm" onClick={() => window.print()} className="gap-2">
+                                        <Printer className="h-3.5 w-3.5" /> Imprimir Comprobante
+                                    </Button>
+                                </div>
                             )}
                         </div>
                     </div>
                 </div>
+
+                {/* Linked Customer Returns Alert */}
+                {sale.customer_returns && sale.customer_returns.length > 0 && (
+                    <div className="bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 p-4 rounded-xl flex flex-col gap-2 text-xs shadow-xs">
+                        <div className="flex items-center justify-between">
+                            <span className="font-semibold flex items-center gap-1.5">
+                                <RotateCcw className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                                Esta venta cuenta con {sale.customer_returns.length} nota(s) de devolución registrada(s):
+                            </span>
+                        </div>
+                        <div className="flex flex-wrap gap-2 mt-1">
+                            {sale.customer_returns.map((ret: any) => (
+                                <Link key={ret.id} href={`/customer-returns/${ret.id}`}>
+                                    <Badge variant="outline" className="border-amber-500/40 bg-card text-foreground hover:bg-muted text-xs py-1 px-2.5 gap-1.5 cursor-pointer font-medium">
+                                        <span className="font-mono">{ret.return_number}</span>
+                                        <span className="text-muted-foreground">({currencySymbol} {Number(ret.total_amount).toFixed(2)})</span>
+                                        <span className={`text-[10px] font-bold uppercase ${ret.status === 'CONFIRMED' ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                                            • {ret.status === 'CONFIRMED' ? 'Confirmado' : 'Borrador'}
+                                        </span>
+                                    </Badge>
+                                </Link>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 {/* Top Card: Basic Details */}
                 <div className="bg-card text-card-foreground border border-border rounded-xl p-6 shadow-xs">
@@ -256,7 +295,12 @@ export default function SaleShow({ sale }: { sale: any }) {
                                                             </div>
                                                         </TableCell>
                                                         <TableCell className="text-center font-medium">
-                                                            x{Number(line.quantity)} {line.product?.unit?.abbreviation || ''}
+                                                            <div>x{Number(line.quantity)} {line.product?.unit?.abbreviation || ''}</div>
+                                                            {Number(line.already_returned_quantity) > 0 && (
+                                                                <span className="inline-block mt-0.5 text-[10px] text-rose-600 dark:text-rose-400 font-semibold bg-rose-500/10 px-1.5 py-0.5 rounded">
+                                                                    Devuelto: {Number(line.already_returned_quantity)}
+                                                                </span>
+                                                            )}
                                                         </TableCell>
                                                         {sale.status === 'DRAFT' && (
                                                             <TableCell className="text-center">

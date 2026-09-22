@@ -12,13 +12,17 @@ class TransferLine extends Model
 
     protected $fillable = [
         'uuid', 'transfer_id', 'product_id',
-        'requested_quantity', 'shipped_quantity', 'received_quantity', 'notes',
+        'requested_quantity', 'shipped_quantity', 'received_quantity',
+        'damaged_quantity', 'missing_quantity', 'unit_cost', 'notes',
     ];
 
     protected $casts = [
         'requested_quantity' => 'decimal:6',
         'shipped_quantity' => 'decimal:6',
         'received_quantity' => 'decimal:6',
+        'damaged_quantity' => 'decimal:6',
+        'missing_quantity' => 'decimal:6',
+        'unit_cost' => 'decimal:4',
     ];
 
     public function transfer(): BelongsTo

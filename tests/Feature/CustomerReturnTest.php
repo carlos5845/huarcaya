@@ -193,5 +193,137 @@ test('can create and confirm a customer return', function () {
     // 4. Verify Receivable Discounted
     $this->receivable->refresh();
     $this->assertEquals(50, $this->receivable->balance_amount); // 100 - 50 = 50
-    $this->assertStringContainsString('Amortizado por devolucin', $this->receivable->notes);
+    $this->assertStringContainsString('Amortizado por devolución', $this->receivable->notes);
+});
+
+test('can view customer returns create page without sale_id and lists recent confirmed sales', function () {
+    $this->actingAs($this->user)
+        ->get(route('customer-returns.create'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('customer-returns/create')
+            ->where('sale', null)
+            ->has('recentSales')
+            ->where('recentSales.0.id', $this->sale->id)
+        );
+});
+
+test('can view customer returns create page with sale_id and calculates available return quantities', function () {
+    $this->actingAs($this->user)
+        ->get(route('customer-returns.create', ['sale_id' => $this->sale->id]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('customer-returns/create')
+            ->where('sale.id', $this->sale->id)
+            ->where('sale.lines.0.available_return_quantity', 2)
+            ->where('sale.lines.0.already_returned_quantity', 0)
+        );
+});
+
+test('cannot return more than available quantity of a sale line', function () {
+    $this->actingAs($this->user);
+
+    $response = $this->post(route('customer-returns.store'), [
+        'sale_id' => $this->sale->id,
+        'operation_date' => now()->format('Y-m-d'),
+        'notes' => 'Intento de sobre-devolución',
+        'lines' => [
+            [
+                'sale_line_id' => $this->saleLine->id,
+                'product_id' => $this->product->id,
+                'quantity' => 5, // Sold only 2
+                'unit_price' => 50,
+            ],
+        ],
+    ]);
+
+    $response->assertSessionHas('error');
+    $this->assertDatabaseMissing('customer_returns', [
+        'notes' => 'Intento de sobre-devolución',
+    ]);
+});
+
+test('restores lot and maintains inventory parity upon return confirmation', function () {
+    $this->actingAs($this->user);
+
+    // Initial lot had 10 units. Sale sold 2, lot was deducted to 8 units.
+    $lot = Lot::where('branch_id', $this->branch->id)->where('product_id', $this->product->id)->first();
+    $lot->update(['current_quantity' => 8]);
+
+    // Create and confirm return of 1 unit
+    $this->post(route('customer-returns.store'), [
+        'sale_id' => $this->sale->id,
+        'operation_date' => now()->format('Y-m-d'),
+        'notes' => 'Devolución para verificar lote',
+        'lines' => [
+            [
+                'sale_line_id' => $this->saleLine->id,
+                'product_id' => $this->product->id,
+                'quantity' => 1,
+                'unit_price' => 50,
+            ],
+        ],
+    ]);
+
+    $return = CustomerReturn::where('notes', 'Devolución para verificar lote')->first();
+    $this->post(route('customer-returns.confirm', $return->id));
+
+    $lot->refresh();
+    // Lot should be incremented from 8 to 9 units
+    expect((float) $lot->current_quantity)->toEqual(9.0);
+});
+
+test('can create and immediately confirm a customer return using confirm_now flag', function () {
+    $this->actingAs($this->user);
+
+    $response = $this->post(route('customer-returns.store'), [
+        'sale_id' => $this->sale->id,
+        'operation_date' => now()->format('Y-m-d'),
+        'notes' => 'Devolución directa confirmada',
+        'confirm_now' => true,
+        'lines' => [
+            [
+                'sale_line_id' => $this->saleLine->id,
+                'product_id' => $this->product->id,
+                'quantity' => 1,
+                'unit_price' => 50,
+            ],
+        ],
+    ]);
+
+    $response->assertSessionHasNoErrors();
+    $return = CustomerReturn::where('notes', 'Devolución directa confirmada')->first();
+    expect($return)->not->toBeNull();
+    expect($return->status)->toBe('CONFIRMED');
+
+    // Verify Kardex entry was created immediately
+    $this->assertDatabaseHas('kardex_entries', [
+        'product_id' => $this->product->id,
+        'operation_type' => 'DEVOLUCION_VENTA',
+    ]);
+});
+
+test('redirects to sales show when sale is already fully returned', function () {
+    $this->actingAs($this->user);
+
+    // Return the entire sale quantity (2 units)
+    $this->post(route('customer-returns.store'), [
+        'sale_id' => $this->sale->id,
+        'operation_date' => now()->format('Y-m-d'),
+        'notes' => 'Devolución total',
+        'confirm_now' => true,
+        'lines' => [
+            [
+                'sale_line_id' => $this->saleLine->id,
+                'product_id' => $this->product->id,
+                'quantity' => 2,
+                'unit_price' => 50,
+            ],
+        ],
+    ]);
+
+    // Attempt to access create page for this sale again
+    $response = $this->get(route('customer-returns.create', ['sale_id' => $this->sale->id]));
+    $response->assertRedirect(route('sales.show', $this->sale->id));
+    $response->assertSessionHas('error');
 });

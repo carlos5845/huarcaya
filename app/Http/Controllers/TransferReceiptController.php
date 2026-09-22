@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\ReceiveTransferRequest;
+use App\Models\Inventory;
+use App\Models\Lot;
 use App\Models\Transfer;
 use App\Models\TransferReceipt;
 use App\Models\TransferReceiptLine;
@@ -26,7 +28,7 @@ class TransferReceiptController extends Controller
             if ($transfer->status !== 'IN_TRANSIT') {
                 DB::rollBack();
 
-                return back()->with('error', 'La transferencia no est en trnsito.');
+                return back()->with('error', 'La transferencia no está en tránsito.');
             }
 
             $user = $request->user();
@@ -35,7 +37,7 @@ class TransferReceiptController extends Controller
             if (! $shipment) {
                 DB::rollBack();
 
-                return back()->with('error', 'No hay ningn envo registrado para esta transferencia.');
+                return back()->with('error', 'No hay ningún envío registrado para esta transferencia.');
             }
 
             $receiptNumber = 'RCT-'.Str::upper(Str::random(8));
@@ -79,6 +81,13 @@ class TransferReceiptController extends Controller
                 ]);
 
                 $shipmentLine = $shipment->lines()->where('transfer_line_id', $line->id)->first();
+                $lineUnitCost = (float) $line->unit_cost;
+                if ($lineUnitCost <= 0) {
+                    $sourceInventory = Inventory::where('branch_id', $transfer->source_branch_id)
+                        ->where('product_id', $line->product_id)
+                        ->first();
+                    $lineUnitCost = $sourceInventory ? (float) $sourceInventory->average_cost : 0;
+                }
 
                 if ($received > 0) {
                     TransferReceiptLine::create([
@@ -95,10 +104,23 @@ class TransferReceiptController extends Controller
                         'branch_id' => $transfer->destination_branch_id,
                         'product_id' => $line->product_id,
                         'quantity' => $received,
-                        'unit_cost' => $line->unit_cost > 0 ? $line->unit_cost : ($line->product->cost_price ?? 0),
+                        'unit_cost' => $lineUnitCost,
                         'operation_type' => 'TRANSFERENCIA_ENTRADA',
-                        'reference' => 'RECEPCIN: '.$transfer->transfer_number,
+                        'reference' => 'RECEPCIÓN: '.$transfer->transfer_number,
                         'user_id' => $user->id,
+                    ]);
+
+                    // Crear Lote activo en la sucursal destino
+                    $lotNumber = 'LOT-TR-'.date('Ymd').'-'.strtoupper(Str::random(4));
+                    Lot::create([
+                        'uuid' => (string) Str::uuid(),
+                        'branch_id' => $transfer->destination_branch_id,
+                        'product_id' => $line->product_id,
+                        'lot_number' => $lotNumber,
+                        'original_quantity' => $received,
+                        'current_quantity' => $received,
+                        'unit_cost' => $lineUnitCost,
+                        'status' => 'ACTIVE',
                     ]);
                 }
 
@@ -118,9 +140,9 @@ class TransferReceiptController extends Controller
                         'branch_id' => $transfer->destination_branch_id,
                         'product_id' => $line->product_id,
                         'quantity' => $damaged,
-                        'unit_cost' => $line->unit_cost > 0 ? $line->unit_cost : ($line->product->cost_price ?? 0),
+                        'unit_cost' => $lineUnitCost,
                         'operation_type' => 'TRANSFERENCIA_ENTRADA_DANADA',
-                        'reference' => 'RECEPCIN CON DAOS: '.$transfer->transfer_number,
+                        'reference' => 'RECEPCIÓN CON DAÑOS: '.$transfer->transfer_number,
                         'user_id' => $user->id,
                     ]);
 
@@ -129,7 +151,7 @@ class TransferReceiptController extends Controller
                         'product_id' => $line->product_id,
                         'quantity' => $damaged,
                         'operation_type' => 'AJUSTE_MERMA_RECEPCION',
-                        'reference' => 'BAJA POR DAO: '.$transfer->transfer_number,
+                        'reference' => 'BAJA POR DAÑO: '.$transfer->transfer_number,
                         'user_id' => $user->id,
                     ]);
                 }
@@ -168,11 +190,11 @@ class TransferReceiptController extends Controller
 
             DB::commit();
 
-            return back()->with('success', 'Mercadera recibida exitosamente. '.($hasDiscrepancy ? 'Con discrepancias.' : ''));
+            return back()->with('success', 'Mercadería recibida exitosamente. '.($hasDiscrepancy ? 'Con discrepancias.' : ''));
         } catch (\Exception $e) {
             DB::rollBack();
 
-            return back()->with('error', 'Error al procesar la recepcin: '.$e->getMessage());
+            return back()->with('error', 'Error al procesar la recepción: '.$e->getMessage());
         }
     }
 }

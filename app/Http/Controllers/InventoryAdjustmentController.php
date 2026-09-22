@@ -2,10 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Branch;
+use App\Models\Inventory;
 use App\Models\InventoryAdjustment;
 use App\Models\InventoryAdjustmentLine;
-use App\Models\Product;
-use App\Models\Branch;
+use App\Models\Lot;
 use App\Services\KardexService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -24,12 +25,12 @@ class InventoryAdjustmentController extends Controller
         $user = $request->user();
         $isSuperAdmin = $user->hasRole('Super Admin');
         $canSeeAllBranches = $isSuperAdmin || $user->hasPermissionTo('view_inventory_general');
-        
-        $allowedBranchIds = $canSeeAllBranches 
-            ? Branch::pluck('id')->toArray() 
+
+        $allowedBranchIds = $canSeeAllBranches
+            ? Branch::pluck('id')->toArray()
             : $user->branches()->pluck('branches.id')->toArray();
 
-        if (empty($allowedBranchIds) && !$canSeeAllBranches && $user->default_branch_id) {
+        if (empty($allowedBranchIds) && ! $canSeeAllBranches && $user->default_branch_id) {
             $allowedBranchIds = [$user->default_branch_id];
         }
 
@@ -61,8 +62,8 @@ class InventoryAdjustmentController extends Controller
         $isSuperAdmin = $user->hasRole('Super Admin');
         $canSeeAllBranches = $isSuperAdmin || $user->hasPermissionTo('view_inventory_general');
 
-        $branches = $canSeeAllBranches 
-            ? Branch::orderBy('name')->get() 
+        $branches = $canSeeAllBranches
+            ? Branch::orderBy('name')->get()
             : $user->branches()->orderBy('name')->get();
 
         if ($branches->isEmpty() && $user->default_branch_id) {
@@ -91,7 +92,7 @@ class InventoryAdjustmentController extends Controller
         DB::beginTransaction();
         try {
             $prefix = $validated['adjustment_type'] === 'POSITIVE' ? 'AJP' : 'AJN';
-            $adjustmentNumber = $prefix . date('Ymd') . '-' . strtoupper(Str::random(5));
+            $adjustmentNumber = $prefix.date('Ymd').'-'.strtoupper(Str::random(5));
 
             $adjustment = InventoryAdjustment::create([
                 'uuid' => (string) Str::uuid(),
@@ -122,10 +123,11 @@ class InventoryAdjustmentController extends Controller
             DB::commit();
 
             return redirect()->route('inventory.adjustments.show', $adjustment->id)
-                             ->with('success', 'Ajuste en borrador creado con éxito.');
+                ->with('success', 'Ajuste en borrador creado con éxito.');
         } catch (\Exception $e) {
             DB::rollBack();
-            return back()->with('error', 'Error al crear el ajuste: ' . $e->getMessage());
+
+            return back()->with('error', 'Error al crear el ajuste: '.$e->getMessage());
         }
     }
 
@@ -150,32 +152,72 @@ class InventoryAdjustmentController extends Controller
 
             foreach ($adjustment->lines as $line) {
                 $operationType = $adjustment->adjustment_type === 'POSITIVE' ? 'AJUSTE_ENTRADA' : 'AJUSTE_SALIDA';
-                
+
                 $data = [
                     'branch_id' => $adjustment->branch_id,
                     'product_id' => $line->product_id,
                     'quantity' => $line->quantity,
                     'operation_type' => $operationType,
-                    'reference' => 'Ajuste: ' . $adjustment->adjustment_number . ' - ' . $line->reason_code,
+                    'reference' => 'Ajuste: '.$adjustment->adjustment_number.' - '.$line->reason_code,
                     'user_id' => Auth::id(),
                 ];
 
                 if ($adjustment->adjustment_type === 'POSITIVE') {
                     $data['unit_cost'] = $line->unit_cost;
                     $kardexService->recordEntry($data);
+
+                    // Crear Lote para ajuste positivo
+                    $lotNumber = 'LOT-ADJ-'.date('Ymd').'-'.strtoupper(Str::random(4));
+                    Lot::create([
+                        'uuid' => (string) Str::uuid(),
+                        'branch_id' => $adjustment->branch_id,
+                        'product_id' => $line->product_id,
+                        'lot_number' => $lotNumber,
+                        'original_quantity' => $line->quantity,
+                        'current_quantity' => $line->quantity,
+                        'unit_cost' => $line->unit_cost,
+                        'status' => 'ACTIVE',
+                    ]);
                 } else {
                     $kardexService->recordExit($data);
-                    
+
                     // Actualizar el costo de la línea de ajuste para registro histórico (ya que la salida toma el costo promedio real)
-                    $inventory = \App\Models\Inventory::where('branch_id', $adjustment->branch_id)
+                    $inventory = Inventory::where('branch_id', $adjustment->branch_id)
                         ->where('product_id', $line->product_id)
                         ->first();
-                        
+
                     if ($inventory) {
                         $line->update([
                             'unit_cost' => $inventory->average_cost,
                             'line_total_cost' => $inventory->average_cost * $line->quantity,
                         ]);
+                    }
+
+                    // Descontar lotes para ajuste negativo (FIFO)
+                    $remainingToDeduct = (float) $line->quantity;
+                    $lots = Lot::where('branch_id', $adjustment->branch_id)
+                        ->where('product_id', $line->product_id)
+                        ->where('current_quantity', '>', 0)
+                        ->orderBy('created_at', 'asc')
+                        ->lockForUpdate()
+                        ->get();
+
+                    foreach ($lots as $lot) {
+                        if ($remainingToDeduct <= 0) {
+                            break;
+                        }
+
+                        $availableInLot = (float) $lot->current_quantity;
+                        $toDeduct = min($availableInLot, $remainingToDeduct);
+
+                        $lot->current_quantity = $availableInLot - $toDeduct;
+                        if ($lot->current_quantity <= 0.000001) {
+                            $lot->current_quantity = 0;
+                            $lot->status = 'DEPLETED';
+                        }
+                        $lot->save();
+
+                        $remainingToDeduct -= $toDeduct;
                     }
                 }
             }
@@ -191,7 +233,8 @@ class InventoryAdjustmentController extends Controller
             return back()->with('success', 'Ajuste confirmado y Kardex actualizado exitosamente.');
         } catch (\Exception $e) {
             DB::rollBack();
-            return back()->with('error', 'Error al confirmar el ajuste: ' . $e->getMessage());
+
+            return back()->with('error', 'Error al confirmar el ajuste: '.$e->getMessage());
         }
     }
 }

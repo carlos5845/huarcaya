@@ -20,21 +20,22 @@ import {
     ArrowUpDown, 
     ArrowUp, 
     ArrowDown, 
-    ChevronsUpDown, 
-    X,
-    RotateCcw
+    RotateCcw,
+    Layers,
+    Download,
+    FileSpreadsheet,
+    FileText
 } from 'lucide-react';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
     DropdownMenu,
     DropdownMenuCheckboxItem,
     DropdownMenuContent,
+    DropdownMenuItem,
     DropdownMenuLabel,
     DropdownMenuSeparator,
     DropdownMenuTrigger,
@@ -55,6 +56,15 @@ interface KardexEntry {
     balance_quantity: number;
     balance_unit_cost: number;
     balance_total_cost: number;
+    fifo_input_quantity?: number;
+    fifo_input_unit_cost?: number;
+    fifo_input_total_cost?: number;
+    fifo_output_quantity?: number;
+    fifo_output_unit_cost?: number;
+    fifo_output_total_cost?: number;
+    fifo_balance_quantity?: number;
+    fifo_balance_unit_cost?: number;
+    fifo_balance_total_cost?: number;
     original_entry_id: number | null;
     reversed_by_entry_id: number | null;
     product: {
@@ -63,6 +73,10 @@ interface KardexEntry {
         primary_reference: string;
     };
     user: {
+        id: number;
+        name: string;
+    };
+    branch?: {
         id: number;
         name: string;
     };
@@ -78,79 +92,73 @@ interface PaginationData {
 
 const columnLabels: Record<string, string> = {
     sequence_number: '# Secuencia',
+    branch: 'Sucursal',
     operation_date: 'Fecha y Referencia',
     operation_type: 'Operación y Usuario',
     product: 'Producto',
     input_group: 'Entradas (Cant, CU, Total)',
     output_group: 'Salidas (Cant, CU, Total)',
-    balance_group: 'Saldos (Cant, CUP, Total)',
+    balance_group: 'Saldos (Cant, CU, Total)',
 };
 
-export default function KardexIndex({ entries, branches, selectedProduct, filters, canSeeAllBranches = false }: { 
+export default function KardexIndex({ entries, branches, filters, canSeeAllBranches = false }: { 
     canSeeAllBranches?: boolean, 
     entries: PaginationData, 
     branches: any[], 
-    selectedProduct: any | null, 
     filters: any 
 }) {
     const [branchId, setBranchId] = useState(filters.branch_id || 'ALL');
-    const [productId, setProductId] = useState(filters.product_id || '');
     const [search, setSearch] = useState(filters.search || '');
     const [dateFrom, setDateFrom] = useState(filters.date_from || '');
     const [dateTo, setDateTo] = useState(filters.date_to || '');
-
-    const [searchProductQuery, setSearchProductQuery] = useState('');
-    const [productResults, setProductResults] = useState<any[]>([]);
-    const [isSearchingProduct, setIsSearchingProduct] = useState(false);
-    const [openProductCombo, setOpenProductCombo] = useState(false);
-    const [displayProductName, setDisplayProductName] = useState(selectedProduct ? `${selectedProduct.primary_reference || selectedProduct.internal_code || 'Sin cód'} - ${selectedProduct.name}` : 'Todos los productos');
+    const [method, setMethod] = useState(filters.method || 'AVERAGE');
 
     // TanStack states
     const [sorting, setSorting] = useState<SortingState>([]);
     const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
 
-    useEffect(() => {
-        if (searchProductQuery.length < 2) {
-            setProductResults([]);
-            return;
-        }
-
-        const delayDebounceFn = setTimeout(() => {
-            setIsSearchingProduct(true);
-            fetch(`/products/search?q=${encodeURIComponent(searchProductQuery)}`, {
-                headers: { 'Accept': 'application/json' }
-            })
-            .then(res => res.json())
-            .then(data => {
-                setProductResults(data);
-                setIsSearchingProduct(false);
-            })
-            .catch(() => setIsSearchingProduct(false));
-        }, 300);
-
-        return () => clearTimeout(delayDebounceFn);
-    }, [searchProductQuery]);
-
     const handleFilter = (e: React.FormEvent) => {
         e.preventDefault();
         router.get('/kardex', { 
-            branch_id: branchId === 'ALL' ? '' : branchId, 
-            product_id: productId,
+            branch_id: canSeeAllBranches && branchId !== 'ALL' ? branchId : '', 
             search,
             date_from: dateFrom,
-            date_to: dateTo
+            date_to: dateTo,
+            method
+        }, { preserveState: true });
+    };
+
+    const handleMethodChange = (newMethod: string) => {
+        setMethod(newMethod);
+        router.get('/kardex', { 
+            branch_id: canSeeAllBranches && branchId !== 'ALL' ? branchId : '', 
+            search,
+            date_from: dateFrom,
+            date_to: dateTo,
+            method: newMethod
         }, { preserveState: true });
     };
 
     const clearFilters = () => {
         setBranchId('ALL');
-        setProductId('');
-        setDisplayProductName('Todos los productos');
         setSearch('');
         setDateFrom('');
         setDateTo('');
+        setMethod('AVERAGE');
         router.get('/kardex');
     };
+
+    const exportQueryString = useMemo(() => {
+        const params = new URLSearchParams();
+        if (canSeeAllBranches && branchId !== 'ALL') {
+            params.append('branch_id', branchId);
+        }
+        if (search) params.append('search', search);
+        if (dateFrom) params.append('date_from', dateFrom);
+        if (dateTo) params.append('date_to', dateTo);
+        if (method) params.append('method', method);
+        return params.toString();
+    }, [branchId, canSeeAllBranches, search, dateFrom, dateTo, method]);
 
     const renderOperationType = (type: string, isReversed: boolean) => {
         if (type.includes('REVERSO')) {
@@ -209,6 +217,32 @@ export default function KardexIndex({ entries, branches, selectedProduct, filter
                 <span className="font-mono text-xs font-medium text-muted-foreground">
                     {row.original.sequence_number}
                 </span>
+            ),
+        },
+        {
+            id: 'branch',
+            accessorFn: row => row.branch?.name || '',
+            header: ({ column }) => (
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+                    className="-ml-3 h-8 text-xs font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+                >
+                    <span>Sucursal</span>
+                    {column.getIsSorted() === "desc" ? (
+                        <ArrowDown className="ml-1.5 h-3.5 w-3.5 text-primary" />
+                    ) : column.getIsSorted() === "asc" ? (
+                        <ArrowUp className="ml-1.5 h-3.5 w-3.5 text-primary" />
+                    ) : (
+                        <ArrowUpDown className="ml-1.5 h-3 w-3 opacity-40 hover:opacity-100" />
+                    )}
+                </Button>
+            ),
+            cell: ({ row }) => (
+                <Badge variant="outline" className="text-[11px] font-medium border-primary/30 bg-primary/5 text-foreground">
+                    {row.original.branch?.name || 'Central'}
+                </Badge>
             ),
         },
         {
@@ -296,53 +330,130 @@ export default function KardexIndex({ entries, branches, selectedProduct, filter
         },
         {
             id: 'input_group',
-            accessorFn: row => Number(row.input_quantity || 0),
+            accessorFn: row => Number((method === 'PEPS' ? row.fifo_input_quantity : row.input_quantity) || 0),
             header: () => (
-                <div className="text-center font-bold text-xs uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                    Entradas (Cant / CU / Total)
+                <div className="flex flex-col gap-1 w-full min-w-[220px]">
+                    <div className="flex items-center justify-center gap-1 font-bold text-xs uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                        <ArrowDownRight className="h-3.5 w-3.5" />
+                        <span>Entradas</span>
+                    </div>
+                    <div className="grid grid-cols-3 text-[10px] text-muted-foreground font-semibold px-2 py-0.5 bg-emerald-500/10 dark:bg-emerald-500/20 rounded">
+                        <span className="text-right">Cant.</span>
+                        <span className="text-right">C.U.</span>
+                        <span className="text-right">Total</span>
+                    </div>
                 </div>
             ),
-            cell: ({ row }) => (
-                <div className="grid grid-cols-3 text-right text-xs gap-1 bg-emerald-500/5 px-2 py-1.5 rounded">
-                    <span className="font-medium text-emerald-600 dark:text-emerald-400">{formatQty(row.original.input_quantity)}</span>
-                    <span className="text-muted-foreground">{formatCurrency(row.original.input_unit_cost)}</span>
-                    <span className="font-medium text-foreground">{formatCurrency(row.original.input_total_cost)}</span>
-                </div>
-            ),
+            cell: ({ row }) => {
+                const isPeps = method === 'PEPS';
+                const qty = Number((isPeps ? row.original.fifo_input_quantity : row.original.input_quantity) || 0);
+                const unitCost = isPeps ? row.original.fifo_input_unit_cost : row.original.input_unit_cost;
+                const totalCost = isPeps ? row.original.fifo_input_total_cost : row.original.input_total_cost;
+
+                if (qty <= 0) {
+                    return (
+                        <div className="min-w-[220px] text-center text-xs text-muted-foreground/30 py-1.5 font-mono select-none">
+                            —
+                        </div>
+                    );
+                }
+                return (
+                    <div className="min-w-[220px] grid grid-cols-3 text-right text-xs gap-1.5 bg-emerald-500/10 dark:bg-emerald-500/15 border border-emerald-500/20 px-2.5 py-1.5 rounded-lg whitespace-nowrap font-mono items-center">
+                        <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                            +{formatQty(qty)}
+                        </span>
+                        <span className="text-muted-foreground text-[11px]">
+                            {formatCurrency(unitCost)}
+                        </span>
+                        <span className="font-bold text-foreground">
+                            {formatCurrency(totalCost)}
+                        </span>
+                    </div>
+                );
+            },
         },
         {
             id: 'output_group',
-            accessorFn: row => Number(row.output_quantity || 0),
+            accessorFn: row => Number((method === 'PEPS' ? row.fifo_output_quantity : row.output_quantity) || 0),
             header: () => (
-                <div className="text-center font-bold text-xs uppercase tracking-wider text-orange-600 dark:text-orange-400">
-                    Salidas (Cant / CU / Total)
+                <div className="flex flex-col gap-1 w-full min-w-[220px]">
+                    <div className="flex items-center justify-center gap-1 font-bold text-xs uppercase tracking-wider text-orange-600 dark:text-orange-400">
+                        <ArrowUpRight className="h-3.5 w-3.5" />
+                        <span>Salidas</span>
+                    </div>
+                    <div className="grid grid-cols-3 text-[10px] text-muted-foreground font-semibold px-2 py-0.5 bg-orange-500/10 dark:bg-orange-500/20 rounded">
+                        <span className="text-right">Cant.</span>
+                        <span className="text-right">{method === 'PEPS' ? 'C.U. PEPS' : 'C.U.'}</span>
+                        <span className="text-right">Total</span>
+                    </div>
                 </div>
             ),
-            cell: ({ row }) => (
-                <div className="grid grid-cols-3 text-right text-xs gap-1 bg-orange-500/5 px-2 py-1.5 rounded">
-                    <span className="font-medium text-orange-600 dark:text-orange-400">{formatQty(row.original.output_quantity)}</span>
-                    <span className="text-muted-foreground">{formatCurrency(row.original.output_unit_cost)}</span>
-                    <span className="font-medium text-foreground">{formatCurrency(row.original.output_total_cost)}</span>
-                </div>
-            ),
+            cell: ({ row }) => {
+                const isPeps = method === 'PEPS';
+                const qty = Number((isPeps ? row.original.fifo_output_quantity : row.original.output_quantity) || 0);
+                const unitCost = isPeps ? row.original.fifo_output_unit_cost : row.original.output_unit_cost;
+                const totalCost = isPeps ? row.original.fifo_output_total_cost : row.original.output_total_cost;
+
+                if (qty <= 0) {
+                    return (
+                        <div className="min-w-[220px] text-center text-xs text-muted-foreground/30 py-1.5 font-mono select-none">
+                            —
+                        </div>
+                    );
+                }
+                return (
+                    <div className="min-w-[220px] grid grid-cols-3 text-right text-xs gap-1.5 bg-orange-500/10 dark:bg-orange-500/15 border border-orange-500/20 px-2.5 py-1.5 rounded-lg whitespace-nowrap font-mono items-center">
+                        <span className="font-semibold text-orange-600 dark:text-orange-400">
+                            -{formatQty(qty)}
+                        </span>
+                        <span className="text-muted-foreground text-[11px]">
+                            {formatCurrency(unitCost)}
+                        </span>
+                        <span className="font-bold text-foreground">
+                            {formatCurrency(totalCost)}
+                        </span>
+                    </div>
+                );
+            },
         },
         {
             id: 'balance_group',
-            accessorFn: row => Number(row.balance_quantity || 0),
+            accessorFn: row => Number((method === 'PEPS' ? row.fifo_balance_quantity : row.balance_quantity) || 0),
             header: () => (
-                <div className="text-center font-bold text-xs uppercase tracking-wider text-blue-600 dark:text-blue-400">
-                    Saldos (Cant / CUP / Total)
+                <div className="flex flex-col gap-1 w-full min-w-[220px]">
+                    <div className="flex items-center justify-center gap-1 font-bold text-xs uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                        <Layers className="h-3.5 w-3.5" />
+                        <span>Saldos</span>
+                    </div>
+                    <div className="grid grid-cols-3 text-[10px] text-muted-foreground font-semibold px-2 py-0.5 bg-blue-500/10 dark:bg-blue-500/20 rounded">
+                        <span className="text-right">Cant.</span>
+                        <span className="text-right">{method === 'PEPS' ? 'C.U. PEPS' : 'C.U.P.'}</span>
+                        <span className="text-right">Total</span>
+                    </div>
                 </div>
             ),
-            cell: ({ row }) => (
-                <div className="grid grid-cols-3 text-right text-xs gap-1 bg-blue-500/5 px-2 py-1.5 rounded">
-                    <span className="font-bold text-blue-600 dark:text-blue-400">{formatQty(row.original.balance_quantity)}</span>
-                    <span className="text-muted-foreground">{formatCurrency(row.original.balance_unit_cost)}</span>
-                    <span className="font-medium text-foreground">{formatCurrency(row.original.balance_total_cost)}</span>
-                </div>
-            ),
+            cell: ({ row }) => {
+                const isPeps = method === 'PEPS';
+                const qty = Number((isPeps ? row.original.fifo_balance_quantity : row.original.balance_quantity) || 0);
+                const unitCost = isPeps ? row.original.fifo_balance_unit_cost : row.original.balance_unit_cost;
+                const totalCost = isPeps ? row.original.fifo_balance_total_cost : row.original.balance_total_cost;
+
+                return (
+                    <div className="min-w-[220px] grid grid-cols-3 text-right text-xs gap-1.5 bg-blue-500/10 dark:bg-blue-500/15 border border-blue-500/20 px-2.5 py-1.5 rounded-lg whitespace-nowrap font-mono items-center">
+                        <span className="font-bold text-blue-600 dark:text-blue-400">
+                            {formatQty(qty)}
+                        </span>
+                        <span className="text-muted-foreground font-medium text-[11px]">
+                            {formatCurrency(unitCost)}
+                        </span>
+                        <span className="font-bold text-foreground">
+                            {formatCurrency(totalCost)}
+                        </span>
+                    </div>
+                );
+            },
         },
-    ], []);
+    ], [method]);
 
     const table = useReactTable({
         data: kardexData,
@@ -380,7 +491,38 @@ export default function KardexIndex({ entries, branches, selectedProduct, filter
                         </p>
                     </div>
 
-                    <div className="ml-auto">
+                    <div className="ml-auto flex items-center gap-2">
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" size="sm" className="h-9 gap-1.5 text-xs font-medium border-primary/30 hover:border-primary/50 bg-card text-foreground">
+                                    <Download className="h-3.5 w-3.5 text-primary" />
+                                    <span>Exportar</span>
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-[260px] bg-popover text-popover-foreground border-border shadow-md">
+                                <DropdownMenuLabel className="text-xs font-semibold">Reportes Oficiales SUNAT</DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem asChild className="text-xs cursor-pointer p-2.5 focus:bg-accent">
+                                    <a href={`/kardex/export/excel?${exportQueryString}`} className="flex items-start gap-2.5 w-full">
+                                        <FileSpreadsheet className="h-4 w-4 text-emerald-600 mt-0.5" />
+                                        <div>
+                                            <div className="font-semibold text-foreground">Formato 13.1 (.xlsx)</div>
+                                            <div className="text-[11px] text-muted-foreground">Kardex valorizado detallado Excel</div>
+                                        </div>
+                                    </a>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem asChild className="text-xs cursor-pointer p-2.5 focus:bg-accent">
+                                    <a href={`/kardex/export/ple?${exportQueryString}`} className="flex items-start gap-2.5 w-full">
+                                        <FileText className="h-4 w-4 text-blue-600 mt-0.5" />
+                                        <div>
+                                            <div className="font-semibold text-foreground">Libro PLE 13.1 (.txt)</div>
+                                            <div className="text-[11px] text-muted-foreground">Estructura oficial para validador SUNAT</div>
+                                        </div>
+                                    </a>
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button variant="outline" size="sm" className="h-9 gap-1.5 text-xs font-medium">
@@ -411,103 +553,47 @@ export default function KardexIndex({ entries, branches, selectedProduct, filter
 
                 <div className="bg-card text-card-foreground p-4 rounded-xl border border-border shadow-xs flex flex-col gap-3">
                     <form onSubmit={handleFilter} className="flex flex-wrap gap-2.5 items-center">
-                        <div className="relative min-w-[180px] flex-1">
+                        <div className="relative min-w-[280px] flex-1">
                             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                             <Input
                                 type="search"
-                                placeholder="Buscar por usuario o referencia..."
-                                className="pl-8 h-9 text-xs bg-background border-input"
+                                placeholder="Buscar por repuesto, código, referencia, documento o usuario..."
+                                className="pl-8 h-9 text-xs bg-background border-input w-full"
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                             />
                         </div>
 
-                        <div className="w-[180px]">
-                            <Select value={branchId} onValueChange={(val) => setBranchId(val)}>
-                                <SelectTrigger className="h-9 text-xs bg-background border-input">
-                                    <SelectValue placeholder="Todas las sucursales" />
+                        {canSeeAllBranches && (
+                            <div className="w-[190px]">
+                                <Select value={branchId} onValueChange={(val) => setBranchId(val)}>
+                                    <SelectTrigger className="h-9 text-xs bg-background border-input">
+                                        <SelectValue placeholder="Todas las sucursales" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="ALL">Todas las sucursales</SelectItem>
+                                        {branches.map(b => (
+                                            <SelectItem key={b.id} value={b.id.toString()}>{b.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
+
+                        <div className="w-[190px]">
+                            <Select value={method} onValueChange={handleMethodChange}>
+                                <SelectTrigger className="h-9 text-xs bg-background border-input font-medium">
+                                    <SelectValue placeholder="Método" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="ALL">Todas las sucursales</SelectItem>
-                                    {branches.map(b => (
-                                        <SelectItem key={b.id} value={b.id.toString()}>{b.name}</SelectItem>
-                                    ))}
+                                    <SelectItem value="AVERAGE" className="text-xs font-medium">
+                                        Promedio Ponderado
+                                    </SelectItem>
+                                    <SelectItem value="PEPS" className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                                        PEPS / FIFO (SUNAT)
+                                    </SelectItem>
                                 </SelectContent>
                             </Select>
-                        </div>
-
-                        <div className="flex-1 min-w-[220px]">
-                            <Popover open={openProductCombo} onOpenChange={setOpenProductCombo}>
-                                <PopoverTrigger asChild>
-                                    <Button
-                                        variant="outline"
-                                        role="combobox"
-                                        aria-expanded={openProductCombo}
-                                        className="w-full h-9 justify-between font-normal text-xs bg-background border-input"
-                                    >
-                                        <span className="truncate mr-2">
-                                            {displayProductName}
-                                        </span>
-                                        {productId ? (
-                                            <X 
-                                                className="ml-2 h-4 w-4 shrink-0 opacity-50 hover:opacity-100" 
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setProductId('');
-                                                    setDisplayProductName('Todos los productos');
-                                                }}
-                                            />
-                                        ) : (
-                                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                        )}
-                                    </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-[360px] p-0 bg-popover text-popover-foreground border-border" align="start">
-                                    <Command shouldFilter={false}>
-                                        <CommandInput 
-                                            placeholder="Buscar repuesto..." 
-                                            value={searchProductQuery}
-                                            onValueChange={setSearchProductQuery}
-                                            className="h-9 text-xs"
-                                        />
-                                        <CommandList>
-                                            {isSearchingProduct && <CommandEmpty>Buscando...</CommandEmpty>}
-                                            {!isSearchingProduct && productResults.length === 0 && searchProductQuery.length >= 2 && (
-                                                <CommandEmpty>No se encontraron productos.</CommandEmpty>
-                                            )}
-                                            {!isSearchingProduct && searchProductQuery.length < 2 && (
-                                                <div className="py-6 text-center text-xs text-muted-foreground">
-                                                    Escribe al menos 2 caracteres...
-                                                </div>
-                                            )}
-                                            <CommandGroup>
-                                                {productResults.map((product) => {
-                                                    const totalStock = product.inventories?.reduce((acc: number, inv: any) => acc + Number(inv.quantity), 0) || 0;
-                                                    const sku = product.primary_reference || product.internal_code || 'Sin SKU';
-                                                    
-                                                    return (
-                                                        <CommandItem
-                                                            key={product.id}
-                                                            value={product.id.toString()}
-                                                            onSelect={() => {
-                                                                setProductId(product.id.toString());
-                                                                setDisplayProductName(`${sku} - ${product.name}`);
-                                                                setOpenProductCombo(false);
-                                                            }}
-                                                            className="flex flex-col items-start py-2 cursor-pointer"
-                                                        >
-                                                            <div className="font-medium text-xs">{product.name}</div>
-                                                            <div className="text-[11px] text-muted-foreground mt-0.5">
-                                                                SKU: {sku} | Stock: {totalStock}
-                                                            </div>
-                                                        </CommandItem>
-                                                    );
-                                                })}
-                                            </CommandGroup>
-                                        </CommandList>
-                                    </Command>
-                                </PopoverContent>
-                            </Popover>
                         </div>
 
                         <div className="flex items-center gap-1.5 bg-muted/40 border border-border px-2 py-0.5 rounded-lg text-xs">
@@ -532,7 +618,7 @@ export default function KardexIndex({ entries, branches, selectedProduct, filter
                             Filtrar
                         </Button>
 
-                        {(branchId !== 'ALL' || productId || search || dateFrom || dateTo) && (
+                        {((canSeeAllBranches && branchId !== 'ALL') || search || dateFrom || dateTo || method !== 'AVERAGE') && (
                             <Button type="button" variant="ghost" size="sm" onClick={clearFilters} className="h-9 gap-1 text-xs text-muted-foreground hover:text-foreground">
                                 <RotateCcw className="h-3.5 w-3.5" /> Limpiar
                             </Button>
@@ -540,9 +626,29 @@ export default function KardexIndex({ entries, branches, selectedProduct, filter
                     </form>
                 </div>
 
+                {method === 'PEPS' && (
+                    <div className="bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 px-4 py-3 rounded-xl flex items-start gap-3 text-xs shadow-xs">
+                        <div className="p-1.5 bg-amber-500/20 rounded-md text-amber-600 dark:text-amber-400 mt-0.5">
+                            <Layers className="h-4 w-4" />
+                        </div>
+                        <div className="flex-1">
+                            <div className="font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-2">
+                                <span>Modo Simulación PEPS / FIFO Activo (Auditoría Tributaria SUNAT)</span>
+                                <Badge variant="outline" className="border-amber-500/40 text-amber-700 dark:text-amber-300 bg-amber-500/10 text-[10px] h-5">
+                                    Proyección en Memoria
+                                </Badge>
+                            </div>
+                            <p className="mt-0.5 text-amber-800/90 dark:text-amber-300/90 leading-relaxed text-[11px]">
+                                Las salidas y los saldos están siendo valorizados bajo el método <strong>Primeras Entradas, Primeras Salidas</strong> capa por capa en orden cronológico.
+                                Este cálculo es una proyección analítica en tiempo de ejecución y <strong>no modifica</strong> el costo promedio transaccional en la base de datos ni altera las operaciones diarias.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 <div className="rounded-xl border border-border bg-card text-card-foreground shadow-xs overflow-hidden">
                     <div className="overflow-x-auto">
-                        <table className="w-full text-sm text-left border-collapse">
+                        <table className="w-full min-w-[1150px] text-sm text-left border-collapse">
                             <thead className="bg-muted/40 border-b border-border">
                                 {table.getHeaderGroups().map((headerGroup) => (
                                     <tr key={headerGroup.id}>

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Lot;
 use App\Models\Transfer;
 use App\Models\TransferShipment;
 use App\Models\TransferShipmentLine;
@@ -58,13 +59,8 @@ class TransferShipmentController extends Controller
                     'quantity' => $line->requested_quantity,
                 ]);
 
-                // Actualizar la línea de transferencia
-                $line->update([
-                    'shipped_quantity' => $line->requested_quantity,
-                ]);
-
                 // Registrar salida en Kardex (Sucursal origen)
-                $kardexService->recordExit([
+                $kardexEntry = $kardexService->recordExit([
                     'branch_id' => $transfer->source_branch_id,
                     'product_id' => $line->product_id,
                     'quantity' => $line->requested_quantity,
@@ -72,6 +68,40 @@ class TransferShipmentController extends Controller
                     'reference' => 'TRASLADO: '.$transfer->transfer_number,
                     'user_id' => $user->id,
                 ]);
+
+                // Actualizar la línea de transferencia con cantidad despachada y costo unitario congelado de origen
+                $unitCost = (float) $kardexEntry->output_unit_cost;
+                $line->update([
+                    'shipped_quantity' => $line->requested_quantity,
+                    'unit_cost' => $unitCost,
+                ]);
+
+                // Descontar lotes en la sucursal de origen (FIFO)
+                $remainingToDeduct = (float) $line->requested_quantity;
+                $lots = Lot::where('branch_id', $transfer->source_branch_id)
+                    ->where('product_id', $line->product_id)
+                    ->where('current_quantity', '>', 0)
+                    ->orderBy('created_at', 'asc')
+                    ->lockForUpdate()
+                    ->get();
+
+                foreach ($lots as $lot) {
+                    if ($remainingToDeduct <= 0) {
+                        break;
+                    }
+
+                    $availableInLot = (float) $lot->current_quantity;
+                    $toDeduct = min($availableInLot, $remainingToDeduct);
+
+                    $lot->current_quantity = $availableInLot - $toDeduct;
+                    if ($lot->current_quantity <= 0.000001) {
+                        $lot->current_quantity = 0;
+                        $lot->status = 'DEPLETED';
+                    }
+                    $lot->save();
+
+                    $remainingToDeduct -= $toDeduct;
+                }
             }
 
             // Cambiar estado de la transferencia

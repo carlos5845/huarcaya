@@ -10,6 +10,7 @@ use App\Http\Controllers\CustomerReturnController;
 use App\Http\Controllers\InventoryAdjustmentController;
 use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\KardexController;
+use App\Http\Controllers\KardexReportController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProductImportController;
@@ -230,7 +231,8 @@ Route::middleware(['auth'])->group(function () {
     });
     Route::middleware(['role_or_permission:Super Admin|view_kardex'])->group(function () {
         Route::get('kardex', [KardexController::class, 'index'])->name('kardex.index');
-
+        Route::get('kardex/export/excel', [KardexReportController::class, 'exportExcel'])->name('kardex.export.excel');
+        Route::get('kardex/export/ple', [KardexReportController::class, 'exportPle'])->name('kardex.export.ple');
     });
 
     Route::middleware(['role_or_permission:Super Admin|view_inventory|view_inventory_general'])->group(function () {
