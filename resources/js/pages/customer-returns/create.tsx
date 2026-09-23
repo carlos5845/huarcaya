@@ -18,6 +18,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { getLocalDateString } from '@/lib/utils';
 import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -197,7 +198,7 @@ export default function CustomerReturnCreate({
 
     const { data, setData, processing, errors } = useForm({
         sale_id: sale.id,
-        operation_date: new Date().toISOString().split('T')[0],
+        operation_date: getLocalDateString(),
         notes: '',
         lines: sale.lines.map((line: any) => {
             const originalQty = parseFloat(line.quantity);

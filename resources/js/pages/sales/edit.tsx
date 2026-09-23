@@ -19,7 +19,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { cn, normalizeSearch } from '@/lib/utils';
+import { cn, normalizeSearch, getLocalDateString } from '@/lib/utils';
 import { Head, useForm, Link, usePage, router } from '@inertiajs/react';
 import { useState, useEffect } from 'react';
 import InputError from '@/components/input-error';
@@ -80,8 +80,8 @@ export default function SaleEdit({
         sale_type: sale.sale_type || 'BOLETA',
         payment_type: sale.payment_type || 'CASH',
         payment_method_id: sale.payment_method_id ? sale.payment_method_id.toString() : (payment_methods && payment_methods.length > 0 ? payment_methods[0].id.toString() : ''),
-        operation_date: sale.operation_date ? sale.operation_date.split(' ')[0] : new Date().toISOString().split('T')[0],
-        due_date: sale.due_date ? sale.due_date.split('T')[0].split(' ')[0] : new Date().toISOString().split('T')[0],
+        operation_date: sale.operation_date ? sale.operation_date.split(' ')[0] : getLocalDateString(),
+        due_date: sale.due_date ? sale.due_date.split('T')[0].split(' ')[0] : getLocalDateString(),
         initial_payment_amount: sale.initial_payment_amount ? Number(sale.initial_payment_amount).toString() : '',
         amount_received: sale.payment_type === 'CASH' && Number(sale.total_amount) > 0 ? Number(sale.total_amount).toFixed(2) : '',
         external_document_series: sale.external_document_series || '',

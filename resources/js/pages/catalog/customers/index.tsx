@@ -29,8 +29,12 @@ import {
     Eye,
     FileText,
     Sparkles,
-    Loader2
+    Loader2,
+    WifiOff
 } from 'lucide-react';
+import { useNetworkStatus } from '@/hooks/use-network-status';
+import { useMergedCustomers } from '@/hooks/use-merged-customers';
+import { toast } from 'sonner';
 import { normalizeSearch, cn } from '@/lib/utils';
 import InputError from '@/components/input-error';
 import { Badge } from '@/components/ui/badge';
@@ -70,6 +74,9 @@ const columnLabels: Record<string, string> = {
 };
 
 export default function CustomersIndex({ customers }: { customers: any[] }) {
+    const { isOnline } = useNetworkStatus();
+    const { mergedCustomers, pendingOfflineCount } = useMergedCustomers(customers);
+
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
     const [isOpen, setIsOpen] = useState(false);
@@ -108,14 +115,14 @@ export default function CustomersIndex({ customers }: { customers: any[] }) {
     const docConfig = getDocumentConfig(data.document_type);
 
     const counts = useMemo(() => {
-        const total = (customers || []).length;
-        const active = (customers || []).filter(c => c.status === 'ACTIVE').length;
+        const total = (mergedCustomers || []).length;
+        const active = (mergedCustomers || []).filter(c => c.status === 'ACTIVE').length;
         const inactive = total - active;
-        return { total, active, inactive };
-    }, [customers]);
+        return { total, active, inactive, pendingOffline: pendingOfflineCount };
+    }, [mergedCustomers, pendingOfflineCount]);
 
     const filteredCustomers = useMemo(() => {
-        return (customers || []).filter(c => {
+        return (mergedCustomers || []).filter(c => {
             const matchesSearch = 
                 normalizeSearch(c.legal_name).includes(normalizeSearch(search)) ||
                 (c.document_number && c.document_number.includes(search)) ||
@@ -127,7 +134,7 @@ export default function CustomersIndex({ customers }: { customers: any[] }) {
 
             return matchesSearch && matchesStatus;
         });
-    }, [customers, search, statusFilter]);
+    }, [mergedCustomers, search, statusFilter]);
 
     const openCreate = () => {
         setEditingId(null);
@@ -165,18 +172,40 @@ export default function CustomersIndex({ customers }: { customers: any[] }) {
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
 
+        if (!isOnline) {
+            toast.warning('Modo sin conexión', {
+                description: 'La creación o edición de clientes desde este módulo requiere conexión activa al servidor.',
+            });
+            return;
+        }
+
         if (editingId) {
             put(`/customers/${editingId}`, {
-                onSuccess: () => setIsOpen(false),
+                onSuccess: () => {
+                    setIsOpen(false);
+                    toast.success('Cliente actualizado correctamente');
+                },
+                onError: () => toast.error('Error al actualizar cliente'),
             });
         } else {
             post('/customers', {
-                onSuccess: () => setIsOpen(false),
+                onSuccess: () => {
+                    setIsOpen(false);
+                    toast.success('Cliente registrado correctamente');
+                },
+                onError: () => toast.error('Error al registrar cliente'),
             });
         }
     };
 
     const toggleStatus = (id: number) => {
+        if (!isOnline) {
+            toast.warning('Modo sin conexión', {
+                description: 'El cambio de estado de clientes requiere conexión activa al servidor.',
+            });
+            return;
+        }
+
         if (confirm('¿Estás seguro de cambiar el estado de este cliente?')) {
             router.delete(`/customers/${id}`);
         }
@@ -327,6 +356,20 @@ export default function CustomersIndex({ customers }: { customers: any[] }) {
                 </div>
             ),
             cell: ({ row }) => {
+                if (row.original.is_offline) {
+                    return (
+                        <div className="flex justify-center">
+                            <Badge 
+                                variant="outline"
+                                className="text-[11px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 gap-1"
+                            >
+                                <WifiOff className="h-3 w-3" />
+                                Pendiente
+                            </Badge>
+                        </div>
+                    );
+                }
+
                 const isActive = row.original.status === 'ACTIVE';
                 return (
                     <div className="flex justify-center">
@@ -356,6 +399,17 @@ export default function CustomersIndex({ customers }: { customers: any[] }) {
             ),
             cell: ({ row }) => {
                 const c = row.original;
+
+                if (c.is_offline) {
+                    return (
+                        <div className="flex justify-end items-center">
+                            <Badge variant="secondary" className="text-[10px] text-muted-foreground">
+                                Creado offline
+                            </Badge>
+                        </div>
+                    );
+                }
+
                 return (
                     <div className="flex justify-end gap-1">
                         <Button 
@@ -457,6 +511,18 @@ export default function CustomersIndex({ customers }: { customers: any[] }) {
                     </div>
                 </div>
 
+                {!isOnline && (
+                    <div className="flex items-center gap-3 rounded-lg border border-amber-500/25 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-300">
+                        <WifiOff className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+                        <div>
+                            <p className="font-semibold text-xs sm:text-sm">Estás trabajando en modo sin conexión</p>
+                            <p className="text-[11px] sm:text-xs text-amber-700 dark:text-amber-400">
+                                La creación, edición y administración de clientes en el catálogo requiere conexión activa con el servidor.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 {/* Filters Row: Search & Status Tabs */}
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
                     <div className="relative flex-1 max-w-sm">
@@ -545,6 +611,14 @@ export default function CustomersIndex({ customers }: { customers: any[] }) {
                         </DialogHeader>
 
                         <form onSubmit={submit} className="flex-1 overflow-y-auto p-6 space-y-6">
+                            {!isOnline && (
+                                <div className="flex items-center gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-800 dark:text-amber-300 text-xs">
+                                    <WifiOff className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                                    <span>
+                                        <strong>Modo sin conexión:</strong> Para guardar o modificar clientes en el catálogo general se requiere conexión activa con el servidor.
+                                    </span>
+                                </div>
+                            )}
                             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                                 
                                 {/* Columna Izquierda: Formulario (7 columnas) */}
@@ -835,14 +909,14 @@ export default function CustomersIndex({ customers }: { customers: any[] }) {
                                 <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>
                                     Cancelar
                                 </Button>
-                                <Button type="submit" disabled={processing}>
+                                <Button type="submit" disabled={processing || !isOnline}>
                                     {processing ? (
                                         <>
                                             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                                             <span>Guardando...</span>
                                         </>
                                     ) : (
-                                        <span>{editingId ? 'Actualizar Cliente' : 'Registrar Cliente'}</span>
+                                        <span>{isOnline ? (editingId ? 'Actualizar Cliente' : 'Registrar Cliente') : 'Conexión requerida'}</span>
                                     )}
                                 </Button>
                             </DialogFooter>

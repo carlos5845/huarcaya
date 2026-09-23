@@ -1,8 +1,8 @@
 <?php
 
+use App\Http\Controllers\Settings\CompanySettingsController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SecurityController;
-use App\Http\Controllers\Settings\CompanySettingsController;
 use Illuminate\Auth\Middleware\RequirePassword;
 use Illuminate\Support\Facades\Route;
 
@@ -27,7 +27,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('settings/security/sessions', [SecurityController::class, 'destroyBrowserSessions'])
         ->name('security.sessions.destroy');
 
-    Route::inertia('settings/appearance', 'settings/appearance')->name('appearance.edit');
+    Route::redirect('settings/appearance', '/settings/profile')->name('appearance.edit');
 
     Route::get('settings/company', [CompanySettingsController::class, 'edit'])->name('company.edit');
     Route::put('settings/company', [CompanySettingsController::class, 'update'])->name('company.update');

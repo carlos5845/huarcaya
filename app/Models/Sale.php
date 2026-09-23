@@ -32,7 +32,7 @@ class Sale extends Model
         'total_amount' => 'decimal:6',
         'initial_payment_amount' => 'decimal:6',
         'credit_amount' => 'decimal:6',
-        'due_date' => 'date',
+        'due_date' => 'date:Y-m-d',
         'created_offline' => 'boolean',
         'confirmed_at' => 'datetime',
         'cancelled_at' => 'datetime',

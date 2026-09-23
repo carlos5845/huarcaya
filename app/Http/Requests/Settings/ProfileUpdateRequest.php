@@ -18,10 +18,10 @@ class ProfileUpdateRequest extends FormRequest
     public function rules(): array
     {
         $rules = $this->profileRules($this->user()->id);
-        
+
         // El usuario no debe poder modificar su DNI desde el perfil
         unset($rules['dni']);
-        
+
         return $rules;
     }
 }

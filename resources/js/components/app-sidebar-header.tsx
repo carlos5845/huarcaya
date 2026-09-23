@@ -2,6 +2,8 @@ import { Breadcrumbs } from '@/components/breadcrumbs';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import type { BreadcrumbItem as BreadcrumbItemType } from '@/types';
 import { NotificationsMenu } from '@/components/notifications-menu';
+import { NetworkStatusBadge } from '@/components/network-status-badge';
+import { ThemeToggle } from '@/components/theme-toggle';
 
 export function AppSidebarHeader({
     breadcrumbs = [],
@@ -15,7 +17,9 @@ export function AppSidebarHeader({
                 <Breadcrumbs breadcrumbs={breadcrumbs} />
             </div>
             
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 sm:gap-3">
+                <NetworkStatusBadge />
+                <ThemeToggle />
                 <NotificationsMenu />
             </div>
         </header>

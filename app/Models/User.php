@@ -33,8 +33,8 @@ use Spatie\Permission\Traits\HasRoles;
  */
 #[Fillable([
     'uuid', 'company_id', 'default_branch_id', 'name',
-        'last_name',
-        'mother_last_name', 'username', 'dni',
+    'last_name',
+    'mother_last_name', 'username', 'dni',
     'phone', 'email', 'password', 'status', 'must_change_password',
     'last_login_at', 'dni_ubigeo', 'dni_expiration_date',
 ])]

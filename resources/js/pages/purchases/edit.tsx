@@ -35,7 +35,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from '@/components/ui/command';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import AppLayout from '@/layouts/app-layout';
-import { cn, normalizeSearch } from '@/lib/utils';
+import { cn, normalizeSearch, getLocalDateString } from '@/lib/utils';
 import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -70,7 +70,7 @@ export default function PurchaseEdit({
         supplier_document_type: purchase.supplier_document_type || 'FACTURA',
         supplier_document_series: purchase.supplier_document_series || '',
         supplier_document_number: purchase.supplier_document_number || '',
-        document_date: purchase.document_date ? purchase.document_date.split('T')[0] : new Date().toISOString().split('T')[0],
+        document_date: purchase.document_date ? purchase.document_date.split('T')[0] : getLocalDateString(),
         tax_mode: initialTaxMode as 'INCLUDED' | 'PLUS_TAX' | 'EXEMPT',
         currency_code: purchase.currency_code || 'PEN',
         exchange_rate: Number(purchase.exchange_rate) || globalExchangeRate,

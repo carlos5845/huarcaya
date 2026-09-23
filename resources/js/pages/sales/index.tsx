@@ -20,7 +20,10 @@ import {
     ArrowDown, 
     RotateCcw,
     Calendar,
-    Pencil
+    Pencil,
+    WifiOff,
+    Clock,
+    Trash2
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -35,6 +38,9 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useMergedSales } from '@/hooks/use-merged-sales';
+import { OfflineSaleDetailDialog } from '@/components/offline-sale-detail-dialog';
+import type { LocalOfflineSale } from '@/lib/db';
 import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -63,6 +69,10 @@ export default function SalesIndex({ sales, filters, branches = [], isSuperAdmin
     const [dateTo, setDateTo] = useState(filters?.date_to || '');
     const [branchId, setBranchId] = useState(filters?.branch_id || '');
 
+    // Offline detail modal state
+    const [selectedOfflineSale, setSelectedOfflineSale] = useState<LocalOfflineSale | null>(null);
+    const [openOfflineDialog, setOpenOfflineDialog] = useState(false);
+
     // TanStack states
     const [sorting, setSorting] = useState<SortingState>([]);
     const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({
@@ -70,7 +80,8 @@ export default function SalesIndex({ sales, filters, branches = [], isSuperAdmin
         tax_amount: true,
     });
 
-    const salesData = useMemo(() => sales?.data || [], [sales?.data]);
+    const { mergedSales, pendingOfflineCount, pendingOfflineTotal, discardOfflineSale } = useMergedSales(sales, branchId);
+
 
     const applyFilters = () => {
         router.get('/sales', { 
@@ -389,7 +400,30 @@ export default function SalesIndex({ sales, filters, branches = [], isSuperAdmin
                 </div>
             ),
             cell: ({ row }) => {
+                const isOffline = row.original.is_offline;
                 const st = row.original.status;
+
+                if (isOffline) {
+                    if (st === 'DRAFT_LOCAL') {
+                        return (
+                            <div className="flex justify-center">
+                                <Badge variant="outline" className="text-[11px] bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 gap-1 font-medium">
+                                    <Clock className="h-3 w-3" />
+                                    Borrador Local
+                                </Badge>
+                            </div>
+                        );
+                    }
+                    return (
+                        <div className="flex justify-center">
+                            <Badge variant="outline" className="text-[11px] bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 gap-1 font-medium">
+                                <WifiOff className="h-3 w-3" />
+                                Pendiente Sincronizar
+                            </Badge>
+                        </div>
+                    );
+                }
+
                 if (st === 'DRAFT') {
                     return (
                         <div className="flex justify-center">
@@ -429,6 +463,44 @@ export default function SalesIndex({ sales, filters, branches = [], isSuperAdmin
             ),
             cell: ({ row }) => {
                 const p = row.original;
+
+                if (p.is_offline) {
+                    return (
+                        <div className="flex justify-end items-center gap-1.5">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                    setSelectedOfflineSale(p.raw_offline_data);
+                                    setOpenOfflineDialog(true);
+                                }}
+                                className="h-8 gap-1 text-xs font-medium text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-800 hover:bg-amber-50 dark:hover:bg-amber-950/40"
+                            >
+                                <Eye className="h-3.5 w-3.5" /> Ver Detalle
+                            </Button>
+                            {p.status === 'DRAFT_LOCAL' && (
+                                <Link href={`/sales/create?offline_uuid=${p.uuid}`}>
+                                    <Button variant="outline" size="sm" className="h-8 gap-1 text-xs font-medium text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-800 hover:bg-amber-50 dark:hover:bg-amber-950/40">
+                                        <Pencil className="h-3.5 w-3.5" /> Editar
+                                    </Button>
+                                </Link>
+                            )}
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                    if (confirm('¿Deseas descartar esta venta offline? Se cancelará el envío y se repondrá el inventario local.')) {
+                                        discardOfflineSale(p.uuid);
+                                    }
+                                }}
+                                className="h-8 gap-1 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                            >
+                                <Trash2 className="h-3.5 w-3.5" /> Descartar
+                            </Button>
+                        </div>
+                    );
+                }
+
                 return (
                     <div className="flex justify-end items-center gap-1.5">
                         <Link href={`/sales/${p.id}`}>
@@ -447,10 +519,10 @@ export default function SalesIndex({ sales, filters, branches = [], isSuperAdmin
                 );
             },
         },
-    ], []);
+    ], [discardOfflineSale]);
 
     const table = useReactTable({
-        data: salesData,
+        data: mergedSales,
         columns,
         state: {
             sorting,
@@ -489,6 +561,25 @@ export default function SalesIndex({ sales, filters, branches = [], isSuperAdmin
                         </Button>
                     </Link>
                 </div>
+
+                {/* Pending Offline Sales Summary Banner */}
+                {pendingOfflineCount > 0 && (
+                    <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-900 dark:text-amber-200 text-xs shadow-xs">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-lg bg-amber-200/70 dark:bg-amber-800/60 shrink-0">
+                                <WifiOff className="h-5 w-5 text-amber-700 dark:text-amber-300" />
+                            </div>
+                            <div>
+                                <p className="font-semibold text-sm">
+                                    {pendingOfflineCount} {pendingOfflineCount === 1 ? 'venta registrada en modo offline' : 'ventas registradas en modo offline'}
+                                </p>
+                                <p className="text-[11px] text-amber-700/90 dark:text-amber-300/90 mt-0.5">
+                                    Monto acumulado: <span className="font-bold font-mono">S/ {pendingOfflineTotal.toFixed(2)}</span>. El inventario local fue descontado preventivamente; se enviarán al servidor central al restablecerse la conexión.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Filter and Table Customization Bar */}
                 <div className="bg-card text-card-foreground border border-border rounded-xl p-4 shadow-xs space-y-3">
@@ -628,6 +719,13 @@ export default function SalesIndex({ sales, filters, branches = [], isSuperAdmin
                     </Table>
                 </div>
             </div>
+
+            <OfflineSaleDetailDialog
+                sale={selectedOfflineSale}
+                open={openOfflineDialog}
+                onOpenChange={setOpenOfflineDialog}
+                onDiscard={discardOfflineSale}
+            />
         </>
     );
 }

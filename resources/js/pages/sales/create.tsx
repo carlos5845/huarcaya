@@ -13,12 +13,19 @@ import {
     MapPin,
     CreditCard,
     Package,
-    Clock
+    Clock,
+    WifiOff,
+    CloudOff,
+    CheckCheck
 } from 'lucide-react';
+import { enqueueOfflineSale, searchLocalProducts, discardOfflineSale } from '@/services/sync-service';
+import { useNetworkStatus } from '@/hooks/use-network-status';
+import { db } from '@/lib/db';
+import { toast } from 'sonner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { cn, normalizeSearch } from '@/lib/utils';
+import { cn, normalizeSearch, getLocalDateString } from '@/lib/utils';
 import { Head, useForm, Link, usePage, router } from '@inertiajs/react';
 import { useState, useEffect } from 'react';
 import InputError from '@/components/input-error';
@@ -38,14 +45,37 @@ const breadcrumbs: BreadcrumbItem[] = [
 ];
 
 export default function SaleCreate({ customers, generic_customer_id, payment_methods }: { customers: any[], generic_customer_id: number, payment_methods: any[] }) {
+    const { isOnline } = useNetworkStatus();
     const defaultCustomer = generic_customer_id?.toString() || (customers.length > 0 ? customers[0].id.toString() : '');
 
     const { company_settings } = usePage<any>().props;
     const globalExchangeRate = company_settings?.exchange_rate ? parseFloat(company_settings.exchange_rate) : 3.80;
 
-    
+    const [customerList, setCustomerList] = useState<any[]>(customers || []);
     const [openCustomerCombobox, setOpenCustomerCombobox] = useState(false);
     const [openCustomerDialog, setOpenCustomerDialog] = useState(false);
+
+    // Merge locally cached or offline-registered customers from IndexedDB
+    useEffect(() => {
+        db.customers.toArray().then((localCustomers) => {
+            if (localCustomers && localCustomers.length > 0) {
+                setCustomerList((prev) => {
+                    const existingIds = new Set(prev.map(c => c.id.toString()));
+                    const toAdd = localCustomers
+                        .filter(c => !existingIds.has(c.id.toString()))
+                        .map(c => ({
+                            id: c.id,
+                            uuid: c.uuid,
+                            legal_name: c.legal_name,
+                            document_number: c.document_number,
+                            document_type: c.document_type,
+                            is_offline: c.is_offline || false,
+                        }));
+                    return toAdd.length > 0 ? [...toAdd, ...prev] : prev;
+                });
+            }
+        }).catch(err => console.warn('[IndexedDB] Error loading local customers:', err));
+    }, []);
 
     const customerForm = useForm({
         document_type: 'DNI',
@@ -54,13 +84,72 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
         status: 'ACTIVE',
     });
 
-    const submitCustomer = (e: React.FormEvent) => {
+    const submitCustomer = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        if (!customerForm.data.legal_name.trim()) {
+            customerForm.setError('legal_name', 'El nombre o razón social es obligatorio');
+            return;
+        }
+
+        if (!isOnline) {
+            // Mode Offline: register locally in IndexedDB and queue sync
+            const offlineUuid = crypto.randomUUID();
+            const tempId = `offline_${Date.now()}`;
+            const newCustomerItem = {
+                id: tempId,
+                uuid: offlineUuid,
+                document_type: customerForm.data.document_type,
+                document_number: customerForm.data.document_number.trim(),
+                legal_name: customerForm.data.legal_name.trim(),
+                phone: null,
+                email: null,
+                is_offline: true,
+            };
+
+            try {
+                await db.customers.put(newCustomerItem);
+
+                await db.syncQueue.add({
+                    uuid: offlineUuid,
+                    entity_type: 'Customer',
+                    operation_type: 'CREATE',
+                    payload: {
+                        uuid: offlineUuid,
+                        document_type: newCustomerItem.document_type,
+                        document_number: newCustomerItem.document_number,
+                        legal_name: newCustomerItem.legal_name,
+                    },
+                    status: 'PENDING',
+                    retry_count: 0,
+                    client_timestamp: new Date().toISOString(),
+                });
+
+                setCustomerList(prev => [newCustomerItem, ...prev]);
+                setData('customer_id', tempId);
+                setOpenCustomerDialog(false);
+                customerForm.reset();
+
+                toast.success('Cliente registrado en modo offline', {
+                    description: 'Se guardó en el dispositivo y se sincronizará automáticamente cuando vuelva internet.',
+                });
+            } catch (err: any) {
+                toast.error('Error al guardar cliente offline', {
+                    description: err.message || 'Error en IndexedDB',
+                });
+            }
+            return;
+        }
+
         customerForm.post('/customers', {
             preserveScroll: true,
             onSuccess: () => {
                 setOpenCustomerDialog(false);
                 customerForm.reset();
+                toast.success('Cliente registrado exitosamente');
+            },
+            onError: () => {
+                toast.error('No se pudo registrar el cliente. Verifica los datos.');
             },
         });
     };
@@ -70,8 +159,8 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
         sale_type: 'BOLETA',
         payment_type: 'CASH',
         payment_method_id: payment_methods && payment_methods.length > 0 ? payment_methods[0].id.toString() : '',
-        operation_date: new Date().toISOString().split('T')[0],
-        due_date: new Date().toISOString().split('T')[0],
+        operation_date: getLocalDateString(),
+        due_date: getLocalDateString(),
         initial_payment_amount: '',
         amount_received: '',
         external_document_series: '',
@@ -90,6 +179,38 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
             setData('exchange_rate', 1.0);
         }
     }, [data.currency_code]);
+
+    const [editingOfflineUuid, setEditingOfflineUuid] = useState<string | null>(null);
+
+    // Load offline draft if offline_uuid is present in query params
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const params = new URLSearchParams(window.location.search);
+        const offlineUuid = params.get('offline_uuid');
+        if (!offlineUuid) return;
+
+        db.offlineSales.where('uuid').equals(offlineUuid).first().then(async (sale) => {
+            if (sale) {
+                setData({
+                    ...data,
+                    customer_id: sale.customer_id.toString(),
+                    payment_type: sale.payment_type,
+                    operation_date: sale.operation_date,
+                    lines: sale.lines.map(l => ({
+                        product_id: l.product_id,
+                        product_name: l.product_name,
+                        internal_code: '-',
+                        quantity: l.quantity,
+                        unit_price: l.unit_price,
+                    })),
+                });
+                setEditingOfflineUuid(offlineUuid);
+                toast.info(`Borrador offline cargado: ${sale.sale_number}`);
+            }
+        }).catch(err => console.warn('[IndexedDB] Error loading offline draft:', err));
+    }, []);
+
+    const [offlineNotice, setOfflineNotice] = useState<string | null>(null);
 
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -112,8 +233,28 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
             return;
         }
 
-        const delayDebounceFn = setTimeout(() => {
+        const delayDebounceFn = setTimeout(async () => {
             setIsSearching(true);
+
+            if (!navigator.onLine) {
+                try {
+                    const localItems = await searchLocalProducts(searchQuery);
+                    setSearchResults(localItems.map(p => ({
+                        id: p.id,
+                        name: p.name,
+                        primary_reference: p.primary_reference,
+                        internal_code: p.barcode,
+                        suggested_price: p.sale_price,
+                        available_quantity: p.local_stock,
+                    })));
+                } catch {
+                    setSearchResults([]);
+                } finally {
+                    setIsSearching(false);
+                }
+                return;
+            }
+
             fetch(`/products/search?q=${encodeURIComponent(searchQuery)}`, {
                 headers: { 'Accept': 'application/json' }
             })
@@ -122,7 +263,24 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
                 setSearchResults(data);
                 setIsSearching(false);
             })
-            .catch(() => setIsSearching(false));
+            .catch(async () => {
+                // Fallback to offline IndexedDB
+                try {
+                    const localItems = await searchLocalProducts(searchQuery);
+                    setSearchResults(localItems.map(p => ({
+                        id: p.id,
+                        name: p.name,
+                        primary_reference: p.primary_reference,
+                        internal_code: p.barcode,
+                        suggested_price: p.sale_price,
+                        available_quantity: p.local_stock,
+                    })));
+                } catch {
+                    setSearchResults([]);
+                } finally {
+                    setIsSearching(false);
+                }
+            });
         }, 300);
 
         return () => clearTimeout(delayDebounceFn);
@@ -165,13 +323,13 @@ return;
         : total;
     const currencySymbol = data.currency_code === 'USD' ? '$' : 'S/';
 
-    const selectedCustomer = customers.find((s) => s.id.toString() === data.customer_id);
+    const selectedCustomer = customerList.find((s) => s.id.toString() === data.customer_id);
     const isGenericCustomer = data.customer_id === generic_customer_id.toString();
     const changeAmount = Math.max(0, (parseFloat(data.amount_received) || 0) - finalTotal);
     const initialPay = parseFloat(data.initial_payment_amount || '0');
     const debtAmount = Math.max(0, finalTotal - initialPay);
 
-    const handleFormSubmit = (chosenAction: 'CONFIRM' | 'DRAFT') => {
+    const handleFormSubmit = async (chosenAction: 'CONFIRM' | 'DRAFT') => {
         if (data.lines.length === 0) {
             alert('Debe agregar al menos un producto a la venta.');
             return;
@@ -180,6 +338,51 @@ return;
         if (data.payment_type === 'CREDIT' && isGenericCustomer) {
             alert('El Público en General solo puede comprar al contado. Seleccione o cree un cliente con RUC/DNI para ventas al crédito.');
             return;
+        }
+
+        if (!navigator.onLine) {
+            try {
+                if (editingOfflineUuid) {
+                    await discardOfflineSale(editingOfflineUuid);
+                    setEditingOfflineUuid(null);
+                }
+
+                const userBranchId = company_settings?.default_branch_id || 1;
+                const { tempSaleNumber } = await enqueueOfflineSale({
+                    customer_id: data.customer_id,
+                    customer_name: selectedCustomer?.legal_name || 'Cliente Venta',
+                    sale_type: data.sale_type,
+                    payment_type: data.payment_type as 'CASH' | 'CREDIT',
+                    payment_method_id: data.payment_method_id ? Number(data.payment_method_id) : null,
+                    operation_date: data.operation_date,
+                    due_date: data.due_date,
+                    initial_payment_amount: data.initial_payment_amount ? parseFloat(data.initial_payment_amount) : 0,
+                    notes: data.notes,
+                    tax_mode: data.tax_mode,
+                    currency_code: data.currency_code,
+                    exchange_rate: Number(data.exchange_rate),
+                    action: chosenAction,
+                    branch_id: userBranchId,
+                    lines: data.lines.map(l => ({
+                        product_id: l.product_id,
+                        product_name: l.product_name,
+                        internal_code: l.internal_code,
+                        quantity: l.quantity,
+                        unit_price: l.unit_price,
+                    })),
+                });
+
+                setData('lines', []);
+                setOfflineNotice(`¡Venta registrada en Modo Offline! Código temporal: ${tempSaleNumber}. Guardada en tu dispositivo y lista para sincronizarse.`);
+            } catch (err: any) {
+                alert(`Error guardando venta offline: ${err.message}`);
+            }
+            return;
+        }
+
+        if (editingOfflineUuid) {
+            await discardOfflineSale(editingOfflineUuid);
+            setEditingOfflineUuid(null);
         }
 
         router.post('/sales', {
@@ -204,6 +407,25 @@ return;
                             Nueva Venta
                         </span>
                     </div>
+
+                    {!isOnline && (
+                        <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs font-medium">
+                            <WifiOff className="h-4 w-4 shrink-0 text-amber-600" />
+                            <span>Modo Offline activo: Sin conexión a internet. La venta se guardará localmente y se sincronizará automáticamente cuando vuelva la red.</span>
+                        </div>
+                    )}
+
+                    {offlineNotice && (
+                        <div className="flex items-center justify-between gap-2 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 text-xs font-medium">
+                            <div className="flex items-center gap-2">
+                                <CheckCheck className="h-4 w-4 shrink-0 text-emerald-600" />
+                                <span>{offlineNotice}</span>
+                            </div>
+                            <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={() => setOfflineNotice(null)}>
+                                Cerrar
+                            </Button>
+                        </div>
+                    )}
 
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1">
                         <div className="flex items-center gap-4">
@@ -679,7 +901,7 @@ return;
                                                 >
                                                     <span className="truncate">
                                                         {data.customer_id
-                                                            ? customers.find((s) => s.id.toString() === data.customer_id)?.legal_name || 'Cliente desconocido'
+                                                            ? customerList.find((s) => s.id.toString() === data.customer_id)?.legal_name || 'Cliente desconocido'
                                                             : "Buscar cliente..."}
                                                     </span>
                                                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -691,10 +913,10 @@ return;
                                                     <CommandList>
                                                         <CommandEmpty>No se encontraron clientes.</CommandEmpty>
                                                         <CommandGroup>
-                                                            {customers.map((s) => (
+                                                            {customerList.map((s) => (
                                                                 <CommandItem
                                                                     key={s.id}
-                                                                    value={`${normalizeSearch(s.legal_name)} ${s.document_number}`}
+                                                                    value={`${normalizeSearch(s.legal_name)} ${s.document_number || ''}`}
                                                                     onSelect={() => {
                                                                         setData('customer_id', s.id.toString());
                                                                         setOpenCustomerCombobox(false);
@@ -707,7 +929,14 @@ return;
                                                                         )}
                                                                     />
                                                                     <div className="flex-1 min-w-0">
-                                                                        <div className="truncate font-medium">{s.legal_name}</div>
+                                                                        <div className="truncate font-medium flex items-center gap-1.5">
+                                                                            <span>{s.legal_name}</span>
+                                                                            {s.is_offline && (
+                                                                                <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 px-1 py-0.2 rounded font-medium">
+                                                                                    Offline
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
                                                                         <div className="text-xs text-muted-foreground">{s.document_number ? `(${s.document_number})` : ''}</div>
                                                                     </div>
                                                                 </CommandItem>
@@ -899,6 +1128,17 @@ return;
                         </DialogDescription>
                     </DialogHeader>
                     <form onSubmit={submitCustomer} className="space-y-4">
+                        {!isOnline && (
+                            <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-800 dark:text-amber-300 text-xs">
+                                <WifiOff className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                                <div>
+                                    <p className="font-semibold">Modo sin conexión a internet</p>
+                                    <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
+                                        El cliente se guardará de forma local en este dispositivo para la venta actual y se sincronizará automáticamente con el servidor cuando vuelva la conexión.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label htmlFor="c_doc_type">Tipo de Documento</Label>

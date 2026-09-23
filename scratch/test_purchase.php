@@ -1,13 +1,15 @@
 <?php
 
-use App\Models\User;
-use App\Models\Supplier;
+use App\Models\Branch;
+use App\Models\Lot;
 use App\Models\Product;
 use App\Models\Purchase;
 use App\Models\PurchaseLine;
+use App\Models\Supplier;
+use App\Models\User;
 use App\Services\KardexService;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 // Encontrar un usuario para el contexto
 $user = User::first();
@@ -28,15 +30,15 @@ $supplier = Supplier::firstOrCreate(
 // 2. Obtener un producto activo o crear uno
 $product = Product::where('company_id', $user->company_id)->where('status', 'ACTIVE')->first();
 
-if (!$product) {
+if (! $product) {
     echo "No hay productos activos. Saliendo...\n";
     exit;
 }
 
-echo "Producto a usar: {$product->name} (Stock actual: " . ($product->inventories->first()?->physical_quantity ?? 0) . ")\n";
+echo "Producto a usar: {$product->name} (Stock actual: ".($product->inventories->first()?->physical_quantity ?? 0).")\n";
 
 // 3. Crear la compra (Simulando PurchaseController@store)
-$branchId = \App\Models\Branch::first()->id;
+$branchId = Branch::first()->id;
 
 DB::beginTransaction();
 try {
@@ -45,7 +47,7 @@ try {
         'company_id' => $user->company_id,
         'branch_id' => $branchId,
         'supplier_id' => $supplier->id,
-        'purchase_number' => 'PUR-TEST-' . Str::random(4),
+        'purchase_number' => 'PUR-TEST-'.Str::random(4),
         'supplier_document_type' => 'FACTURA',
         'supplier_document_series' => 'F001',
         'supplier_document_number' => '00001234',
@@ -75,9 +77,9 @@ try {
 
     DB::commit();
     echo "Compra en borrador creada: {$purchase->purchase_number}\n";
-} catch (\Exception $e) {
+} catch (Exception $e) {
     DB::rollBack();
-    echo "Error creando compra: " . $e->getMessage() . "\n";
+    echo 'Error creando compra: '.$e->getMessage()."\n";
     exit;
 }
 
@@ -97,11 +99,11 @@ try {
         ]);
 
         // Crear Lote
-        $lot = \App\Models\Lot::create([
+        $lot = Lot::create([
             'uuid' => (string) Str::uuid(),
             'branch_id' => $purchase->branch_id,
             'product_id' => $line->product_id,
-            'lot_number' => 'LOT-TEST-' . Str::random(4),
+            'lot_number' => 'LOT-TEST-'.Str::random(4),
             'original_quantity' => $line->received_quantity,
             'current_quantity' => $line->received_quantity,
             'unit_cost' => $line->unit_cost_base,
@@ -117,20 +119,20 @@ try {
             'quantity' => (int) $line->received_quantity,
             'unit_cost' => $line->unit_cost_base,
             'operation_type' => 'COMPRA',
-            'reference' => 'COMPRA: ' . $purchase->purchase_number,
+            'reference' => 'COMPRA: '.$purchase->purchase_number,
             'user_id' => $user->id,
         ]);
     }
 
     DB::commit();
     echo "Compra confirmada exitosamente.\n";
-    
+
     $product->refresh();
-    echo "Nuevo stock del producto: " . ($product->inventories->first()->physical_quantity) . "\n";
-    
-} catch (\Exception $e) {
+    echo 'Nuevo stock del producto: '.($product->inventories->first()->physical_quantity)."\n";
+
+} catch (Exception $e) {
     DB::rollBack();
-    echo "Error confirmando compra: " . $e->getMessage() . "\n";
+    echo 'Error confirmando compra: '.$e->getMessage()."\n";
 }
 
 echo "Prueba completada.\n";

@@ -30,7 +30,9 @@ import {
     Package, 
     Layers, 
     Clock, 
-    RotateCcw 
+    RotateCcw,
+    WifiOff,
+    Trash2
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -46,6 +48,10 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import AppLayout from '@/layouts/app-layout';
+import { useMergedPurchases } from '@/hooks/use-merged-purchases';
+import { OfflinePurchaseDetailDialog } from '@/components/offline-purchase-detail-dialog';
+import { formatAppDate } from '@/lib/utils';
+import type { LocalOfflinePurchase } from '@/lib/db';
 import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -83,27 +89,31 @@ export default function PurchasesIndex({
     const [dateTo, setDateTo] = useState(filters?.date_to || '');
     const [branchId, setBranchId] = useState(filters?.branch_id || '');
 
+    // Offline detail modal state
+    const [selectedOfflinePurchase, setSelectedOfflinePurchase] = useState<LocalOfflinePurchase | null>(null);
+    const [openOfflineDialog, setOpenOfflineDialog] = useState(false);
+
     // Client-side TanStack Table states
     const [sorting, setSorting] = useState<SortingState>([]);
     const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
     const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
     const [showColumnFilters, setShowColumnFilters] = useState(false);
 
-    const purchaseData = useMemo(() => purchases.data || [], [purchases.data]);
+    const { mergedPurchases, pendingOfflineCount, pendingOfflineTotal, discardOfflinePurchase } = useMergedPurchases(purchases, branchId);
 
     // KPI Metrics calculation
     const kpiMetrics = useMemo(() => {
-        const totalPurchases = purchases.total || purchaseData.length;
-        const totalPEN = purchaseData
+        const totalPurchases = (purchases.total || 0) + pendingOfflineCount;
+        const totalPEN = mergedPurchases
             .filter((p: any) => p.currency_code === 'PEN' && p.status !== 'CANCELLED')
             .reduce((sum: number, p: any) => sum + Number(p.total_amount || 0), 0);
-        const totalUSD = purchaseData
+        const totalUSD = mergedPurchases
             .filter((p: any) => p.currency_code === 'USD' && p.status !== 'CANCELLED')
             .reduce((sum: number, p: any) => sum + Number(p.total_amount || 0), 0);
-        const draftCount = purchaseData.filter((p: any) => p.status === 'DRAFT').length;
+        const draftCount = mergedPurchases.filter((p: any) => p.status === 'DRAFT' || p.status === 'DRAFT_LOCAL').length;
 
         return { totalPurchases, totalPEN, totalUSD, draftCount };
-    }, [purchases.total, purchaseData]);
+    }, [purchases.total, mergedPurchases, pendingOfflineCount]);
 
     const applyServerFilters = () => {
         router.get('/purchases', { 
@@ -165,12 +175,7 @@ export default function PurchasesIndex({
             ),
             cell: ({ row }) => {
                 const dateStr = row.original.document_date || row.original.created_at;
-                const formatted = new Date(dateStr).toLocaleDateString('es-PE', {
-                    day: '2-digit',
-                    month: 'short',
-                    year: 'numeric',
-                    timeZone: 'UTC'
-                });
+                const formatted = formatAppDate(dateStr);
                 return (
                     <div className="flex flex-col">
                         <span className="font-semibold text-xs text-foreground">{formatted}</span>
@@ -505,7 +510,30 @@ export default function PurchasesIndex({
                 </div>
             ),
             cell: ({ row }) => {
+                const isOffline = row.original.is_offline;
                 const st = row.original.status;
+
+                if (isOffline) {
+                    if (st === 'DRAFT_LOCAL') {
+                        return (
+                            <div className="flex justify-center">
+                                <Badge variant="outline" className="text-[11px] bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 gap-1 font-medium">
+                                    <Clock className="h-3 w-3" />
+                                    Borrador Local
+                                </Badge>
+                            </div>
+                        );
+                    }
+                    return (
+                        <div className="flex justify-center">
+                            <Badge variant="outline" className="text-[11px] bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 gap-1 font-medium">
+                                <WifiOff className="h-3 w-3" />
+                                Pendiente Sincronizar
+                            </Badge>
+                        </div>
+                    );
+                }
+
                 if (st === 'DRAFT') {
                     return (
                         <div className="flex justify-center">
@@ -546,6 +574,57 @@ export default function PurchasesIndex({
             ),
             cell: ({ row }) => {
                 const p = row.original;
+
+                if (p.is_offline) {
+                    return (
+                        <div className="flex justify-end items-center gap-1.5">
+                            {p.raw_offline_data?.document_file && (
+                                <a 
+                                    href={p.raw_offline_data.document_file.base64} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    download={p.raw_offline_data.document_file.name}
+                                    title={`Ver comprobante local: ${p.raw_offline_data.document_file.name}`}
+                                >
+                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40">
+                                        <ExternalLink className="h-4 w-4" />
+                                    </Button>
+                                </a>
+                            )}
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                    setSelectedOfflinePurchase(p.raw_offline_data);
+                                    setOpenOfflineDialog(true);
+                                }}
+                                className="h-8 gap-1 text-xs font-medium text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-800 hover:bg-amber-50 dark:hover:bg-amber-950/40"
+                            >
+                                <Eye className="h-3.5 w-3.5" /> Ver Detalle
+                            </Button>
+                            {p.status === 'DRAFT_LOCAL' && (
+                                <Link href={`/purchases/create?offline_uuid=${p.uuid}`}>
+                                    <Button variant="outline" size="sm" className="h-8 gap-1 text-xs font-medium text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-800 hover:bg-amber-50 dark:hover:bg-amber-950/40">
+                                        <Pencil className="h-3.5 w-3.5" /> Editar
+                                    </Button>
+                                </Link>
+                            )}
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                    if (confirm('¿Deseas descartar esta compra offline? Se cancelará el envío y se revertirá el ajuste local de stock.')) {
+                                        discardOfflinePurchase(p.uuid);
+                                    }
+                                }}
+                                className="h-8 gap-1 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                            >
+                                <Trash2 className="h-3.5 w-3.5" /> Descartar
+                            </Button>
+                        </div>
+                    );
+                }
+
                 return (
                     <div className="flex justify-end items-center gap-1.5">
                         {p.document_file_path && (
@@ -578,11 +657,11 @@ export default function PurchasesIndex({
                 );
             },
         },
-    ], [showColumnFilters]);
+    ], [showColumnFilters, discardOfflinePurchase]);
 
     // Initialize React Table
     const table = useReactTable({
-        data: purchaseData,
+        data: mergedPurchases,
         columns,
         state: {
             sorting,
@@ -695,6 +774,26 @@ export default function PurchasesIndex({
                         </div>
                     </div>
                 </div>
+
+                {/* Pending Offline Purchases Summary Banner */}
+                {pendingOfflineCount > 0 && (
+                    <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-900 dark:text-amber-200 text-xs shadow-xs">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-lg bg-amber-200/70 dark:bg-amber-800/60 shrink-0">
+                                <WifiOff className="h-5 w-5 text-amber-700 dark:text-amber-300" />
+                            </div>
+                            <div>
+                                <p className="font-semibold text-sm">
+                                    {pendingOfflineCount} {pendingOfflineCount === 1 ? 'compra registrada en modo offline' : 'compras registradas en modo offline'}
+                                </p>
+                                <p className="text-[11px] text-amber-700/90 dark:text-amber-300/90 mt-0.5">
+                                    Monto acumulado: <span className="font-bold font-mono">S/ {pendingOfflineTotal.toFixed(2)}</span>. El inventario local fue incrementado preventivamente; se enviarán al servidor central al restablecerse la conexión.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
 
                 {/* Server Filters Bar + Table Controls */}
                 <div className="bg-card text-card-foreground border border-border rounded-xl p-4 shadow-xs space-y-3">
@@ -922,6 +1021,13 @@ export default function PurchasesIndex({
                     )}
                 </div>
             </div>
+
+            <OfflinePurchaseDetailDialog
+                purchase={selectedOfflinePurchase}
+                open={openOfflineDialog}
+                onOpenChange={setOpenOfflineDialog}
+                onDiscard={discardOfflinePurchase}
+            />
         </>
     );
 }

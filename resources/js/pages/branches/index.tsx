@@ -23,9 +23,12 @@ import {
     ArrowUp, 
     ArrowDown,
     Sparkles,
-    CheckCircle2
+    CheckCircle2,
+    WifiOff
 } from 'lucide-react';
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNetworkStatus } from '@/hooks/use-network-status';
+import { toast } from 'sonner';
 import InputError from '@/components/input-error';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -78,6 +81,7 @@ const columnLabels: Record<string, string> = {
 };
 
 export default function BranchesIndex({ branches, flash }: Props) {
+    const { isOnline } = useNetworkStatus();
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [depDict, setDepDict] = useState<Record<string, string>>({});
     const [provDict, setProvDict] = useState<Record<string, string>>({});
@@ -124,11 +128,21 @@ export default function BranchesIndex({ branches, flash }: Props) {
 
     const handleCreate = (e: React.FormEvent) => {
         e.preventDefault();
+
+        if (!isOnline) {
+            toast.warning('Modo sin conexión', {
+                description: 'La creación de sucursales requiere conexión activa al servidor.',
+            });
+            return;
+        }
+
         createPost('/branches', {
             onSuccess: () => {
                 setIsCreateOpen(false);
                 createReset();
+                toast.success('Sucursal creada exitosamente');
             },
+            onError: () => toast.error('Error al registrar sucursal'),
         });
     };
 
@@ -136,15 +150,31 @@ export default function BranchesIndex({ branches, flash }: Props) {
         e.preventDefault();
         if (!editingBranch) return;
 
+        if (!isOnline) {
+            toast.warning('Modo sin conexión', {
+                description: 'La edición de sucursales requiere conexión activa al servidor.',
+            });
+            return;
+        }
+
         editPut(`/branches/${editingBranch.id}`, {
             onSuccess: () => {
                 setIsEditOpen(false);
                 editReset();
+                toast.success('Sucursal actualizada exitosamente');
             },
+            onError: () => toast.error('Error al actualizar sucursal'),
         });
     };
 
     const toggleStatus = (branch: Branch) => {
+        if (!isOnline) {
+            toast.warning('Modo sin conexión', {
+                description: 'El cambio de estado de sucursales requiere conexión activa al servidor.',
+            });
+            return;
+        }
+
         if (confirm(`¿Estás seguro de que deseas ${branch.status === 'ACTIVE' ? 'desactivar' : 'reactivar'} esta sucursal?`)) {
             router.delete(`/branches/${branch.id}`);
         }
@@ -522,6 +552,18 @@ export default function BranchesIndex({ branches, flash }: Props) {
                     </div>
                 </div>
 
+                {!isOnline && (
+                    <div className="flex items-center gap-3 rounded-lg border border-amber-500/25 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-300">
+                        <WifiOff className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+                        <div>
+                            <p className="font-semibold text-xs sm:text-sm">Estás trabajando en modo sin conexión</p>
+                            <p className="text-[11px] sm:text-xs text-amber-700 dark:text-amber-400">
+                                La creación, edición y administración de sucursales requiere conexión activa con el servidor.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 <div className="flex items-center justify-between gap-4">
                     <Tabs defaultValue="ACTIVE" onValueChange={setStatusFilter} className="w-full">
                         <TabsList className="bg-muted/50 border border-border">
@@ -590,6 +632,14 @@ export default function BranchesIndex({ branches, flash }: Props) {
                     </DialogHeader>
 
                     <form onSubmit={handleCreate} className="space-y-4 py-1">
+                        {!isOnline && (
+                            <div className="flex items-center gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-800 dark:text-amber-300 text-xs">
+                                <WifiOff className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                                <span>
+                                    <strong>Modo sin conexión:</strong> Para registrar nuevas sucursales se requiere conexión activa con el servidor.
+                                </span>
+                            </div>
+                        )}
                         {/* 1. Identificación y Tipo Operativo */}
                         <div className="rounded-xl border border-border bg-card p-4 space-y-3">
                             <div className="flex items-center gap-2 border-b border-border/60 pb-2">
@@ -761,8 +811,8 @@ export default function BranchesIndex({ branches, flash }: Props) {
 
                         <DialogFooter className="gap-2 pt-2">
                             <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
-                            <Button type="submit" disabled={createProcessing} className="font-semibold">
-                                {createProcessing ? 'Guardando...' : 'Crear Sucursal'}
+                            <Button type="submit" disabled={createProcessing || !isOnline} className="font-semibold">
+                                {createProcessing ? 'Guardando...' : (isOnline ? 'Crear Sucursal' : 'Conexión requerida')}
                             </Button>
                         </DialogFooter>
                     </form>
@@ -787,6 +837,14 @@ export default function BranchesIndex({ branches, flash }: Props) {
                     </DialogHeader>
 
                     <form onSubmit={handleEdit} className="space-y-4 py-1">
+                        {!isOnline && (
+                            <div className="flex items-center gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-800 dark:text-amber-300 text-xs">
+                                <WifiOff className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                                <span>
+                                    <strong>Modo sin conexión:</strong> Para modificar sucursales se requiere conexión activa con el servidor.
+                                </span>
+                            </div>
+                        )}
                         {/* 1. Identificación y Tipo Operativo */}
                         <div className="rounded-xl border border-border bg-card p-4 space-y-3">
                             <div className="flex items-center gap-2 border-b border-border/60 pb-2">
@@ -950,8 +1008,8 @@ export default function BranchesIndex({ branches, flash }: Props) {
 
                         <DialogFooter className="gap-2 pt-2">
                             <Button type="button" variant="outline" onClick={() => setIsEditOpen(false)}>Cancelar</Button>
-                            <Button type="submit" disabled={editProcessing} className="font-semibold">
-                                {editProcessing ? 'Guardando...' : 'Actualizar Sucursal'}
+                            <Button type="submit" disabled={editProcessing || !isOnline} className="font-semibold">
+                                {editProcessing ? 'Guardando...' : (isOnline ? 'Actualizar Sucursal' : 'Conexión requerida')}
                             </Button>
                         </DialogFooter>
                     </form>

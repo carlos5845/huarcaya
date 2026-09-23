@@ -4,34 +4,34 @@ namespace App\Services;
 
 use App\Models\Inventory;
 use App\Models\KardexEntry;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
-use Carbon\Carbon;
 
 class KardexService
 {
     /**
      * Registra una entrada en el Kardex y actualiza el inventario con el nuevo Promedio Ponderado Móvil.
-     * 
-     * @param array $data {
-     *      'branch_id': int,
-     *      'product_id': int,
-     *      'quantity': numeric,
-     *      'unit_cost': numeric,
-     *      'operation_type': string, // ej. 'COMPRA', 'AJUSTE_POSITIVO', 'INVENTARIO_INICIAL'
-     *      'reference': string|null,
-     *      'inventory_movement_line_id': int|null,
-     *      'user_id': int|null,
-     *      'device_id': string|null,
-     *      'operation_date': string|Carbon|null,
-     *      'uuid': string|null,
-     * }
+     *
+     * @param  array  $data  {
+     *                       'branch_id': int,
+     *                       'product_id': int,
+     *                       'quantity': numeric,
+     *                       'unit_cost': numeric,
+     *                       'operation_type': string, // ej. 'COMPRA', 'AJUSTE_POSITIVO', 'INVENTARIO_INICIAL'
+     *                       'reference': string|null,
+     *                       'inventory_movement_line_id': int|null,
+     *                       'user_id': int|null,
+     *                       'device_id': string|null,
+     *                       'operation_date': string|Carbon|null,
+     *                       'uuid': string|null,
+     *                       }
      */
     public function recordEntry(array $data): KardexEntry
     {
         if ($data['quantity'] <= 0) {
-            throw new InvalidArgumentException("La cantidad de entrada debe ser mayor a cero.");
+            throw new InvalidArgumentException('La cantidad de entrada debe ser mayor a cero.');
         }
 
         return DB::transaction(function () use ($data) {
@@ -48,7 +48,7 @@ class KardexService
                 ->lockForUpdate()
                 ->first();
 
-            if (!$inventory) {
+            if (! $inventory) {
                 $inventory = new Inventory([
                     'uuid' => (string) Str::uuid(),
                     'branch_id' => $data['branch_id'],
@@ -94,15 +94,15 @@ class KardexService
                 'operation_date' => $data['operation_date'] ?? now(),
                 'operation_type' => $data['operation_type'],
                 'reference' => $data['reference'] ?? null,
-                
+
                 'input_quantity' => $inputQuantity,
                 'input_unit_cost' => $inputUnitCost,
                 'input_total_cost' => $inputTotalCost,
-                
+
                 'balance_quantity' => $newQuantity,
                 'balance_unit_cost' => $newAverageCost,
                 'balance_total_cost' => $newTotalValue,
-                
+
                 'sync_status' => 'SYNCED',
             ]);
         });
@@ -114,7 +114,7 @@ class KardexService
     public function recordExit(array $data): KardexEntry
     {
         if ($data['quantity'] <= 0) {
-            throw new InvalidArgumentException("La cantidad de salida debe ser mayor a cero.");
+            throw new InvalidArgumentException('La cantidad de salida debe ser mayor a cero.');
         }
 
         return DB::transaction(function () use ($data) {
@@ -131,8 +131,8 @@ class KardexService
                 ->lockForUpdate()
                 ->first();
 
-            if (!$inventory) {
-                throw new InvalidArgumentException("No existe inventario para este producto en la sucursal indicada.");
+            if (! $inventory) {
+                throw new InvalidArgumentException('No existe inventario para este producto en la sucursal indicada.');
             }
 
             // 3. Validación estricta de Stock Negativo
@@ -170,15 +170,15 @@ class KardexService
                 'operation_date' => $data['operation_date'] ?? now(),
                 'operation_type' => $data['operation_type'], // ej. 'VENTA', 'SALIDA_DANO', 'CONSUMO'
                 'reference' => $data['reference'] ?? null,
-                
+
                 'output_quantity' => $outputQuantity,
                 'output_unit_cost' => $outputUnitCost,
                 'output_total_cost' => $outputTotalCost,
-                
+
                 'balance_quantity' => $newQuantity,
                 'balance_unit_cost' => $newAverageCost,
                 'balance_total_cost' => $newTotalValue,
-                
+
                 'sync_status' => 'SYNCED',
             ]);
         });
@@ -187,14 +187,14 @@ class KardexService
     /**
      * Revierte un movimiento específico del Kardex (compensación).
      */
-    public function reverseMovement(int $kardexEntryId, int $userId = null): KardexEntry
+    public function reverseMovement(int $kardexEntryId, ?int $userId = null): KardexEntry
     {
         return DB::transaction(function () use ($kardexEntryId, $userId) {
             $original = KardexEntry::where('id', $kardexEntryId)->lockForUpdate()->firstOrFail();
 
             // Evitar revertir algo ya revertido
             if (KardexEntry::where('original_entry_id', $original->id)->exists()) {
-                throw new InvalidArgumentException("El movimiento ya ha sido revertido previamente.");
+                throw new InvalidArgumentException('El movimiento ya ha sido revertido previamente.');
             }
 
             // Si el original fue Entrada, el reverso es una Salida
@@ -204,7 +204,7 @@ class KardexService
                     'product_id' => $original->product_id,
                     'quantity' => $original->input_quantity,
                     'operation_type' => 'REVERSO_ENTRADA',
-                    'reference' => 'REVERSO: ' . ($original->reference ?? $original->id),
+                    'reference' => 'REVERSO: '.($original->reference ?? $original->id),
                     'user_id' => $userId ?? auth()->id(),
                 ]);
             } else {
@@ -215,7 +215,7 @@ class KardexService
                     'quantity' => $original->output_quantity,
                     'unit_cost' => $original->output_unit_cost, // Devolvemos al costo oficial de salida
                     'operation_type' => 'REVERSO_SALIDA',
-                    'reference' => 'REVERSO: ' . ($original->reference ?? $original->id),
+                    'reference' => 'REVERSO: '.($original->reference ?? $original->id),
                     'user_id' => $userId ?? auth()->id(),
                 ]);
             }

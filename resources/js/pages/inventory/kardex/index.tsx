@@ -24,9 +24,15 @@ import {
     Layers,
     Download,
     FileSpreadsheet,
-    FileText
+    FileText,
+    WifiOff,
+    ChevronDown,
+    ChevronUp
 } from 'lucide-react';
 import React, { useState, useMemo } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '@/lib/db';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -112,6 +118,64 @@ export default function KardexIndex({ entries, branches, filters, canSeeAllBranc
     const [dateFrom, setDateFrom] = useState(filters.date_from || '');
     const [dateTo, setDateTo] = useState(filters.date_to || '');
     const [method, setMethod] = useState(filters.method || 'AVERAGE');
+    const [showOfflineMovements, setShowOfflineMovements] = useState(false);
+
+    // Reactive Dexie query for pending offline transactions affecting Kardex
+    const pendingOfflineSales = useLiveQuery(async () => {
+        try {
+            return await db.offlineSales
+                .filter(s => s.sync_status !== 'SYNCED' && s.action !== 'DRAFT')
+                .toArray();
+        } catch {
+            return [];
+        }
+    }, []) || [];
+
+    const pendingOfflinePurchases = useLiveQuery(async () => {
+        try {
+            return await db.offlinePurchases
+                .filter(p => p.sync_status !== 'SYNCED' && p.action === 'CONFIRM')
+                .toArray();
+        } catch {
+            return [];
+        }
+    }, []) || [];
+
+    const pendingOfflineMovements = useMemo(() => {
+        const list: Array<{
+            type: 'SALIDA' | 'ENTRADA';
+            document_number: string;
+            date: string;
+            product_name: string;
+            quantity: number;
+        }> = [];
+
+        for (const s of pendingOfflineSales) {
+            for (const l of s.lines) {
+                list.push({
+                    type: 'SALIDA',
+                    document_number: s.sale_number,
+                    date: s.operation_date,
+                    product_name: l.product_name,
+                    quantity: l.quantity,
+                });
+            }
+        }
+
+        for (const p of pendingOfflinePurchases) {
+            for (const l of p.lines) {
+                list.push({
+                    type: 'ENTRADA',
+                    document_number: p.temp_purchase_number,
+                    date: p.document_date,
+                    product_name: l.product_name,
+                    quantity: l.quantity,
+                });
+            }
+        }
+
+        return list;
+    }, [pendingOfflineSales, pendingOfflinePurchases]);
 
     // TanStack states
     const [sorting, setSorting] = useState<SortingState>([]);
@@ -550,6 +614,82 @@ export default function KardexIndex({ entries, branches, filters, canSeeAllBranc
                         </DropdownMenu>
                     </div>
                 </div>
+
+                {/* Pending Offline Movements Banner for Kardex */}
+                {pendingOfflineMovements.length > 0 && (
+                    <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded-xl p-4 flex flex-col gap-3 text-amber-900 dark:text-amber-200 text-xs shadow-xs">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-amber-200/70 dark:bg-amber-800/60 shrink-0">
+                                    <WifiOff className="h-5 w-5 text-amber-700 dark:text-amber-300" />
+                                </div>
+                                <div>
+                                    <p className="font-semibold text-sm">
+                                        Existen {pendingOfflineMovements.length} {pendingOfflineMovements.length === 1 ? 'movimiento físico de contingencia' : 'movimientos físicos de contingencia'} pendientes de asiento en Kardex
+                                    </p>
+                                    <p className="text-[11px] text-amber-700/90 dark:text-amber-300/90 mt-0.5">
+                                        El stock físico comercial ya fue actualizado en tu dispositivo. Los asientos contables oficiales de Kardex SUNAT con correlatividad de secuencias se certificarán automáticamente al restablecer la conexión.
+                                    </p>
+                                </div>
+                            </div>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setShowOfflineMovements(!showOfflineMovements)}
+                                className="border-amber-400 dark:border-amber-700 text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/50 gap-1.5 self-start sm:self-auto shrink-0 font-medium"
+                            >
+                                {showOfflineMovements ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                                {showOfflineMovements ? 'Ocultar movimientos pendientes' : 'Ver movimientos pendientes'}
+                            </Button>
+                        </div>
+
+                        {showOfflineMovements && (
+                            <div className="border border-amber-200 dark:border-amber-800/80 rounded-lg overflow-hidden bg-background text-foreground mt-1">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow className="bg-muted/60 text-[11px]">
+                                            <TableHead className="w-[130px]">Tipo Movimiento</TableHead>
+                                            <TableHead className="w-[160px]">Código Comprobante</TableHead>
+                                            <TableHead className="w-[110px]">Fecha</TableHead>
+                                            <TableHead>Producto / Repuesto</TableHead>
+                                            <TableHead className="text-right w-[110px]">Cantidad</TableHead>
+                                            <TableHead className="w-[140px] text-center">Estado</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {pendingOfflineMovements.map((m, idx) => (
+                                            <TableRow key={idx} className="text-xs">
+                                                <TableCell>
+                                                    <Badge
+                                                        variant="outline"
+                                                        className={
+                                                            m.type === 'SALIDA'
+                                                                ? 'bg-rose-500/10 text-rose-600 border-rose-500/30 font-semibold'
+                                                                : 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30 font-semibold'
+                                                        }
+                                                    >
+                                                        {m.type === 'SALIDA' ? '↓ Salida (Venta)' : '↑ Entrada (Compra)'}
+                                                    </Badge>
+                                                </TableCell>
+                                                <TableCell className="font-mono font-medium">{m.document_number}</TableCell>
+                                                <TableCell>{m.date}</TableCell>
+                                                <TableCell className="font-medium">{m.product_name}</TableCell>
+                                                <TableCell className="text-right font-mono font-bold">
+                                                    {m.type === 'SALIDA' ? `-${m.quantity}` : `+${m.quantity}`}
+                                                </TableCell>
+                                                <TableCell className="text-center">
+                                                    <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-600 border-amber-500/30">
+                                                        Pendiente Sincronizar
+                                                    </Badge>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 <div className="bg-card text-card-foreground p-4 rounded-xl border border-border shadow-xs flex flex-col gap-3">
                     <form onSubmit={handleFilter} className="flex flex-wrap gap-2.5 items-center">

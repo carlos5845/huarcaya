@@ -25,8 +25,16 @@ import {
     Percent, 
     Save, 
     Send,
-    Loader2
+    Loader2,
+    WifiOff,
+    CloudOff,
+    CheckCheck
 } from 'lucide-react';
+import { enqueueOfflinePurchase, searchLocalProducts, discardOfflinePurchase } from '@/services/sync-service';
+import { db } from '@/lib/db';
+import { fileToBase64, base64ToFile, getLocalDateString } from '@/lib/utils';
+import { useNetworkStatus } from '@/hooks/use-network-status';
+import { toast } from 'sonner';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -63,7 +71,7 @@ export default function PurchaseCreate({
         supplier_document_type: 'FACTURA',
         supplier_document_series: '',
         supplier_document_number: '',
-        document_date: new Date().toISOString().split('T')[0],
+        document_date: getLocalDateString(),
         tax_mode: 'PLUS_TAX' as 'INCLUDED' | 'PLUS_TAX' | 'EXEMPT',
         currency_code: 'PEN',
         exchange_rate: globalExchangeRate,
@@ -88,6 +96,55 @@ export default function PurchaseCreate({
             setData('exchange_rate', 1.0);
         }
     }, [data.currency_code]);
+
+    const { isOnline } = useNetworkStatus();
+    const [offlineNotice, setOfflineNotice] = useState<string | null>(null);
+    const [editingOfflineUuid, setEditingOfflineUuid] = useState<string | null>(null);
+
+    // Load offline purchase draft if offline_uuid is present in query params
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const params = new URLSearchParams(window.location.search);
+        const offlineUuid = params.get('offline_uuid');
+        if (!offlineUuid) return;
+
+        db.offlinePurchases.where('uuid').equals(offlineUuid).first().then(async (purchase) => {
+            if (purchase) {
+                let restoredFile: File | null = null;
+                if (purchase.document_file?.base64) {
+                    try {
+                        restoredFile = base64ToFile(
+                            purchase.document_file.base64,
+                            purchase.document_file.name,
+                            purchase.document_file.type
+                        );
+                    } catch (e) {
+                        console.warn('Error reconstructing file from offline purchase:', e);
+                    }
+                }
+
+                setData({
+                    ...data,
+                    supplier_id: purchase.supplier_id.toString(),
+                    supplier_document_type: (purchase.supplier_document_type as any) || 'FACTURA',
+                    supplier_document_series: purchase.supplier_document_series || '',
+                    supplier_document_number: purchase.supplier_document_number || '',
+                    document_date: purchase.document_date,
+                    currency_code: purchase.currency_code || 'PEN',
+                    document_file: restoredFile,
+                    lines: purchase.lines.map(l => ({
+                        product_id: l.product_id,
+                        product_name: l.product_name,
+                        internal_code: l.internal_code || '-',
+                        quantity: l.quantity,
+                        unit_cost: l.unit_cost,
+                    })),
+                });
+                setEditingOfflineUuid(offlineUuid);
+                toast.info(`Borrador de compra offline cargado: ${purchase.temp_purchase_number}`);
+            }
+        }).catch(err => console.warn('[IndexedDB] Error loading offline purchase draft:', err));
+    }, []);
 
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -116,23 +173,57 @@ export default function PurchaseCreate({
 
     const handleCreateSupplier = (e: React.FormEvent) => {
         e.preventDefault();
+
+        if (!isOnline) {
+            toast.warning('Modo sin conexión', {
+                description: 'La creación de proveedores requiere conexión al servidor para validar RUC y datos fiscales. Por favor selecciona un proveedor del catálogo o conéctate a internet.',
+            });
+            return;
+        }
+
         postSupplier('/suppliers', {
             onSuccess: () => {
                 setIsCreateSupplierOpen(false);
                 resetSupplier();
+                toast.success('Proveedor registrado exitosamente');
+            },
+            onError: () => {
+                toast.error('No se pudo registrar el proveedor. Verifica los datos.');
             }
         });
     };
 
-    // Product search with debounce
+    // Product search with debounce & offline fallback
     useEffect(() => {
         if (searchQuery.trim().length < 2) {
             setSearchResults([]);
             return;
         }
 
-        const delayDebounceFn = setTimeout(() => {
+        const delayDebounceFn = setTimeout(async () => {
             setIsSearching(true);
+
+            if (!navigator.onLine) {
+                try {
+                    const localItems = await searchLocalProducts(searchQuery);
+                    setSearchResults(localItems.map(p => ({
+                        id: p.id,
+                        name: p.name,
+                        primary_reference: p.primary_reference,
+                        internal_code: p.barcode,
+                        current_cost: p.cost_price,
+                        cost: p.cost_price,
+                        brand: { name: p.brand_name },
+                        unit: { code: p.unit_code },
+                    })));
+                } catch {
+                    setSearchResults([]);
+                } finally {
+                    setIsSearching(false);
+                }
+                return;
+            }
+
             fetch(`/products/search?q=${encodeURIComponent(searchQuery)}`, {
                 headers: { 'Accept': 'application/json' }
             })
@@ -141,7 +232,25 @@ export default function PurchaseCreate({
                 setSearchResults(items);
                 setIsSearching(false);
             })
-            .catch(() => setIsSearching(false));
+            .catch(async () => {
+                try {
+                    const localItems = await searchLocalProducts(searchQuery);
+                    setSearchResults(localItems.map(p => ({
+                        id: p.id,
+                        name: p.name,
+                        primary_reference: p.primary_reference,
+                        internal_code: p.barcode,
+                        current_cost: p.cost_price,
+                        cost: p.cost_price,
+                        brand: { name: p.brand_name },
+                        unit: { code: p.unit_code },
+                    })));
+                } catch {
+                    setSearchResults([]);
+                } finally {
+                    setIsSearching(false);
+                }
+            });
         }, 250);
 
         return () => clearTimeout(delayDebounceFn);
@@ -223,7 +332,76 @@ export default function PurchaseCreate({
         }
     };
 
-    const handleSave = (actionType: 'DRAFT' | 'CONFIRM') => {
+    const handleSave = async (actionType: 'DRAFT' | 'CONFIRM') => {
+        if (data.lines.length === 0) {
+            alert('Debe agregar al menos un producto a la compra.');
+            return;
+        }
+
+        if (!data.supplier_id) {
+            alert('Debe seleccionar un proveedor para registrar la compra.');
+            return;
+        }
+
+        if (!navigator.onLine) {
+            try {
+                if (editingOfflineUuid) {
+                    await discardOfflinePurchase(editingOfflineUuid);
+                    setEditingOfflineUuid(null);
+                }
+
+                let offlineFile: { name: string; type: string; size: number; base64: string } | null = null;
+                if (data.document_file) {
+                    try {
+                        const base64 = await fileToBase64(data.document_file);
+                        offlineFile = {
+                            name: data.document_file.name,
+                            type: data.document_file.type || 'application/octet-stream',
+                            size: data.document_file.size,
+                            base64,
+                        };
+                    } catch (e) {
+                        console.warn('Error encoding file to base64 for offline purchase:', e);
+                    }
+                }
+
+                const userBranchId = defaultBranch?.id || 1;
+                const { tempPurchaseNumber } = await enqueueOfflinePurchase({
+                    supplier_id: Number(data.supplier_id),
+                    supplier_name: selectedSupplier?.legal_name || 'Proveedor Compra',
+                    supplier_document_type: data.supplier_document_type,
+                    supplier_document_series: data.supplier_document_series,
+                    supplier_document_number: data.supplier_document_number,
+                    document_date: data.document_date,
+                    notes: data.notes,
+                    tax_mode: data.tax_mode,
+                    currency_code: data.currency_code,
+                    exchange_rate: Number(data.exchange_rate),
+                    action: actionType,
+                    branch_id: userBranchId,
+                    document_file: offlineFile,
+                    lines: data.lines.map(l => ({
+                        product_id: l.product_id,
+                        product_name: l.product_name,
+                        internal_code: l.internal_code,
+                        quantity: l.quantity,
+                        unit_cost: l.unit_cost,
+                    })),
+                });
+
+                setData('lines', []);
+                setOfflineNotice(`¡Entrada de compra registrada en Modo Offline! Código provisional: ${tempPurchaseNumber}. El stock se actualizó localmente y se enviará al servidor central cuando vuelva internet.`);
+            } catch (err: any) {
+                alert(`Error guardando compra offline: ${err.message}`);
+            }
+            return;
+        }
+
+        if (editingOfflineUuid) {
+            await discardOfflinePurchase(editingOfflineUuid);
+            setEditingOfflineUuid(null);
+        }
+
         data.action = actionType;
         post('/purchases');
     };
@@ -242,6 +420,25 @@ export default function PurchaseCreate({
                             Nueva Entrada de Mercadería
                         </span>
                     </div>
+
+                    {!isOnline && (
+                        <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs font-medium">
+                            <WifiOff className="h-4 w-4 shrink-0 text-amber-600" />
+                            <span>Modo Offline activo: Sin conexión a internet. La compra se guardará localmente y se sincronizará automáticamente cuando vuelva la red.</span>
+                        </div>
+                    )}
+
+                    {offlineNotice && (
+                        <div className="flex items-center justify-between gap-2 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 text-xs font-medium">
+                            <div className="flex items-center gap-2">
+                                <CheckCheck className="h-4 w-4 shrink-0 text-emerald-600" />
+                                <span>{offlineNotice}</span>
+                            </div>
+                            <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={() => setOfflineNotice(null)}>
+                                Cerrar
+                            </Button>
+                        </div>
+                    )}
 
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1">
                         <div className="flex items-center gap-4">
@@ -903,6 +1100,17 @@ export default function PurchaseCreate({
                         </DialogDescription>
                     </DialogHeader>
                     <form onSubmit={handleCreateSupplier} className="space-y-4 py-2">
+                        {!isOnline && (
+                            <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-800 dark:text-amber-300 text-xs">
+                                <WifiOff className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                                <div>
+                                    <p className="font-semibold">Modo sin conexión a internet</p>
+                                    <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
+                                        La creación de proveedores requiere conexión al servidor para validar RUC y datos fiscales. Por favor selecciona un proveedor del catálogo o conéctate a internet.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
                         <div className="grid grid-cols-3 gap-3">
                             <div className="space-y-1.5 col-span-1">
                                 <Label htmlFor="sup_doc_type" className="text-xs">Tipo Doc.</Label>
@@ -965,9 +1173,9 @@ export default function PurchaseCreate({
                             <Button type="button" variant="outline" onClick={() => setIsCreateSupplierOpen(false)}>
                                 Cancelar
                             </Button>
-                            <Button type="submit" disabled={processingSupplier} className="bg-primary text-primary-foreground font-semibold">
+                            <Button type="submit" disabled={processingSupplier || !isOnline} className="bg-primary text-primary-foreground font-semibold">
                                 {processingSupplier ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
-                                Guardar Proveedor
+                                {isOnline ? 'Guardar Proveedor' : 'Conexión requerida'}
                             </Button>
                         </DialogFooter>
                     </form>

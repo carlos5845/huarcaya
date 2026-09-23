@@ -18,11 +18,11 @@ beforeEach(function () {
     $this->company = Company::create(['uuid' => Str::uuid(), 'name' => 'Test Company']);
     $this->branch = Branch::create(['uuid' => Str::uuid(), 'company_id' => $this->company->id, 'name' => 'Test Branch']);
     $this->user = User::factory()->create(['uuid' => Str::uuid(), 'company_id' => $this->company->id]);
-    
+
     $brand = Brand::create(['uuid' => Str::uuid(), 'company_id' => $this->company->id, 'code' => 'B01', 'name' => 'TEST', 'normalized_name' => 'TEST']);
     $category = Category::create(['uuid' => Str::uuid(), 'company_id' => $this->company->id, 'code' => 'C01', 'name' => 'TEST', 'normalized_name' => 'TEST']);
     $unit = Unit::create(['uuid' => Str::uuid(), 'company_id' => $this->company->id, 'code' => 'U01', 'name' => 'TEST', 'normalized_name' => 'TEST']);
-    
+
     $this->product = Product::create([
         'uuid' => Str::uuid(),
         'company_id' => $this->company->id,
@@ -35,7 +35,7 @@ beforeEach(function () {
         'normalized_name' => 'TEST PRODUCT',
     ]);
 
-    $this->service = new KardexService();
+    $this->service = new KardexService;
 });
 
 it('records an entry and calculates average cost correctly', function () {

@@ -22,7 +22,7 @@ class Purchase extends Model
     protected function casts(): array
     {
         return [
-            'document_date' => 'date',
+            'document_date' => 'date:Y-m-d',
             'confirmed_at' => 'datetime',
             'cancelled_at' => 'datetime',
             'subtotal_amount' => 'decimal:6',

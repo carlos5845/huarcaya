@@ -82,7 +82,7 @@ class InventoryController extends Controller
 
             $price = null;
             if ($branchId && $branchId !== 'ALL') {
-                $price = collect($product->prices)->where('branch_id', (int) $branchId)->first() 
+                $price = collect($product->prices)->where('branch_id', (int) $branchId)->first()
                       ?? collect($product->prices)->whereNull('branch_id')->first();
             } else {
                 $price = collect($product->prices)->whereNull('branch_id')->first() ?? collect($product->prices)->first();

@@ -6,6 +6,7 @@ use App\Models\Supplier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class SupplierController extends Controller
@@ -43,7 +44,7 @@ class SupplierController extends Controller
                 ->where('document_type', $validated['document_type'])
                 ->where('document_number', $validated['document_number'])
                 ->exists()) {
-                throw \Illuminate\Validation\ValidationException::withMessages([
+                throw ValidationException::withMessages([
                     'document_number' => 'Ya existe un proveedor con este tipo y número de documento.',
                 ]);
             }
@@ -89,7 +90,7 @@ class SupplierController extends Controller
                 ->where('document_number', $validated['document_number'])
                 ->where('id', '!=', $supplier->id)
                 ->exists()) {
-                throw \Illuminate\Validation\ValidationException::withMessages([
+                throw ValidationException::withMessages([
                     'document_number' => 'Ya existe otro proveedor con este tipo y número de documento.',
                 ]);
             }

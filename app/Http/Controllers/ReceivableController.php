@@ -276,4 +276,73 @@ class ReceivableController extends Controller
             return back()->with('error', 'Error al procesar el abono: '.$e->getMessage());
         }
     }
+
+    public function cancelPayment(Request $request, Receivable $receivable, Payment $payment)
+    {
+        $user = Auth::user();
+        $isSuperAdmin = $user->hasRole('Super Admin');
+        $allowedBranchIds = $user->branches()->pluck('branches.id')->toArray();
+
+        if (! $isSuperAdmin && ! in_array($receivable->branch_id, $allowedBranchIds) && $receivable->branch_id !== $user->default_branch_id) {
+            abort(403);
+        }
+
+        if ($payment->status === 'CANCELLED') {
+            return back()->with('error', 'Este pago ya ha sido anulado previamente.');
+        }
+
+        $allocation = PaymentAllocation::where('payment_id', $payment->id)
+            ->where('receivable_id', $receivable->id)
+            ->first();
+
+        if (! $allocation) {
+            return back()->with('error', 'El pago no corresponde a esta cuenta por cobrar.');
+        }
+
+        $validated = $request->validate([
+            'reason' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        DB::beginTransaction();
+        try {
+            $payment->update([
+                'status' => 'CANCELLED',
+                'cancelled_at' => now(),
+                'notes' => trim(($payment->notes ?? '')."\n".'Anulado por usuario: '.($validated['reason'] ?? 'Error de digitación')),
+            ]);
+
+            // Restaurar saldo de la cuenta por cobrar
+            $restoredBalance = min((float) $receivable->original_amount, (float) $receivable->balance_amount + (float) $allocation->allocated_amount);
+            $receivable->update([
+                'balance_amount' => $restoredBalance,
+                'status' => $restoredBalance > 0 ? 'ACTIVE' : 'PAID',
+            ]);
+
+            // Actualizar estado de pago en la venta
+            if ($receivable->sale) {
+                $totalPaid = PaymentAllocation::whereHas('payment', fn ($q) => $q->where('status', 'CONFIRMED'))
+                    ->where('receivable_id', $receivable->id)
+                    ->sum('allocated_amount');
+
+                $newPaymentStatus = 'UNPAID';
+                if ($totalPaid >= (float) $receivable->original_amount) {
+                    $newPaymentStatus = 'PAID';
+                } elseif ($totalPaid > 0) {
+                    $newPaymentStatus = 'PARTIAL';
+                }
+
+                $receivable->sale->update([
+                    'payment_status' => $newPaymentStatus,
+                ]);
+            }
+
+            DB::commit();
+
+            return back()->with('success', 'Abono anulado exitosamente y saldo de la deuda restaurado.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return back()->with('error', 'Error al anular el abono: '.$e->getMessage());
+        }
+    }
 }

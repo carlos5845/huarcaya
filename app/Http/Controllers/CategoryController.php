@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class CategoryController extends Controller
@@ -33,7 +34,7 @@ class CategoryController extends Controller
         $normalizedName = Str::upper(preg_replace('/[^A-Za-z0-9]/', '', $validated['name']));
 
         if (Category::where('company_id', $companyId)->where('normalized_name', $normalizedName)->exists()) {
-            throw \Illuminate\Validation\ValidationException::withMessages([
+            throw ValidationException::withMessages([
                 'name' => 'Ya existe una categoría con este nombre.',
             ]);
         }

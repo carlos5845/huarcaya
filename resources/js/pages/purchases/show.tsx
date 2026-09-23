@@ -26,6 +26,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
+import { formatAppDate } from '@/lib/utils';
 import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -48,13 +49,7 @@ export default function PurchaseShow({ purchase }: { purchase: any }) {
     const totalReceivedUnits = lines.reduce((acc: number, l: any) => acc + Number(l.received_quantity || 0), 0);
 
     const formatDate = (dateStr?: string) => {
-        if (!dateStr) return '-';
-        return new Date(dateStr).toLocaleDateString('es-PE', {
-            day: '2-digit',
-            month: 'short',
-            year: 'numeric',
-            timeZone: 'UTC'
-        });
+        return formatAppDate(dateStr);
     };
 
     const formatDateTime = (dateStr?: string) => {

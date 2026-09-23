@@ -3,8 +3,9 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Spatie\Permission\Models\Role;
+use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
 
 class RoleController extends Controller
 {
@@ -16,7 +17,7 @@ class RoleController extends Controller
                 'string',
                 'max:255',
                 function ($attribute, $value, $fail) {
-                    if (Role::where(\Illuminate\Support\Facades\DB::raw('LOWER(name)'), strtolower($value))->exists()) {
+                    if (Role::where(DB::raw('LOWER(name)'), strtolower($value))->exists()) {
                         $fail('El nombre del rol ya está en uso.');
                     }
                 },
@@ -51,7 +52,7 @@ class RoleController extends Controller
                 'string',
                 'max:255',
                 function ($attribute, $value, $fail) use ($role) {
-                    if (Role::where(\Illuminate\Support\Facades\DB::raw('LOWER(name)'), strtolower($value))->where('id', '!=', $role->id)->exists()) {
+                    if (Role::where(DB::raw('LOWER(name)'), strtolower($value))->where('id', '!=', $role->id)->exists()) {
                         $fail('El nombre del rol ya está en uso.');
                     }
                 },

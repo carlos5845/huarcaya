@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Inventory;
+use App\Models\Lot;
 use App\Models\Product;
 use App\Models\Unit;
 use Illuminate\Http\Request;
@@ -159,15 +160,15 @@ class ProductImportController extends Controller
                             $inventory->save();
 
                             // Crear lote por defecto para el inventario importado
-                            \App\Models\Lot::create([
+                            Lot::create([
                                 'uuid' => (string) Str::uuid(),
                                 'branch_id' => $branchId,
                                 'product_id' => $product->id,
-                                'lot_number' => 'LOTE-IMPORT-' . date('Ymd'),
+                                'lot_number' => 'LOTE-IMPORT-'.date('Ymd'),
                                 'original_quantity' => $stock,
                                 'current_quantity' => $stock,
                                 'unit_cost' => (float) ($row['precio_base'] ?? 0),
-                                'status' => 'ACTIVE'
+                                'status' => 'ACTIVE',
                             ]);
                         }
                     }

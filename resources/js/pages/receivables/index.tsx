@@ -28,6 +28,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label';
 import { useState } from 'react';
 import InputError from '@/components/input-error';
+import { getLocalDateString } from '@/lib/utils';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Cuentas por Cobrar', href: '/receivables' },
@@ -134,7 +135,7 @@ export default function ReceivablesIndex({ receivables, customers_summary, payme
     const paymentForm = useForm({
         amount: '',
         payment_method_id: payment_methods && payment_methods.length > 0 ? payment_methods[0].id.toString() : '',
-        operation_date: new Date().toISOString().split('T')[0],
+        operation_date: getLocalDateString(),
         notes: '',
     });
 
@@ -151,7 +152,7 @@ export default function ReceivablesIndex({ receivables, customers_summary, payme
         paymentForm.setData({
             amount: parseFloat(receivable.balance_amount.toString()).toFixed(2),
             payment_method_id: payment_methods && payment_methods.length > 0 ? payment_methods[0].id.toString() : '',
-            operation_date: new Date().toISOString().split('T')[0],
+            operation_date: getLocalDateString(),
             notes: '',
         });
         setIsPaymentModalOpen(true);

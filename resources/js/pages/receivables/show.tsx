@@ -1,32 +1,41 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, router, useForm } from '@inertiajs/react';
 import { BreadcrumbItem } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Landmark, ArrowLeft, Calendar, FileText, User } from 'lucide-react';
+import { Landmark, ArrowLeft, Calendar, FileText, User, Undo2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useForm } from '@inertiajs/react';
 import { useState } from 'react';
 import InputError from '@/components/input-error';
+import { getLocalDateString } from '@/lib/utils';
+
+const breadcrumbs: BreadcrumbItem[] = [
+    { title: 'Dashboard', href: '/dashboard' },
+    { title: 'Cuentas por Cobrar', href: '/receivables' },
+    { title: 'Detalle de Deuda', href: '#' },
+];
 
 export default function ReceivableShow({ receivable, payment_methods }: { receivable: any, payment_methods: any[] }) {
-    const breadcrumbs: BreadcrumbItem[] = [
-        { title: 'Cuentas por Cobrar', href: '/receivables' },
-        { title: `Deuda de ${receivable.customer.legal_name}`, href: `/receivables/${receivable.id}` },
-    ];
-
     const isOverdue = new Date(receivable.due_date) < new Date() && receivable.status === 'ACTIVE';
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const { data, setData, post, processing, errors, reset } = useForm({
         amount: receivable.balance_amount,
         payment_method_id: payment_methods && payment_methods.length > 0 ? payment_methods[0].id.toString() : '',
-        operation_date: new Date().toISOString().split('T')[0],
+        operation_date: getLocalDateString(),
         notes: '',
     });
+
+    const handleCancelPayment = (paymentId: number) => {
+        const reason = prompt('¿Cuál es el motivo de anulación de este abono?');
+        if (reason === null) return;
+        router.post(`/receivables/${receivable.id}/payments/${paymentId}/cancel`, {
+            reason,
+        });
+    };
 
     const handlePaymentSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -227,8 +236,9 @@ export default function ReceivableShow({ receivable, payment_methods }: { receiv
                                 <TableRow>
                                     <TableHead>Fecha</TableHead>
                                     <TableHead>Recibo de Pago</TableHead>
-                                    <TableHead>Mtodo(s)</TableHead>
+                                    <TableHead>Método(s)</TableHead>
                                     <TableHead className="text-right">Monto Amortizado</TableHead>
+                                    <TableHead className="text-right">Acciones</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -236,18 +246,35 @@ export default function ReceivableShow({ receivable, payment_methods }: { receiv
                                     receivable.allocations.map((alloc: any) => (
                                         <TableRow key={alloc.id}>
                                             <TableCell>{new Date(alloc.payment.operation_date).toLocaleString()}</TableCell>
-                                            <TableCell>{alloc.payment.payment_number}</TableCell>
+                                            <TableCell className="font-mono text-xs font-medium">{alloc.payment.payment_number}</TableCell>
                                             <TableCell>
                                                 {(alloc.payment.method_lines || alloc.payment.methodLines)?.map((ml: any) => ml.method.name).join(', ') || 'N/A'}
                                             </TableCell>
-                                            <TableCell className="text-right font-medium text-green-600">
+                                            <TableCell className={`text-right font-medium ${alloc.payment.status === 'CANCELLED' ? 'line-through text-muted-foreground' : 'text-emerald-600'}`}>
                                                 + {alloc.payment.currency_code} {parseFloat(alloc.allocated_amount).toFixed(2)}
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                {alloc.payment.status === 'CANCELLED' ? (
+                                                    <Badge variant="outline" className="text-muted-foreground bg-muted/40 text-[10px]">
+                                                        Anulado
+                                                    </Badge>
+                                                ) : (
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => handleCancelPayment(alloc.payment.id)}
+                                                        className="h-7 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/30 font-medium"
+                                                    >
+                                                        <Undo2 className="h-3.5 w-3.5 mr-1" /> Anular
+                                                    </Button>
+                                                )}
                                             </TableCell>
                                         </TableRow>
                                     ))
                                 ) : (
                                     <TableRow>
-                                        <TableCell colSpan={4} className="text-center text-muted-foreground h-24">
+                                        <TableCell colSpan={5} className="text-center text-muted-foreground h-24">
                                             No se han registrado pagos para esta cuenta.
                                         </TableCell>
                                     </TableRow>

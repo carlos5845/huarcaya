@@ -3,12 +3,11 @@
 namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
+use App\Models\Setting;
+use App\Models\SettingValue;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
-use Illuminate\Support\Facades\DB;
-use App\Models\Setting;
-use App\Models\SettingValue;
 
 class CompanySettingsController extends Controller
 {
@@ -18,10 +17,10 @@ class CompanySettingsController extends Controller
     public function edit(Request $request): Response
     {
         $companyId = $request->user()->company_id;
-        
+
         $exchangeRateSetting = Setting::where('key', 'exchange_rate')->first();
         $exchangeRateValue = null;
-        
+
         if ($exchangeRateSetting) {
             $val = SettingValue::where('company_id', $companyId)
                 ->where('setting_id', $exchangeRateSetting->id)

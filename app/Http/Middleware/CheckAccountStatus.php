@@ -23,14 +23,16 @@ class CheckAccountStatus
                 auth()->logout();
                 $request->session()->invalidate();
                 $request->session()->regenerateToken();
+
                 return redirect()->route('login')->withErrors(['dni' => 'Tu cuenta ha sido desactivada. Comunícate con el administrador.']);
             }
 
             // Si la sucursal del usuario está inactiva y NO es Super Admin
-            if ($user->defaultBranch && $user->defaultBranch->status !== 'ACTIVE' && !$user->hasRole('Super Admin')) {
+            if ($user->defaultBranch && $user->defaultBranch->status !== 'ACTIVE' && ! $user->hasRole('Super Admin')) {
                 auth()->logout();
                 $request->session()->invalidate();
                 $request->session()->regenerateToken();
+
                 return redirect()->route('login')->withErrors(['dni' => 'La sucursal a la que perteneces ha sido desactivada.']);
             }
         }

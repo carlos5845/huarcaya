@@ -32,9 +32,12 @@ import {
     ShoppingCart,
     Truck,
     Package,
-    Sparkles
+    Sparkles,
+    WifiOff
 } from 'lucide-react';
 import React, { useState, useMemo } from 'react';
+import { useNetworkStatus } from '@/hooks/use-network-status';
+import { toast } from 'sonner';
 import InputError from '@/components/input-error';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -178,6 +181,7 @@ const columnLabels: Record<string, string> = {
 };
 
 export default function UsersIndex({ users, roles, branches, flash }: Props) {
+    const { isOnline } = useNetworkStatus();
     usePoll(5000, { only: ['users'] });
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [isEditOpen, setIsEditOpen] = useState(false);
@@ -364,11 +368,21 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
 
     const handleCreate = (e: React.FormEvent) => {
         e.preventDefault();
+
+        if (!isOnline) {
+            toast.warning('Modo sin conexión', {
+                description: 'La creación de usuarios requiere conexión activa al servidor.',
+            });
+            return;
+        }
+
         createPost('/users', {
             onSuccess: () => {
                 setIsCreateOpen(false);
                 createReset();
+                toast.success('Usuario registrado exitosamente');
             },
+            onError: () => toast.error('Error al registrar usuario'),
         });
     };
 
@@ -376,15 +390,31 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
         e.preventDefault();
         if (!editingUser) return;
 
+        if (!isOnline) {
+            toast.warning('Modo sin conexión', {
+                description: 'La edición de usuarios requiere conexión activa al servidor.',
+            });
+            return;
+        }
+
         editPut(`/users/${editingUser.id}`, {
             onSuccess: () => {
                 setIsEditOpen(false);
                 editReset();
+                toast.success('Usuario actualizado exitosamente');
             },
+            onError: () => toast.error('Error al actualizar usuario'),
         });
     };
 
     const toggleStatus = (user: User) => {
+        if (!isOnline) {
+            toast.warning('Modo sin conexión', {
+                description: 'El cambio de estado de usuarios requiere conexión activa al servidor.',
+            });
+            return;
+        }
+
         if (confirm(`¿Estás seguro de que deseas ${user.status === 'ACTIVE' ? 'desactivar' : 'reactivar'} este usuario?`)) {
             router.delete(`/users/${user.id}`);
         }
@@ -693,6 +723,18 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
                     </div>
                 </div>
 
+                {!isOnline && (
+                    <div className="flex items-center gap-3 rounded-lg border border-amber-500/25 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-300">
+                        <WifiOff className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+                        <div>
+                            <p className="font-semibold text-xs sm:text-sm">Estás trabajando en modo sin conexión</p>
+                            <p className="text-[11px] sm:text-xs text-amber-700 dark:text-amber-400">
+                                La creación, edición y administración de usuarios, roles y permisos requiere conexión activa con el servidor.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 <div className="flex items-center justify-between gap-4">
                     <Tabs defaultValue="ACTIVE" onValueChange={setStatusFilter} className="w-full">
                         <TabsList className="bg-muted/50 border border-border">
@@ -772,6 +814,14 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
                     </div>
 
                     <form onSubmit={handleCreate} className="space-y-4 py-1">
+                        {!isOnline && (
+                            <div className="flex items-center gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-800 dark:text-amber-300 text-xs">
+                                <WifiOff className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                                <span>
+                                    <strong>Modo sin conexión:</strong> Para registrar nuevos usuarios se requiere conexión activa con el servidor.
+                                </span>
+                            </div>
+                        )}
                         {/* 1. Datos Personales */}
                         <div className="rounded-xl border border-border bg-card p-4 space-y-3">
                             <div className="flex items-center gap-2 border-b border-border/60 pb-2">
@@ -954,8 +1004,8 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
 
                         <DialogFooter className="gap-2 pt-2">
                             <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
-                            <Button type="submit" disabled={createProcessing} className="font-semibold">
-                                {createProcessing ? 'Guardando...' : 'Crear Usuario'}
+                            <Button type="submit" disabled={createProcessing || !isOnline} className="font-semibold">
+                                {createProcessing ? 'Guardando...' : (isOnline ? 'Crear Usuario' : 'Conexión requerida')}
                             </Button>
                         </DialogFooter>
                     </form>
@@ -980,6 +1030,14 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
                     </DialogHeader>
 
                     <form onSubmit={handleEdit} className="space-y-4 py-1">
+                        {!isOnline && (
+                            <div className="flex items-center gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-800 dark:text-amber-300 text-xs">
+                                <WifiOff className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                                <span>
+                                    <strong>Modo sin conexión:</strong> Para modificar usuarios se requiere conexión activa con el servidor.
+                                </span>
+                            </div>
+                        )}
                         {/* 1. Datos Personales */}
                         <div className="rounded-xl border border-border bg-card p-4 space-y-3">
                             <div className="flex items-center gap-2 border-b border-border/60 pb-2">
@@ -1160,8 +1218,8 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
 
                         <DialogFooter className="gap-2 pt-2">
                             <Button type="button" variant="outline" onClick={() => setIsEditOpen(false)}>Cancelar</Button>
-                            <Button type="submit" disabled={editProcessing} className="font-semibold">
-                                {editProcessing ? 'Guardando...' : 'Actualizar Usuario'}
+                            <Button type="submit" disabled={editProcessing || !isOnline} className="font-semibold">
+                                {editProcessing ? 'Guardando...' : (isOnline ? 'Actualizar Usuario' : 'Conexión requerida')}
                             </Button>
                         </DialogFooter>
                     </form>

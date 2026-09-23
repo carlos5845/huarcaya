@@ -2,6 +2,8 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Setting;
+use App\Models\SettingValue;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -54,17 +56,19 @@ class HandleInertiaRequests extends Middleware
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             'company_settings' => function () use ($request) {
-                if (!$request->user()) return [];
-                
+                if (! $request->user()) {
+                    return [];
+                }
+
                 $exchangeRate = '3.80';
-                $setting = \App\Models\Setting::where('key', 'exchange_rate')->first();
+                $setting = Setting::where('key', 'exchange_rate')->first();
                 if ($setting) {
-                    $val = \App\Models\SettingValue::where('company_id', $request->user()->company_id)
+                    $val = SettingValue::where('company_id', $request->user()->company_id)
                         ->where('setting_id', $setting->id)
                         ->first();
                     $exchangeRate = $val ? $val->value : $setting->default_value;
                 }
-                
+
                 return [
                     'exchange_rate' => $exchangeRate,
                 ];

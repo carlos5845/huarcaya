@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\SyncController;
 use App\Http\Controllers\Auth\CheckUserController;
 use App\Http\Controllers\Auth\OtpPasswordResetController;
 use App\Http\Controllers\BranchController;
@@ -199,6 +200,7 @@ Route::middleware(['auth'])->group(function () {
         Route::get('receivables', [ReceivableController::class, 'index'])->name('receivables.index');
         Route::get('receivables/{receivable}', [ReceivableController::class, 'show'])->name('receivables.show');
         Route::post('receivables/{receivable}/payments', [ReceivableController::class, 'storePayment'])->name('receivables.payments.store');
+        Route::post('receivables/{receivable}/payments/{payment}/cancel', [ReceivableController::class, 'cancelPayment'])->name('receivables.payments.cancel');
 
     });
 
@@ -259,6 +261,10 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/api/notifications/unread', [NotificationController::class, 'unread'])->name('notifications.unread');
     Route::post('/api/notifications/{id}/read', [NotificationController::class, 'markAsRead'])->name('notifications.read');
     Route::post('/api/notifications/read-all', [NotificationController::class, 'markAllAsRead'])->name('notifications.readAll');
+
+    // Offline Sync Endpoints
+    Route::get('/api/v1/sync/catalog', [SyncController::class, 'getCatalog'])->name('sync.catalog');
+    Route::post('/api/v1/sync/batch', [SyncController::class, 'syncBatch'])->name('sync.batch');
 
 });
 

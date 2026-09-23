@@ -8,7 +8,7 @@ return new class extends Migration
     public function up(): void
     {
         $exists = DB::table('settings')->where('key', 'exchange_rate')->exists();
-        if (!$exists) {
+        if (! $exists) {
             DB::table('settings')->insert([
                 'key' => 'exchange_rate',
                 'description' => 'Tipo de Cambio (USD)',

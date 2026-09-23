@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class UnitController extends Controller
@@ -31,8 +32,8 @@ class UnitController extends Controller
         $companyId = Auth::user()->company_id;
         $normalizedName = Str::upper(preg_replace('/[^A-Za-z0-9]/', '', $validated['name']));
 
-        if (\App\Models\Unit::where('company_id', $companyId)->whereRaw('UPPER(REPLACE(name, " ", "")) = ?', [$normalizedName])->exists()) {
-            throw \Illuminate\Validation\ValidationException::withMessages([
+        if (Unit::where('company_id', $companyId)->whereRaw('UPPER(REPLACE(name, " ", "")) = ?', [$normalizedName])->exists()) {
+            throw ValidationException::withMessages([
                 'name' => 'Ya existe una unidad con este nombre.',
             ]);
         }
@@ -58,11 +59,11 @@ class UnitController extends Controller
 
         $normalizedName = Str::upper(preg_replace('/[^A-Za-z0-9]/', '', $validated['name']));
 
-        if (\App\Models\Unit::where('company_id', $unit->company_id)
+        if (Unit::where('company_id', $unit->company_id)
             ->whereRaw('UPPER(REPLACE(name, " ", "")) = ?', [$normalizedName])
             ->where('id', '!=', $unit->id)
             ->exists()) {
-            throw \Illuminate\Validation\ValidationException::withMessages([
+            throw ValidationException::withMessages([
                 'name' => 'Ya existe otra unidad con este nombre.',
             ]);
         }

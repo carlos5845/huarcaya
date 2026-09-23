@@ -6,6 +6,7 @@ use App\Models\Customer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class CustomerController extends Controller
@@ -41,7 +42,7 @@ class CustomerController extends Controller
                 ->where('document_type', $validated['document_type'])
                 ->where('document_number', $validated['document_number'])
                 ->exists()) {
-                throw \Illuminate\Validation\ValidationException::withMessages([
+                throw ValidationException::withMessages([
                     'document_number' => 'Ya existe un cliente con este tipo y número de documento.',
                 ]);
             }
@@ -83,7 +84,7 @@ class CustomerController extends Controller
                 ->where('document_number', $validated['document_number'])
                 ->where('id', '!=', $customer->id)
                 ->exists()) {
-                throw \Illuminate\Validation\ValidationException::withMessages([
+                throw ValidationException::withMessages([
                     'document_number' => 'Ya existe otro cliente con este tipo y número de documento.',
                 ]);
             }

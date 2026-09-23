@@ -4,11 +4,14 @@ namespace App\Providers;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Events\Login;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\SQLiteConnection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 use Laravel\Fortify\Fortify;
@@ -30,16 +33,16 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configureDefaults();
 
-        if (\DB::connection() instanceof \Illuminate\Database\SQLiteConnection) {
+        if (\DB::connection() instanceof SQLiteConnection) {
             \DB::connection()->getPdo()->sqliteCreateFunction('unaccent', function ($str) {
-                return strtolower(\Illuminate\Support\Str::ascii($str));
+                return strtolower(Str::ascii($str));
             }, 1);
         }
 
-        \Illuminate\Database\Eloquent\Builder::macro('whereLikeAccentInsensitive', function ($column, $search) {
+        Builder::macro('whereLikeAccentInsensitive', function ($column, $search) {
             $connection = $this->getConnection();
             $driver = $connection->getDriverName();
-            
+
             if ($driver === 'sqlite') {
                 return $this->whereRaw("unaccent({$column}) LIKE unaccent(?)", [$search]);
             } elseif ($driver === 'pgsql') {
@@ -49,10 +52,10 @@ class AppServiceProvider extends ServiceProvider
             }
         });
 
-        \Illuminate\Database\Eloquent\Builder::macro('orWhereLikeAccentInsensitive', function ($column, $search) {
+        Builder::macro('orWhereLikeAccentInsensitive', function ($column, $search) {
             $connection = $this->getConnection();
             $driver = $connection->getDriverName();
-            
+
             if ($driver === 'sqlite') {
                 return $this->orWhereRaw("unaccent({$column}) LIKE unaccent(?)", [$search]);
             } elseif ($driver === 'pgsql') {
@@ -61,7 +64,6 @@ class AppServiceProvider extends ServiceProvider
                 return $this->orWhere($column, 'like', "%{$search}%");
             }
         });
-
 
         Event::listen(function (Login $event) {
             if ($event->user->status !== 'ACTIVE') {
