@@ -40,9 +40,45 @@ class SaleController extends Controller
             $allowedBranchIds = [$user->default_branch_id];
         }
 
-        $sales = Sale::with(['customer', 'lines.product'])
+        $baseQuery = Sale::query()
             ->where('company_id', $user->company_id)
             ->whereIn('branch_id', $allowedBranchIds)
+            ->when($branchIdFilter, function ($query, $branchIdFilter) {
+                $query->where('branch_id', $branchIdFilter);
+            })
+            ->when($dateFrom, function ($query, $dateFrom) {
+                $query->whereDate('operation_date', '>=', $dateFrom);
+            })
+            ->when($dateTo, function ($query, $dateTo) {
+                $query->whereDate('operation_date', '<=', $dateTo);
+            });
+
+        // Compute metrics for the filtered scope
+        $confirmedQuery = (clone $baseQuery)->where('status', 'CONFIRMED');
+        $totalSalesPEN = (float) (clone $confirmedQuery)->where('currency_code', 'PEN')->sum('total_amount');
+        $totalSalesUSD = (float) (clone $confirmedQuery)->where('currency_code', 'USD')->sum('total_amount');
+        $confirmedCount = (clone $confirmedQuery)->count();
+
+        $cashSalesPEN = (float) (clone $confirmedQuery)->where('currency_code', 'PEN')->where('payment_type', 'CASH')->sum('total_amount');
+        $creditSalesPEN = (float) (clone $confirmedQuery)->where('currency_code', 'PEN')->where('payment_type', 'CREDIT')->sum('total_amount');
+
+        $draftCount = (clone $baseQuery)->where('status', 'DRAFT')->count();
+        $totalTransactions = (clone $baseQuery)->count();
+        $averageTicketPEN = $confirmedCount > 0 ? round($totalSalesPEN / $confirmedCount, 2) : 0;
+
+        $metrics = [
+            'total_sales_pen' => $totalSalesPEN,
+            'total_sales_usd' => $totalSalesUSD,
+            'confirmed_count' => $confirmedCount,
+            'draft_count' => $draftCount,
+            'total_transactions' => $totalTransactions,
+            'cash_sales_pen' => $cashSalesPEN,
+            'credit_sales_pen' => $creditSalesPEN,
+            'average_ticket_pen' => $averageTicketPEN,
+        ];
+
+        $sales = (clone $baseQuery)
+            ->with(['customer', 'lines.product'])
             ->when($search, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
                     $q->whereLikeAccentInsensitive('sale_number', "%{$search}%")
@@ -66,15 +102,6 @@ class SaleController extends Controller
             ->when($status, function ($query, $status) {
                 $query->where('status', $status);
             })
-            ->when($branchIdFilter, function ($query, $branchIdFilter) {
-                $query->where('branch_id', $branchIdFilter);
-            })
-            ->when($dateFrom, function ($query, $dateFrom) {
-                $query->whereDate('operation_date', '>=', $dateFrom);
-            })
-            ->when($dateTo, function ($query, $dateTo) {
-                $query->whereDate('operation_date', '<=', $dateTo);
-            })
             ->orderByDesc('created_at')
             ->paginate(15)
             ->withQueryString();
@@ -84,6 +111,7 @@ class SaleController extends Controller
             'branches' => $isSuperAdmin ? Branch::orderBy('name')->get(['id', 'name']) : [],
             'isSuperAdmin' => $isSuperAdmin,
             'filters' => $request->only(['search', 'status', 'date_from', 'date_to', 'branch_id']),
+            'metrics' => $metrics,
         ]);
     }
 

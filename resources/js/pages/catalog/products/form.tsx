@@ -1,4 +1,5 @@
 import { Head, Link, useForm } from '@inertiajs/react';
+import { toast } from 'sonner';
 import { 
     PackageOpen, 
     ArrowLeft, 
@@ -16,7 +17,12 @@ import {
     Tag, 
     FileText, 
     Eye,
-    Loader2
+    Loader2,
+    DollarSign,
+    Building2,
+    TrendingUp,
+    Coins,
+    Lock
 } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
 import InputError from '@/components/input-error';
@@ -24,8 +30,10 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
@@ -37,6 +45,7 @@ type Brand = { id: number; name: string };
 type Category = { id: number; name: string };
 type Unit = { id: number; code: string; name: string };
 type Alias = { id?: number; alias: string };
+type Branch = { id: number; name: string; code?: string };
 
 type Product = {
     id: number;
@@ -58,10 +67,21 @@ type Props = {
     brands: Brand[];
     categories: Category[];
     units: Unit[];
+    branches?: Branch[];
+    defaultBranchId?: number | null;
+    isSuperAdmin?: boolean;
     product: Product | null;
 };
 
-export default function ProductForm({ brands, categories, units, product }: Props) {
+export default function ProductForm({
+    brands,
+    categories,
+    units,
+    branches = [],
+    defaultBranchId = null,
+    isSuperAdmin = false,
+    product
+}: Props) {
     const isEditing = !!product;
 
     const { data, setData, post, put, processing, errors } = useForm({
@@ -77,6 +97,12 @@ export default function ProductForm({ brands, categories, units, product }: Prop
         requires_lot_tracking: product?.requires_lot_tracking ?? false,
         fifo_enabled: product?.fifo_enabled ?? true,
         aliases: product?.aliases || [],
+        initial_price: '',
+        initial_min_price: '',
+        has_initial_stock: false,
+        initial_branch_id: defaultBranchId ? defaultBranchId.toString() : (branches[0]?.id ? branches[0].id.toString() : ''),
+        initial_stock: '',
+        initial_unit_cost: '',
     });
 
     const [similarityStatus, setSimilarityStatus] = useState<'idle' | 'checking' | 'exists' | 'ok'>('idle');
@@ -135,9 +161,25 @@ export default function ProductForm({ brands, categories, units, product }: Prop
         data.fifo_enabled = true;
         
         if (isEditing) {
-            put(`/products/${product.id}`);
+            put(`/products/${product.id}`, {
+                onSuccess: () => {
+                    toast.success('Repuesto actualizado exitosamente');
+                },
+                onError: (err) => {
+                    const firstErr = Object.values(err)[0] || 'Hubo un problema al actualizar el repuesto. Revisa los campos.';
+                    toast.error(String(firstErr));
+                }
+            });
         } else {
-            post('/products');
+            post('/products', {
+                onSuccess: () => {
+                    toast.success('Repuesto registrado exitosamente');
+                },
+                onError: (err) => {
+                    const firstErr = Object.values(err)[0] || 'Hubo un problema al crear el repuesto. Revisa los campos obligatorios.';
+                    toast.error(String(firstErr));
+                }
+            });
         }
     };
 
@@ -161,6 +203,17 @@ export default function ProductForm({ brands, categories, units, product }: Prop
     const selectedBrand = brands.find((b) => b.id.toString() === data.brand_id);
     const selectedCategory = categories.find((c) => c.id.toString() === data.category_id);
     const selectedUnit = units.find((u) => u.id.toString() === data.unit_id);
+    const assignedBranch = branches.find((b) => b.id.toString() === data.initial_branch_id)
+        || branches.find((b) => b.id === defaultBranchId)
+        || branches[0];
+
+    const initialQty = parseFloat(data.initial_stock) || 0;
+    const initialCost = parseFloat(data.initial_unit_cost) || 0;
+    const initialSalePrice = parseFloat(data.initial_price) || 0;
+    const totalInitialInvestment = initialQty * initialCost;
+    const grossMarginPct = initialSalePrice > 0 && initialCost > 0
+        ? (((initialSalePrice - initialCost) / initialSalePrice) * 100).toFixed(1)
+        : null;
 
     return (
         <>
@@ -605,6 +658,210 @@ export default function ProductForm({ brands, categories, units, product }: Prop
                             </CardContent>
                         </Card>
 
+                        {!isEditing && (
+                            <Card>
+                                <CardHeader>
+                                    <div className="flex items-center gap-2">
+                                        <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                                            <Coins className="h-5 w-5" />
+                                        </div>
+                                        <div>
+                                            <CardTitle className="text-base">Precios y Stock Inicial (Opcional)</CardTitle>
+                                            <CardDescription>
+                                                Configura los precios de venta y opcionalmente apertura la primera existencia física.
+                                            </CardDescription>
+                                        </div>
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="space-y-6">
+                                    {/* Precios Comerciales */}
+                                    <div>
+                                        <div className="flex items-center gap-2 mb-3">
+                                            <DollarSign className="h-4 w-4 text-primary" />
+                                            <h4 className="text-sm font-semibold">Precios Comerciales de Venta</h4>
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <Label htmlFor="initial_price">Precio Público Sugerido (PEN)</Label>
+                                                <div className="relative">
+                                                    <span className="absolute left-3 top-2.5 text-xs font-semibold text-muted-foreground">S/</span>
+                                                    <Input
+                                                        id="initial_price"
+                                                        type="number"
+                                                        step="0.01"
+                                                        min="0"
+                                                        placeholder="0.00"
+                                                        className="pl-8 font-mono"
+                                                        value={data.initial_price}
+                                                        onChange={(e) => setData('initial_price', e.target.value)}
+                                                    />
+                                                </div>
+                                                <p className="text-[11px] text-muted-foreground">Precio estándar para facturación y mostrador.</p>
+                                                <InputError message={errors.initial_price} />
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <Label htmlFor="initial_min_price">Precio Mínimo de Seguridad (PEN)</Label>
+                                                <div className="relative">
+                                                    <span className="absolute left-3 top-2.5 text-xs font-semibold text-muted-foreground">S/</span>
+                                                    <Input
+                                                        id="initial_min_price"
+                                                        type="number"
+                                                        step="0.01"
+                                                        min="0"
+                                                        placeholder="0.00"
+                                                        className="pl-8 font-mono"
+                                                        value={data.initial_min_price}
+                                                        onChange={(e) => setData('initial_min_price', e.target.value)}
+                                                    />
+                                                </div>
+                                                <p className="text-[11px] text-muted-foreground">Límite para alertas o bloqueos de descuento.</p>
+                                                <InputError message={errors.initial_min_price} />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <Separator />
+
+                                    {/* Existencia Física Inicial */}
+                                    <div className="space-y-4">
+                                        <div className="flex items-start space-x-3 p-3 rounded-lg border bg-muted/30">
+                                            <Checkbox
+                                                id="has_initial_stock"
+                                                checked={data.has_initial_stock}
+                                                onCheckedChange={(checked) => setData('has_initial_stock', !!checked)}
+                                                className="mt-0.5"
+                                            />
+                                            <div className="space-y-1 leading-none">
+                                                <label
+                                                    htmlFor="has_initial_stock"
+                                                    className="text-sm font-semibold cursor-pointer text-foreground"
+                                                >
+                                                    Registrar existencia física de arranque
+                                                </label>
+                                                <p className="text-xs text-muted-foreground">
+                                                    Genera el asiento de apertura en Kardex (INVENTARIO_INICIAL) y el primer Lote FIFO trazable.
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {data.has_initial_stock && (
+                                            <div className="p-4 rounded-xl border border-primary/20 bg-primary/5 space-y-4">
+                                                {/* Sucursal destino */}
+                                                <div className="space-y-2">
+                                                    <Label>Sucursal de Ingreso <span className="text-destructive">*</span></Label>
+                                                    {isSuperAdmin ? (
+                                                        <Select
+                                                            value={data.initial_branch_id}
+                                                            onValueChange={(val) => setData('initial_branch_id', val)}
+                                                        >
+                                                            <SelectTrigger>
+                                                                <SelectValue placeholder="Seleccione sucursal..." />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                {branches.map((b) => (
+                                                                    <SelectItem key={b.id} value={b.id.toString()}>
+                                                                        {b.name}
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    ) : (
+                                                        <div className="flex items-center justify-between p-3 rounded-lg border bg-card">
+                                                            <div className="flex items-center gap-2">
+                                                                <Building2 className="h-4 w-4 text-primary" />
+                                                                <span className="font-semibold text-sm">
+                                                                    {assignedBranch?.name || 'Sucursal Principal'}
+                                                                </span>
+                                                            </div>
+                                                            <Badge variant="outline" className="text-[11px] gap-1 bg-muted text-muted-foreground">
+                                                                <Lock className="h-3 w-3" /> Tu Sede Asignada
+                                                            </Badge>
+                                                        </div>
+                                                    )}
+                                                    {!isSuperAdmin && (
+                                                        <p className="text-[11px] text-muted-foreground">
+                                                            🔒 Como usuario de sede, el inventario se asigna exclusivamente a tu sucursal.
+                                                        </p>
+                                                    )}
+                                                    <InputError message={errors.initial_branch_id} />
+                                                </div>
+
+                                                {/* Cantidad y Costo */}
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                    <div className="space-y-2">
+                                                        <Label htmlFor="initial_stock">
+                                                            Cantidad Inicial ({selectedUnit?.name || 'Unidades'}) <span className="text-destructive">*</span>
+                                                        </Label>
+                                                        <Input
+                                                            id="initial_stock"
+                                                            type="number"
+                                                            step="any"
+                                                            min="0.01"
+                                                            placeholder="0"
+                                                            className="font-mono text-base"
+                                                            value={data.initial_stock}
+                                                            onChange={(e) => setData('initial_stock', e.target.value)}
+                                                            required={data.has_initial_stock}
+                                                        />
+                                                        <InputError message={errors.initial_stock} />
+                                                    </div>
+
+                                                    <div className="space-y-2">
+                                                        <Label htmlFor="initial_unit_cost">
+                                                            Costo Unitario de Compra (PEN)
+                                                        </Label>
+                                                        <div className="relative">
+                                                            <span className="absolute left-3 top-2.5 text-xs font-semibold text-muted-foreground">S/</span>
+                                                            <Input
+                                                                id="initial_unit_cost"
+                                                                type="number"
+                                                                step="0.01"
+                                                                min="0"
+                                                                placeholder="0.00"
+                                                                className="pl-8 font-mono text-base"
+                                                                value={data.initial_unit_cost}
+                                                                onChange={(e) => setData('initial_unit_cost', e.target.value)}
+                                                            />
+                                                        </div>
+                                                        <p className="text-[11px] text-muted-foreground">
+                                                            Costo base para valorización de Kardex y margen.
+                                                        </p>
+                                                        <InputError message={errors.initial_unit_cost} />
+                                                    </div>
+                                                </div>
+
+                                                {/* Resumen Calculado en Vivo */}
+                                                {(initialQty > 0 || initialCost > 0) && (
+                                                    <div className="pt-3 border-t border-primary/10 grid grid-cols-2 gap-3 text-xs">
+                                                        <div className="p-2.5 rounded-lg bg-card/60 border border-primary/10">
+                                                            <span className="text-muted-foreground block text-[11px]">Valorización Total Ingreso:</span>
+                                                            <span className="font-mono font-bold text-foreground text-sm">
+                                                                S/ {totalInitialInvestment.toFixed(2)}
+                                                            </span>
+                                                        </div>
+                                                        <div className="p-2.5 rounded-lg bg-card/60 border border-primary/10">
+                                                            <span className="text-muted-foreground block text-[11px]">Margen Bruto Estimado:</span>
+                                                            {grossMarginPct !== null ? (
+                                                                <span className={cn(
+                                                                    "font-mono font-bold text-sm",
+                                                                    parseFloat(grossMarginPct) >= 20 ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600"
+                                                                )}>
+                                                                    {grossMarginPct}%
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-muted-foreground italic">Requiere precio y costo</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        )}
+
                     </div>
 
                     {/* Right Column: Live Ficha Técnica / Summary (4 cols, Sticky) */}
@@ -689,6 +946,44 @@ export default function ProductForm({ brands, categories, units, product }: Prop
                                             {selectedUnit ? `${selectedUnit.name} (${selectedUnit.code})` : '—'}
                                         </span>
                                     </div>
+
+                                    {!isEditing && (
+                                        <>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-muted-foreground">Precio Público:</span>
+                                                <span className="font-mono font-semibold text-foreground">
+                                                    {data.initial_price ? `S/ ${parseFloat(data.initial_price).toFixed(2)}` : '—'}
+                                                </span>
+                                            </div>
+
+                                            {data.initial_min_price && (
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-muted-foreground">Precio Mínimo:</span>
+                                                    <span className="font-mono font-medium text-red-600 dark:text-red-400">
+                                                        S/ {parseFloat(data.initial_min_price).toFixed(2)}
+                                                    </span>
+                                                </div>
+                                            )}
+
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-muted-foreground">Stock de Arranque:</span>
+                                                <span className="font-mono font-semibold text-foreground">
+                                                    {data.has_initial_stock && data.initial_stock
+                                                        ? `${data.initial_stock} ${selectedUnit?.code || 'UND'}`
+                                                        : '0 (Sin stock inicial)'}
+                                                </span>
+                                            </div>
+
+                                            {data.has_initial_stock && data.initial_stock && (
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-muted-foreground">Sede Ingreso:</span>
+                                                    <span className="font-medium text-foreground truncate max-w-[150px] text-right">
+                                                        {assignedBranch?.name || '—'}
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
 
                                     {data.aliases.length > 0 && (
                                         <div className="pt-1">

@@ -24,15 +24,31 @@ class CustomerReturnController extends Controller
         $user = $request->user();
         $isSuperAdmin = $user->hasRole('Super Admin');
 
-        $returns = CustomerReturn::with(['customer', 'sale', 'branch'])
+        $baseQuery = CustomerReturn::query()
             ->when(! $isSuperAdmin && $user->default_branch_id, function ($q) use ($user) {
                 $q->where('branch_id', $user->default_branch_id);
-            })
+            });
+
+        $totalReturns = (clone $baseQuery)->count();
+        $totalAmountPEN = (float) (clone $baseQuery)->where('status', 'CONFIRMED')->sum('total_amount');
+        $confirmedCount = (clone $baseQuery)->where('status', 'CONFIRMED')->count();
+        $draftCount = (clone $baseQuery)->where('status', 'DRAFT')->count();
+
+        $metrics = [
+            'total_returns' => $totalReturns,
+            'total_amount_pen' => $totalAmountPEN,
+            'confirmed_count' => $confirmedCount,
+            'draft_count' => $draftCount,
+        ];
+
+        $returns = (clone $baseQuery)
+            ->with(['customer', 'sale', 'branch'])
             ->orderBy('created_at', 'desc')
             ->paginate(15);
 
         return Inertia::render('customer-returns/index', [
             'returns' => $returns,
+            'metrics' => $metrics,
         ]);
     }
 

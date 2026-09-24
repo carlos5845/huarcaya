@@ -19,7 +19,11 @@ import {
     ArrowUpDown, 
     ArrowUp, 
     ArrowDown,
-    Plus 
+    Plus,
+    RotateCcw,
+    DollarSign,
+    CheckCircle2,
+    Clock
 } from 'lucide-react';
 import {
     DropdownMenu,
@@ -44,7 +48,20 @@ const columnLabels: Record<string, string> = {
     actions: 'Acciones',
 };
 
-export default function CustomerReturnsIndex({ returns }: { returns: any }) {
+interface ReturnMetrics {
+    total_returns: number;
+    total_amount_pen: number;
+    confirmed_count: number;
+    draft_count: number;
+}
+
+export default function CustomerReturnsIndex({ 
+    returns,
+    metrics
+}: { 
+    returns: any;
+    metrics?: ReturnMetrics;
+}) {
     const [sorting, setSorting] = useState<SortingState>([]);
     const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
 
@@ -306,6 +323,88 @@ export default function CustomerReturnsIndex({ returns }: { returns: any }) {
                                     ))}
                             </DropdownMenuContent>
                         </DropdownMenu>
+                    </div>
+                </div>
+
+                {/* 4 KPI Summary Cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div className="bg-card text-card-foreground border border-border rounded-xl p-4 shadow-xs">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                Total Devoluciones
+                            </span>
+                            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                                <RotateCcw className="w-4 h-4" />
+                            </div>
+                        </div>
+                        <div className="mt-2 flex items-baseline gap-1.5">
+                            <span className="text-2xl font-bold text-foreground">
+                                {metrics?.total_returns ?? 0}
+                            </span>
+                            <span className="text-xs text-muted-foreground">operaciones</span>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            {metrics?.draft_count ?? 0} en borrador
+                        </p>
+                    </div>
+
+                    <div className="bg-card text-card-foreground border border-border rounded-xl p-4 shadow-xs">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                Monto Revertido (PEN)
+                            </span>
+                            <div className="h-8 w-8 rounded-lg bg-rose-500/10 flex items-center justify-center text-rose-600 dark:text-rose-400">
+                                <DollarSign className="w-4 h-4" />
+                            </div>
+                        </div>
+                        <div className="mt-2 flex items-baseline gap-1.5">
+                            <span className="text-2xl font-bold text-foreground">
+                                S/ {(metrics?.total_amount_pen ?? 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            Total acreditado o reembolsado
+                        </p>
+                    </div>
+
+                    <div className="bg-card text-card-foreground border border-border rounded-xl p-4 shadow-xs">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                Confirmadas
+                            </span>
+                            <div className="h-8 w-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+                                <CheckCircle2 className="w-4 h-4" />
+                            </div>
+                        </div>
+                        <div className="mt-2 flex items-baseline gap-1.5">
+                            <span className="text-2xl font-bold text-foreground">
+                                {metrics?.confirmed_count ?? 0}
+                            </span>
+                            <span className="text-xs text-muted-foreground">ejecutadas</span>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            Reingresadas a Kardex
+                        </p>
+                    </div>
+
+                    <div className="bg-card text-card-foreground border border-border rounded-xl p-4 shadow-xs">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                En Borrador
+                            </span>
+                            <div className="h-8 w-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-600 dark:text-amber-400">
+                                <Clock className="w-4 h-4" />
+                            </div>
+                        </div>
+                        <div className="mt-2 flex items-baseline gap-1.5">
+                            <span className="text-2xl font-bold text-foreground">
+                                {metrics?.draft_count ?? 0}
+                            </span>
+                            <span className="text-xs text-muted-foreground">pendientes</span>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            Pendientes de confirmación
+                        </p>
                     </div>
                 </div>
 

@@ -34,8 +34,23 @@ class InventoryAdjustmentController extends Controller
             $allowedBranchIds = [$user->default_branch_id];
         }
 
-        $adjustments = InventoryAdjustment::with(['branch', 'creator'])
-            ->whereIn('branch_id', $allowedBranchIds)
+        $baseQuery = InventoryAdjustment::query()
+            ->whereIn('branch_id', $allowedBranchIds);
+
+        $totalAdjustments = (clone $baseQuery)->count();
+        $positiveCount = (clone $baseQuery)->where('adjustment_type', 'POSITIVE')->where('status', 'CONFIRMED')->count();
+        $negativeCount = (clone $baseQuery)->where('adjustment_type', 'NEGATIVE')->where('status', 'CONFIRMED')->count();
+        $draftCount = (clone $baseQuery)->where('status', 'DRAFT')->count();
+
+        $metrics = [
+            'total_adjustments' => $totalAdjustments,
+            'positive_count' => $positiveCount,
+            'negative_count' => $negativeCount,
+            'draft_count' => $draftCount,
+        ];
+
+        $adjustments = (clone $baseQuery)
+            ->with(['branch', 'creator'])
             ->when($search, function ($query, $search) {
                 $query->whereLikeAccentInsensitive('adjustment_number', "%{$search}%");
             })
@@ -53,6 +68,7 @@ class InventoryAdjustmentController extends Controller
             'adjustments' => $adjustments,
             'filters' => $request->only(['search', 'status', 'type']),
             'canSeeAllBranches' => $canSeeAllBranches,
+            'metrics' => $metrics,
         ]);
     }
 

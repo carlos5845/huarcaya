@@ -18,12 +18,22 @@ import {
     SlidersHorizontal, 
     ArrowUpDown, 
     ArrowUp, 
-    ArrowDown 
+    ArrowDown,
+    ArrowLeftRight,
+    Truck,
+    CheckCircle2,
+    AlertTriangle,
+    Clock,
+    Printer,
+    FileText,
+    Receipt,
+    ClipboardList
 } from 'lucide-react';
 import {
     DropdownMenu,
     DropdownMenuCheckboxItem,
     DropdownMenuContent,
+    DropdownMenuItem,
     DropdownMenuLabel,
     DropdownMenuSeparator,
     DropdownMenuTrigger,
@@ -44,7 +54,23 @@ const columnLabels: Record<string, string> = {
     actions: 'Acciones',
 };
 
-export default function TransfersIndex({ transfers, isSuperAdmin }: any) {
+interface TransferMetrics {
+    total_transfers: number;
+    in_transit_count: number;
+    completed_count: number;
+    discrepancy_count: number;
+    draft_count: number;
+}
+
+export default function TransfersIndex({ 
+    transfers, 
+    isSuperAdmin,
+    metrics
+}: { 
+    transfers: any; 
+    isSuperAdmin?: boolean;
+    metrics?: TransferMetrics;
+}) {
     // TanStack states
     const [sorting, setSorting] = useState<SortingState>([]);
     const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
@@ -235,12 +261,49 @@ export default function TransfersIndex({ transfers, isSuperAdmin }: any) {
                 </div>
             ),
             cell: ({ row }) => (
-                <div className="flex justify-end">
+                <div className="flex justify-end items-center gap-1.5">
                     <Link href={`/transfers/${row.original.id}`}>
                         <Button variant="outline" size="sm" className="h-8 gap-1 text-xs font-medium">
                             <Eye className="h-3.5 w-3.5" /> Ver
                         </Button>
                     </Link>
+
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm" className="h-8 w-8 p-0" title="Imprimir documentos">
+                                <Printer className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-[210px] bg-popover text-popover-foreground border-border shadow-md">
+                            <DropdownMenuLabel className="text-xs font-semibold">Imprimir Traslado</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem 
+                                onClick={() => window.open(`/transfers/${row.original.id}/print/internal?format=a4`, '_blank')}
+                                className="cursor-pointer text-xs gap-2"
+                            >
+                                <FileText className="h-3.5 w-3.5 text-blue-600" /> Nota de Traslado (A4)
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                                onClick={() => window.open(`/transfers/${row.original.id}/print/internal?format=ticket`, '_blank')}
+                                className="cursor-pointer text-xs gap-2"
+                            >
+                                <Receipt className="h-3.5 w-3.5 text-emerald-600" /> Ticket Térmico (80 mm)
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                                onClick={() => window.open(`/transfers/${row.original.id}/print/picking`, '_blank')}
+                                className="cursor-pointer text-xs gap-2"
+                            >
+                                <ClipboardList className="h-3.5 w-3.5 text-amber-600" /> Hoja de Picking
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem 
+                                onClick={() => window.open(`/transfers/${row.original.id}/print/guide`, '_blank')}
+                                className="cursor-pointer text-xs gap-2"
+                            >
+                                <Truck className="h-3.5 w-3.5 text-primary" /> Guía Remitente (SUNAT)
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                 </div>
             ),
         },
@@ -312,6 +375,89 @@ export default function TransfersIndex({ transfers, isSuperAdmin }: any) {
                                 <Plus className="h-4 w-4" /> Nueva Transferencia
                             </Button>
                         </Link>
+                    </div>
+                </div>
+
+                {/* 4 KPI Summary Cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div className="bg-card text-card-foreground border border-border rounded-xl p-4 shadow-xs">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                Total Transferencias
+                            </span>
+                            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                                <ArrowLeftRight className="w-4 h-4" />
+                            </div>
+                        </div>
+                        <div className="mt-2 flex items-baseline gap-1.5">
+                            <span className="text-2xl font-bold text-foreground">
+                                {metrics?.total_transfers ?? 0}
+                            </span>
+                            <span className="text-xs text-muted-foreground">guías</span>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            {metrics?.draft_count ?? 0} solicitudes en borrador
+                        </p>
+                    </div>
+
+                    <div className="bg-card text-card-foreground border border-border rounded-xl p-4 shadow-xs">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                En Tránsito
+                            </span>
+                            <div className="h-8 w-8 rounded-lg bg-sky-500/10 flex items-center justify-center text-sky-600 dark:text-sky-400">
+                                <Truck className="w-4 h-4" />
+                            </div>
+                        </div>
+                        <div className="mt-2 flex items-baseline gap-1.5">
+                            <span className="text-2xl font-bold text-foreground">
+                                {metrics?.in_transit_count ?? 0}
+                            </span>
+                            <span className="text-xs text-muted-foreground">despachadas</span>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            Mercadería viajando entre sedes
+                        </p>
+                    </div>
+
+                    <div className="bg-card text-card-foreground border border-border rounded-xl p-4 shadow-xs">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                Completadas
+                            </span>
+                            <div className="h-8 w-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+                                <CheckCircle2 className="w-4 h-4" />
+                            </div>
+                        </div>
+                        <div className="mt-2 flex items-baseline gap-1.5">
+                            <span className="text-2xl font-bold text-foreground">
+                                {metrics?.completed_count ?? 0}
+                            </span>
+                            <span className="text-xs text-muted-foreground">recibidas</span>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            Conformidad y stock acreditado
+                        </p>
+                    </div>
+
+                    <div className="bg-card text-card-foreground border border-border rounded-xl p-4 shadow-xs">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                Con Observaciones
+                            </span>
+                            <div className="h-8 w-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-600 dark:text-amber-400">
+                                <AlertTriangle className="w-4 h-4" />
+                            </div>
+                        </div>
+                        <div className="mt-2 flex items-baseline gap-1.5">
+                            <span className="text-2xl font-bold text-foreground">
+                                {metrics?.discrepancy_count ?? 0}
+                            </span>
+                            <span className="text-xs text-muted-foreground">incidencias</span>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            Discrepancias en cantidad/ítems
+                        </p>
                     </div>
                 </div>
 

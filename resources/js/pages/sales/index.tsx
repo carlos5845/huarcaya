@@ -23,7 +23,11 @@ import {
     Pencil,
     WifiOff,
     Clock,
-    Trash2
+    Trash2,
+    DollarSign,
+    ShoppingBag,
+    CreditCard,
+    TrendingUp
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -62,7 +66,30 @@ const columnLabels: Record<string, string> = {
     actions: 'Acciones',
 };
 
-export default function SalesIndex({ sales, filters, branches = [], isSuperAdmin = false }: { sales: any, filters: any, branches?: any[], isSuperAdmin?: boolean }) {
+interface SaleMetrics {
+    total_sales_pen: number;
+    total_sales_usd: number;
+    confirmed_count: number;
+    draft_count: number;
+    total_transactions: number;
+    cash_sales_pen: number;
+    credit_sales_pen: number;
+    average_ticket_pen: number;
+}
+
+export default function SalesIndex({ 
+    sales, 
+    filters, 
+    branches = [], 
+    isSuperAdmin = false,
+    metrics
+}: { 
+    sales: any, 
+    filters: any, 
+    branches?: any[], 
+    isSuperAdmin?: boolean,
+    metrics?: SaleMetrics
+}) {
     const [search, setSearch] = useState(filters?.search || '');
     const [status, setStatus] = useState(filters?.status || 'ALL');
     const [dateFrom, setDateFrom] = useState(filters?.date_from || '');
@@ -81,6 +108,31 @@ export default function SalesIndex({ sales, filters, branches = [], isSuperAdmin
     });
 
     const { mergedSales, pendingOfflineCount, pendingOfflineTotal, discardOfflineSale } = useMergedSales(sales, branchId);
+
+    // KPI Metrics calculation blending server metrics with pending offline sales
+    const kpiMetrics = useMemo(() => {
+        const totalSalesPEN = (metrics?.total_sales_pen || 0) + (pendingOfflineTotal || 0);
+        const totalSalesUSD = metrics?.total_sales_usd || 0;
+        const confirmedCount = metrics?.confirmed_count || 0;
+        const totalTransactions = (metrics?.total_transactions || 0) + (pendingOfflineCount || 0);
+        const cashSalesPEN = (metrics?.cash_sales_pen || 0) + (pendingOfflineTotal || 0); // offline sales are cash/pos
+        const creditSalesPEN = metrics?.credit_sales_pen || 0;
+        const averageTicketPEN = (confirmedCount + pendingOfflineCount) > 0 
+            ? (totalSalesPEN / (confirmedCount + pendingOfflineCount)) 
+            : 0;
+        const draftCount = (metrics?.draft_count || 0) + (pendingOfflineCount || 0);
+
+        return {
+            totalSalesPEN,
+            totalSalesUSD,
+            confirmedCount,
+            totalTransactions,
+            cashSalesPEN,
+            creditSalesPEN,
+            averageTicketPEN,
+            draftCount,
+        };
+    }, [metrics, pendingOfflineTotal, pendingOfflineCount]);
 
 
     const applyFilters = () => {
@@ -562,6 +614,92 @@ export default function SalesIndex({ sales, filters, branches = [], isSuperAdmin
                     </Link>
                 </div>
 
+                {/* 4 KPI Summary Cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div className="bg-card text-card-foreground border border-border rounded-xl p-4 shadow-xs">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                Total Facturado (PEN)
+                            </span>
+                            <div className="h-8 w-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+                                <DollarSign className="w-4 h-4" />
+                            </div>
+                        </div>
+                        <div className="mt-2 flex items-baseline gap-1.5">
+                            <span className="text-2xl font-bold text-foreground">
+                                S/ {kpiMetrics.totalSalesPEN.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                        </div>
+                        <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
+                            <span>{kpiMetrics.confirmedCount} ventas confirmadas</span>
+                            {kpiMetrics.totalSalesUSD > 0 && (
+                                <Badge variant="outline" className="text-[10px] px-1 py-0 border-blue-500/30 text-blue-600 bg-blue-500/10">
+                                    + ${kpiMetrics.totalSalesUSD.toFixed(2)} USD
+                                </Badge>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="bg-card text-card-foreground border border-border rounded-xl p-4 shadow-xs">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                Total Operaciones
+                            </span>
+                            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                                <ShoppingBag className="w-4 h-4" />
+                            </div>
+                        </div>
+                        <div className="mt-2 flex items-baseline gap-1.5">
+                            <span className="text-2xl font-bold text-foreground">
+                                {kpiMetrics.totalTransactions}
+                            </span>
+                            <span className="text-xs text-muted-foreground">transacciones</span>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            {kpiMetrics.draftCount} en borrador / local
+                        </p>
+                    </div>
+
+                    <div className="bg-card text-card-foreground border border-border rounded-xl p-4 shadow-xs">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                Contado vs Crédito
+                            </span>
+                            <div className="h-8 w-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-600 dark:text-blue-400">
+                                <CreditCard className="w-4 h-4" />
+                            </div>
+                        </div>
+                        <div className="mt-2 flex items-baseline gap-1.5">
+                            <span className="text-2xl font-bold text-foreground">
+                                S/ {kpiMetrics.cashSalesPEN.toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                            </span>
+                            <span className="text-xs text-muted-foreground">contado</span>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            Crédito: S/ {kpiMetrics.creditSalesPEN.toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        </p>
+                    </div>
+
+                    <div className="bg-card text-card-foreground border border-border rounded-xl p-4 shadow-xs">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                Ticket Promedio
+                            </span>
+                            <div className="h-8 w-8 rounded-lg bg-violet-500/10 flex items-center justify-center text-violet-600 dark:text-violet-400">
+                                <TrendingUp className="w-4 h-4" />
+                            </div>
+                        </div>
+                        <div className="mt-2 flex items-baseline gap-1.5">
+                            <span className="text-2xl font-bold text-foreground">
+                                S/ {kpiMetrics.averageTicketPEN.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            Promedio por venta confirmada
+                        </p>
+                    </div>
+                </div>
+
                 {/* Pending Offline Sales Summary Banner */}
                 {pendingOfflineCount > 0 && (
                     <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-900 dark:text-amber-200 text-xs shadow-xs">
@@ -589,7 +727,7 @@ export default function SalesIndex({ sales, filters, branches = [], isSuperAdmin
                             <Input
                                 type="search"
                                 placeholder="Buscar cliente, producto o doc..."
-                                className="pl-8 h-9 text-xs bg-background border-input"
+                                className="pl-8 h-9 text-xs"
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                                 onKeyDown={handleKeyDown}
@@ -597,7 +735,7 @@ export default function SalesIndex({ sales, filters, branches = [], isSuperAdmin
                         </div>
                         
                         <Select value={status} onValueChange={(val) => setStatus(val)}>
-                            <SelectTrigger className="w-[160px] h-9 text-xs bg-background border-input">
+                            <SelectTrigger className="w-[160px] h-9 text-xs">
                                 <SelectValue placeholder="Estado" />
                             </SelectTrigger>
                             <SelectContent>
@@ -608,27 +746,27 @@ export default function SalesIndex({ sales, filters, branches = [], isSuperAdmin
                             </SelectContent>
                         </Select>
 
-                        <div className="flex items-center gap-1.5 bg-muted/40 border border-border px-2 py-0.5 rounded-lg text-xs">
+                        <div className="flex items-center gap-1.5 bg-white dark:bg-[#121922] border border-input dark:border-black-haze-700 px-2 py-0.5 rounded-md text-xs shadow-xs">
                             <Calendar className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                             <span className="text-muted-foreground">Desde:</span>
                             <Input 
                                 type="date" 
                                 value={dateFrom} 
                                 onChange={e => setDateFrom(e.target.value)} 
-                                className="w-[125px] h-7 text-xs border-none shadow-none bg-transparent p-0" 
+                                className="w-[125px] h-7 text-xs border-none shadow-none bg-transparent p-0 dark:bg-transparent" 
                             />
                             <span className="text-muted-foreground border-l border-border pl-1.5">Hasta:</span>
                             <Input 
                                 type="date" 
                                 value={dateTo} 
                                 onChange={e => setDateTo(e.target.value)} 
-                                className="w-[125px] h-7 text-xs border-none shadow-none bg-transparent p-0" 
+                                className="w-[125px] h-7 text-xs border-none shadow-none bg-transparent p-0 dark:bg-transparent" 
                             />
                         </div>
 
                         {isSuperAdmin && branches && branches.length > 0 && (
                             <Select value={branchId} onValueChange={(val) => setBranchId(val)}>
-                                <SelectTrigger className="w-[170px] h-9 text-xs bg-background border-input">
+                                <SelectTrigger className="w-[170px] h-9 text-xs">
                                     <SelectValue placeholder="Todas las Sucursales" />
                                 </SelectTrigger>
                                 <SelectContent>

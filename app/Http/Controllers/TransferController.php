@@ -34,20 +34,38 @@ class TransferController extends Controller
             $allowedBranchIds = [$user->default_branch_id];
         }
 
-        $transfers = Transfer::with(['sourceBranch', 'destinationBranch', 'lines.product'])
+        $baseQuery = Transfer::query()
             ->where('company_id', $user->company_id)
             ->where(function ($query) use ($allowedBranchIds, $isSuperAdmin) {
                 if (! $isSuperAdmin) {
                     $query->whereIn('source_branch_id', $allowedBranchIds)
                         ->orWhereIn('destination_branch_id', $allowedBranchIds);
                 }
-            })
+            });
+
+        $totalTransfers = (clone $baseQuery)->count();
+        $inTransitCount = (clone $baseQuery)->where('status', 'IN_TRANSIT')->count();
+        $completedCount = (clone $baseQuery)->where('status', 'COMPLETED')->count();
+        $discrepancyCount = (clone $baseQuery)->where('status', 'WITH_DISCREPANCY')->count();
+        $draftCount = (clone $baseQuery)->where('status', 'DRAFT')->count();
+
+        $metrics = [
+            'total_transfers' => $totalTransfers,
+            'in_transit_count' => $inTransitCount,
+            'completed_count' => $completedCount,
+            'discrepancy_count' => $discrepancyCount,
+            'draft_count' => $draftCount,
+        ];
+
+        $transfers = (clone $baseQuery)
+            ->with(['sourceBranch', 'destinationBranch', 'lines.product'])
             ->orderBy('created_at', 'desc')
             ->paginate(15);
 
         return Inertia::render('transfers/index', [
             'transfers' => $transfers,
             'isSuperAdmin' => $isSuperAdmin,
+            'metrics' => $metrics,
         ]);
     }
 

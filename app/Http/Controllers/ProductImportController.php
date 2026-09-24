@@ -145,21 +145,23 @@ class ProductImportController extends Controller
                     }
 
                     $stock = (float) ($row['stock_inicial'] ?? 0);
-                    if ($stock > 0) {
-                        $inventory = Inventory::firstOrNew([
-                            'branch_id' => $branchId,
-                            'product_id' => $product->id,
-                        ]);
+                    $basePrice = (float) ($row['precio_base'] ?? 0);
 
-                        if (! $inventory->exists) {
-                            $inventory->uuid = Str::uuid();
-                            $inventory->physical_quantity = $stock;
-                            $inventory->available_quantity = $stock;
-                            $inventory->average_cost = (float) ($row['precio_base'] ?? 0);
-                            $inventory->status = 'ACTIVE';
-                            $inventory->save();
+                    $inventory = Inventory::firstOrNew([
+                        'branch_id' => $branchId,
+                        'product_id' => $product->id,
+                    ]);
 
-                            // Crear lote por defecto para el inventario importado
+                    if (! $inventory->exists) {
+                        $inventory->uuid = Str::uuid();
+                        $inventory->physical_quantity = max(0, $stock);
+                        $inventory->available_quantity = max(0, $stock);
+                        $inventory->average_cost = $basePrice;
+                        $inventory->status = 'ACTIVE';
+                        $inventory->save();
+
+                        if ($stock > 0) {
+                            // Crear lote por defecto para el inventario importado con stock
                             Lot::create([
                                 'uuid' => (string) Str::uuid(),
                                 'branch_id' => $branchId,
@@ -167,7 +169,7 @@ class ProductImportController extends Controller
                                 'lot_number' => 'LOTE-IMPORT-'.date('Ymd'),
                                 'original_quantity' => $stock,
                                 'current_quantity' => $stock,
-                                'unit_cost' => (float) ($row['precio_base'] ?? 0),
+                                'unit_cost' => $basePrice,
                                 'status' => 'ACTIVE',
                             ]);
                         }

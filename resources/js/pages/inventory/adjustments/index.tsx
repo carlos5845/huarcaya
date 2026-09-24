@@ -20,7 +20,8 @@ import {
     ArrowUp, 
     ArrowDown,
     RotateCcw,
-    Eye
+    Eye,
+    Clock
 } from 'lucide-react';
 import React, { useState, useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
@@ -66,9 +67,17 @@ const columnLabels: Record<string, string> = {
     actions: 'Acciones',
 };
 
-export default function AdjustmentsIndex({ adjustments, filters }: { 
+interface AdjustmentMetrics {
+    total_adjustments: number;
+    positive_count: number;
+    negative_count: number;
+    draft_count: number;
+}
+
+export default function AdjustmentsIndex({ adjustments, filters, metrics }: { 
     adjustments: PaginationData<Adjustment>,
-    filters: any 
+    filters: any,
+    metrics?: AdjustmentMetrics
 }) {
     const [search, setSearch] = useState(filters.search || '');
     const [status, setStatus] = useState(filters.status || 'ALL');
@@ -334,6 +343,89 @@ export default function AdjustmentsIndex({ adjustments, filters }: {
                             Nuevo Ajuste
                         </Link>
                     </Button>
+                </div>
+
+                {/* 4 KPI Summary Cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div className="bg-card text-card-foreground border border-border rounded-xl p-4 shadow-xs">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                Total Ajustes
+                            </span>
+                            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                                <ClipboardList className="w-4 h-4" />
+                            </div>
+                        </div>
+                        <div className="mt-2 flex items-baseline gap-1.5">
+                            <span className="text-2xl font-bold text-foreground">
+                                {metrics?.total_adjustments ?? 0}
+                            </span>
+                            <span className="text-xs text-muted-foreground">actas</span>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            {metrics?.draft_count ?? 0} en borrador
+                        </p>
+                    </div>
+
+                    <div className="bg-card text-card-foreground border border-border rounded-xl p-4 shadow-xs">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                Ingresos (+)
+                            </span>
+                            <div className="h-8 w-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+                                <ArrowUpRight className="w-4 h-4" />
+                            </div>
+                        </div>
+                        <div className="mt-2 flex items-baseline gap-1.5">
+                            <span className="text-2xl font-bold text-foreground">
+                                {metrics?.positive_count ?? 0}
+                            </span>
+                            <span className="text-xs text-muted-foreground">sobrantes</span>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            Entradas por regularización
+                        </p>
+                    </div>
+
+                    <div className="bg-card text-card-foreground border border-border rounded-xl p-4 shadow-xs">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                Salidas / Mermas (-)
+                            </span>
+                            <div className="h-8 w-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-600 dark:text-amber-400">
+                                <ArrowDownRight className="w-4 h-4" />
+                            </div>
+                        </div>
+                        <div className="mt-2 flex items-baseline gap-1.5">
+                            <span className="text-2xl font-bold text-foreground">
+                                {metrics?.negative_count ?? 0}
+                            </span>
+                            <span className="text-xs text-muted-foreground">desmedros</span>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            Salidas por rotura o faltante
+                        </p>
+                    </div>
+
+                    <div className="bg-card text-card-foreground border border-border rounded-xl p-4 shadow-xs">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                En Borrador
+                            </span>
+                            <div className="h-8 w-8 rounded-lg bg-slate-500/10 flex items-center justify-center text-slate-600 dark:text-slate-400">
+                                <Clock className="w-4 h-4" />
+                            </div>
+                        </div>
+                        <div className="mt-2 flex items-baseline gap-1.5">
+                            <span className="text-2xl font-bold text-foreground">
+                                {metrics?.draft_count ?? 0}
+                            </span>
+                            <span className="text-xs text-muted-foreground">pendientes</span>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            Aún no afectan el Kardex
+                        </p>
+                    </div>
                 </div>
 
                 <div className="rounded-xl border border-border bg-card text-card-foreground p-4 shadow-xs">

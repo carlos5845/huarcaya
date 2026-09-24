@@ -22,6 +22,7 @@ use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SaleController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\TransferController;
+use App\Http\Controllers\TransferPrintController;
 use App\Http\Controllers\TransferReceiptController;
 use App\Http\Controllers\TransferShipmentController;
 use App\Http\Controllers\UnitController;
@@ -205,6 +206,9 @@ Route::middleware(['auth'])->group(function () {
     });
 
     Route::middleware(['role_or_permission:Super Admin|view_transfers'])->group(function () {
+        Route::get('transfers/{transfer}/print/internal', [TransferPrintController::class, 'internal'])->name('transfers.print.internal');
+        Route::get('transfers/{transfer}/print/picking', [TransferPrintController::class, 'picking'])->name('transfers.print.picking');
+        Route::get('transfers/{transfer}/print/guide', [TransferPrintController::class, 'guide'])->name('transfers.print.guide');
         Route::post('transfers/{transfer}/shipments', [TransferShipmentController::class, 'store'])->name('transfers.shipments.store');
         Route::post('transfers/{transfer}/receipts', [TransferReceiptController::class, 'store'])->name('transfers.receipts.store');
         Route::post('transfers/{transfer}/cancel', [TransferController::class, 'cancel'])->name('transfers.cancel');
@@ -253,6 +257,7 @@ Route::middleware(['auth'])->group(function () {
 
         Route::post('products/{product}/min-stocks', [ProductSettingsController::class, 'storeMinStock'])->name('products.min-stocks.store');
         Route::delete('products/{product}/min-stocks/{stock}', [ProductSettingsController::class, 'destroyMinStock'])->name('products.min-stocks.destroy');
+        Route::post('products/{product}/quick-adjust-stock', [ProductSettingsController::class, 'quickAdjustStock'])->name('products.quick-adjust-stock');
 
         Route::post('products/{product}/kit-components', [ProductSettingsController::class, 'syncKitComponents'])->name('products.kit-components.sync');
 

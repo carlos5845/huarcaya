@@ -5,10 +5,13 @@ namespace App\Http\Controllers;
 use App\Models\Branch;
 use App\Models\Brand;
 use App\Models\Category;
+use App\Models\Lot;
 use App\Models\Product;
 use App\Models\Unit;
+use App\Services\KardexService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -44,10 +47,26 @@ class ProductController extends Controller
 
     public function create()
     {
+        $user = Auth::user();
+        $isSuperAdmin = $user->hasRole('Super Admin');
+
+        $branches = $isSuperAdmin
+            ? Branch::orderBy('name')->get(['id', 'name'])
+            : $user->branches()->orderBy('name')->get(['branches.id', 'branches.name']);
+
+        if ($branches->isEmpty() && $user->default_branch_id) {
+            $branches = Branch::where('id', $user->default_branch_id)->get(['id', 'name']);
+        }
+
+        $defaultBranchId = $user->default_branch_id ?? $branches->first()?->id;
+
         return Inertia::render('catalog/products/form', [
             'brands' => Brand::orderBy('name')->get(),
             'categories' => Category::orderBy('name')->get(),
             'units' => Unit::orderBy('name')->get(),
+            'branches' => $branches,
+            'defaultBranchId' => $defaultBranchId,
+            'isSuperAdmin' => $isSuperAdmin,
             'product' => null,
         ]);
     }
@@ -88,39 +107,109 @@ class ProductController extends Controller
             'status' => ['required', 'in:ACTIVE,INACTIVE'],
             'aliases' => ['nullable', 'array'],
             'aliases.*.alias' => ['required', 'string', 'max:255'],
+            // Precios y Stock Inicial (Opcionales)
+            'initial_price' => ['nullable', 'numeric', 'min:0'],
+            'initial_min_price' => ['nullable', 'numeric', 'min:0'],
+            'has_initial_stock' => ['nullable', 'boolean'],
+            'initial_branch_id' => ['nullable', 'exists:branches,id'],
+            'initial_stock' => ['nullable', 'numeric', 'min:0'],
+            'initial_unit_cost' => ['nullable', 'numeric', 'min:0'],
         ]);
 
-        $product = Product::create([
-            'uuid' => (string) Str::uuid(),
-            'company_id' => Auth::user()->company_id,
-            'internal_code' => $validated['internal_code'] ?? null,
-            'primary_reference' => $validated['primary_reference'],
-            'normalized_reference' => Str::upper(preg_replace('/[^A-Za-z0-9]/', '', $validated['primary_reference'])),
-            'name' => $validated['name'],
-            'normalized_name' => Str::upper(preg_replace('/[^A-Za-z0-9]/', '', $validated['name'])),
-            'description' => $validated['description'],
-            'brand_id' => $validated['brand_id'],
-            'category_id' => $validated['category_id'],
-            'unit_id' => $validated['unit_id'],
-            'product_type' => $validated['product_type'],
-            'requires_lot_tracking' => $validated['requires_lot_tracking'] ?? false,
-            'fifo_enabled' => $validated['fifo_enabled'] ?? true,
-            'status' => $validated['status'],
-            'created_by' => Auth::id(),
-        ]);
+        return DB::transaction(function () use ($validated, $request) {
+            $user = Auth::user();
+            $isSuperAdmin = $user->hasRole('Super Admin');
 
-        if (! empty($validated['aliases'])) {
-            foreach ($validated['aliases'] as $alias) {
-                $product->aliases()->create([
+            $product = Product::create([
+                'uuid' => (string) Str::uuid(),
+                'company_id' => $user->company_id,
+                'internal_code' => $validated['internal_code'] ?? null,
+                'primary_reference' => $validated['primary_reference'],
+                'normalized_reference' => Str::upper(preg_replace('/[^A-Za-z0-9]/', '', $validated['primary_reference'])),
+                'name' => $validated['name'],
+                'normalized_name' => Str::upper(preg_replace('/[^A-Za-z0-9]/', '', $validated['name'])),
+                'description' => $validated['description'] ?? null,
+                'brand_id' => $validated['brand_id'],
+                'category_id' => $validated['category_id'],
+                'unit_id' => $validated['unit_id'],
+                'product_type' => $validated['product_type'],
+                'requires_lot_tracking' => $validated['requires_lot_tracking'] ?? false,
+                'fifo_enabled' => $validated['fifo_enabled'] ?? true,
+                'status' => $validated['status'],
+                'created_by' => $user->id,
+            ]);
+
+            if (! empty($validated['aliases'])) {
+                foreach ($validated['aliases'] as $alias) {
+                    $product->aliases()->create([
+                        'uuid' => (string) Str::uuid(),
+                        'alias' => $alias['alias'],
+                        'normalized_alias' => Str::upper(preg_replace('/[^A-Za-z0-9]/', '', $alias['alias'])),
+                        'created_by' => $user->id,
+                    ]);
+                }
+            }
+
+            // Precios iniciales
+            if (! empty($validated['initial_price']) && (float) $validated['initial_price'] > 0) {
+                $product->prices()->create([
                     'uuid' => (string) Str::uuid(),
-                    'alias' => $alias['alias'],
-                    'normalized_alias' => Str::upper(preg_replace('/[^A-Za-z0-9]/', '', $alias['alias'])),
-                    'created_by' => Auth::id(),
+                    'branch_id' => null, // Global
+                    'price_type' => 'PUBLIC',
+                    'currency_code' => 'PEN',
+                    'amount' => (float) $validated['initial_price'],
+                    'effective_from' => now(),
+                    'created_by' => $user->id,
                 ]);
             }
-        }
 
-        return redirect()->route('products.index')->with('success', 'Producto registrado exitosamente.');
+            if (! empty($validated['initial_min_price']) && (float) $validated['initial_min_price'] > 0) {
+                $product->minPrices()->create([
+                    'uuid' => (string) Str::uuid(),
+                    'branch_id' => null, // Global
+                    'currency_code' => 'PEN',
+                    'amount' => (float) $validated['initial_min_price'],
+                    'effective_from' => now(),
+                    'created_by' => $user->id,
+                ]);
+            }
+
+            // Stock inicial
+            if ($request->boolean('has_initial_stock') && ! empty($validated['initial_stock']) && (float) $validated['initial_stock'] > 0) {
+                $targetBranchId = $isSuperAdmin && ! empty($validated['initial_branch_id'])
+                    ? (int) $validated['initial_branch_id']
+                    : ($user->default_branch_id ?? $user->branches()->first()?->id);
+
+                if ($targetBranchId) {
+                    $initialStock = (float) $validated['initial_stock'];
+                    $initialCost = (float) ($validated['initial_unit_cost'] ?? 0);
+
+                    $kardexService = app(KardexService::class);
+                    $kardexService->recordEntry([
+                        'branch_id' => $targetBranchId,
+                        'product_id' => $product->id,
+                        'quantity' => $initialStock,
+                        'unit_cost' => $initialCost,
+                        'operation_type' => 'INVENTARIO_INICIAL',
+                        'reference' => 'INVENTARIO INICIAL (ALTA DE PRODUCTO)',
+                        'user_id' => $user->id,
+                    ]);
+
+                    Lot::create([
+                        'uuid' => (string) Str::uuid(),
+                        'branch_id' => $targetBranchId,
+                        'product_id' => $product->id,
+                        'lot_number' => 'LOT-INI-'.date('Ymd').'-'.strtoupper(Str::random(4)),
+                        'original_quantity' => $initialStock,
+                        'current_quantity' => $initialStock,
+                        'unit_cost' => $initialCost,
+                        'status' => 'ACTIVE',
+                    ]);
+                }
+            }
+
+            return redirect()->route('products.show', $product->id)->with('success', 'Producto registrado exitosamente.');
+        });
     }
 
     public function search(Request $request)
@@ -182,15 +271,16 @@ class ProductController extends Controller
         $user = auth()->user();
         $isSuperAdmin = $user->hasRole('Super Admin');
 
-        $branches = $isSuperAdmin
-            ? Branch::orderBy('name')->get()
-            : $user->branches()->orderBy('name')->get();
+        $branches = Branch::where('company_id', $user->company_id)
+            ->where('status', 'ACTIVE')
+            ->orderBy('name')
+            ->get();
 
-        if ($branches->isEmpty() && $user->default_branch_id) {
-            $branches = Branch::where('id', $user->default_branch_id)->get();
+        if ($branches->isEmpty()) {
+            $branches = Branch::orderBy('name')->get();
         }
 
-        $allowedBranchIds = $branches->pluck('id')->toArray();
+        $userBranchId = $user->default_branch_id ?? $user->branches()->first()?->id;
 
         $product->load([
             'brand',
@@ -200,57 +290,55 @@ class ProductController extends Controller
             'kitVersions' => function ($q) {
                 $q->with('components.product');
             },
-            'lots' => function ($q) use ($allowedBranchIds, $isSuperAdmin) {
+            'lots' => function ($q) {
                 $q->with('location');
-                if (! $isSuperAdmin) {
-                    $q->whereIn('branch_id', $allowedBranchIds);
-                }
             },
-            'prices' => function ($q) use ($allowedBranchIds, $isSuperAdmin) {
+            'prices' => function ($q) {
                 $q->with('branch')->orderBy('id', 'desc');
-                if (! $isSuperAdmin) {
-                    $q->where(function ($sub) use ($allowedBranchIds) {
-                        $sub->whereIn('branch_id', $allowedBranchIds)->orWhereNull('branch_id');
-                    });
-                }
             },
-            'minPrices' => function ($q) use ($allowedBranchIds, $isSuperAdmin) {
+            'minPrices' => function ($q) {
                 $q->with('branch')->orderBy('id', 'desc');
-                if (! $isSuperAdmin) {
-                    $q->where(function ($sub) use ($allowedBranchIds) {
-                        $sub->whereIn('branch_id', $allowedBranchIds)->orWhereNull('branch_id');
-                    });
-                }
             },
-            'minStocks' => function ($q) use ($allowedBranchIds, $isSuperAdmin) {
+            'minStocks' => function ($q) {
                 $q->with('branch')->orderBy('id', 'desc');
-                if (! $isSuperAdmin) {
-                    $q->whereIn('branch_id', $allowedBranchIds);
-                }
             },
-            'inventories' => function ($q) use ($allowedBranchIds, $isSuperAdmin) {
+            'inventories' => function ($q) {
                 $q->with(['branch']);
-                if (! $isSuperAdmin) {
-                    $q->whereIn('branch_id', $allowedBranchIds);
-                }
             },
         ]);
 
         return Inertia::render('catalog/products/show', [
             'product' => $product,
             'branches' => $branches,
+            'userBranchId' => $userBranchId,
             'isSuperAdmin' => $isSuperAdmin,
         ]);
     }
 
     public function edit(Product $product)
     {
+        $user = Auth::user();
+        $isSuperAdmin = $user->hasRole('Super Admin');
+
+        $branches = $isSuperAdmin
+            ? Branch::orderBy('name')->get(['id', 'name'])
+            : $user->branches()->orderBy('name')->get(['branches.id', 'branches.name']);
+
+        if ($branches->isEmpty() && $user->default_branch_id) {
+            $branches = Branch::where('id', $user->default_branch_id)->get(['id', 'name']);
+        }
+
+        $defaultBranchId = $user->default_branch_id ?? $branches->first()?->id;
+
         $product->load('aliases');
 
         return Inertia::render('catalog/products/form', [
             'brands' => Brand::orderBy('name')->get(),
             'categories' => Category::orderBy('name')->get(),
             'units' => Unit::orderBy('name')->get(),
+            'branches' => $branches,
+            'defaultBranchId' => $defaultBranchId,
+            'isSuperAdmin' => $isSuperAdmin,
             'product' => $product,
         ]);
     }
