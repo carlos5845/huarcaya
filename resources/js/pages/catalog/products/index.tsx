@@ -294,13 +294,6 @@ export default function ProductsIndex({ products, filters, flash }: Props) {
             <div className="flex h-full flex-1 flex-col gap-5 p-4 max-w-7xl mx-auto w-full">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-                            <Link href="/dashboard" className="hover:text-foreground transition-colors">Dashboard</Link>
-                            <span>&rsaquo;</span>
-                            <span className="text-foreground font-medium">Catálogo</span>
-                            <span>&rsaquo;</span>
-                            <span className="text-foreground font-medium">Repuestos</span>
-                        </div>
                         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2 text-foreground">
                             <PackageOpen className="h-6 w-6 text-primary" />
                             Catálogo de Repuestos

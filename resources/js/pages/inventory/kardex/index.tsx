@@ -539,13 +539,6 @@ export default function KardexIndex({ entries, branches, filters, canSeeAllBranc
             <div className="flex flex-col gap-5 w-full max-w-7xl mx-auto pb-10 px-4 mt-6">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                     <div>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-                            <span className="text-foreground font-medium">Dashboard</span>
-                            <span>&rsaquo;</span>
-                            <span className="text-foreground font-medium">Inventario</span>
-                            <span>&rsaquo;</span>
-                            <span className="text-foreground font-medium">Kardex</span>
-                        </div>
                         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2 text-foreground">
                             <History className="h-6 w-6 text-primary" />
                             Kardex Valorizado

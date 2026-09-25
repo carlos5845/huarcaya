@@ -396,17 +396,8 @@ return;
             <Head title="Nueva Venta" />
 
             <div className="flex h-full flex-1 flex-col gap-6 rounded-xl p-4 max-w-6xl mx-auto w-full">
-                {/* Header & Breadcrumbs section */}
+                {/* Header section */}
                 <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Link href="/sales" className="hover:text-foreground transition-colors">Ventas</Link>
-                        <span>&rsaquo;</span>
-                        <Link href="/sales" className="hover:text-foreground transition-colors">Todas las Ventas</Link>
-                        <span>&rsaquo;</span>
-                        <span className="bg-muted px-2.5 py-0.5 rounded-full font-medium text-foreground text-xs">
-                            Nueva Venta
-                        </span>
-                    </div>
 
                     {!isOnline && (
                         <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs font-medium">

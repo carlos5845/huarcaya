@@ -506,11 +506,6 @@ export default function BranchesIndex({ branches, flash }: Props) {
             <div className="flex h-full flex-1 flex-col gap-5 p-4 max-w-7xl mx-auto w-full">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-                            <span className="text-foreground font-medium">Dashboard</span>
-                            <span>&rsaquo;</span>
-                            <span className="text-foreground font-medium">Sucursales</span>
-                        </div>
                         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2 text-foreground">
                             <Building className="h-6 w-6 text-primary" />
                             Sucursales y Almacenes

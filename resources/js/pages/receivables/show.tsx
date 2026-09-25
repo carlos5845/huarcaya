@@ -23,7 +23,7 @@ export default function ReceivableShow({ receivable, payment_methods }: { receiv
     const isOverdue = new Date(receivable.due_date) < new Date() && receivable.status === 'ACTIVE';
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const { data, setData, post, processing, errors, reset } = useForm({
-        amount: receivable.balance_amount,
+        amount: parseFloat(receivable.balance_amount || 0).toFixed(2),
         payment_method_id: payment_methods && payment_methods.length > 0 ? payment_methods[0].id.toString() : '',
         operation_date: getLocalDateString(),
         notes: '',
@@ -158,7 +158,12 @@ export default function ReceivableShow({ receivable, payment_methods }: { receiv
                             <CardDescription>Abonos realizados a esta cuenta.</CardDescription>
                         </div>
                         {receivable.status === 'ACTIVE' && (
-                            <Dialog open={isPaymentModalOpen} onOpenChange={setIsPaymentModalOpen}>
+                            <Dialog open={isPaymentModalOpen} onOpenChange={(open) => {
+                                setIsPaymentModalOpen(open);
+                                if (open) {
+                                    setData('amount', parseFloat(receivable.balance_amount || 0).toFixed(2));
+                                }
+                            }}>
                                 <DialogTrigger asChild>
                                     <Button className="bg-green-600 hover:bg-green-700 text-white gap-2">
                                         <Landmark className="h-4 w-4" /> Registrar Pago
@@ -179,14 +184,14 @@ export default function ReceivableShow({ receivable, payment_methods }: { receiv
                                                     id="amount" 
                                                     type="number" 
                                                     step="0.01" 
-                                                    max={receivable.balance_amount}
+                                                    max={parseFloat(receivable.balance_amount || 0).toFixed(2)}
                                                     value={data.amount} 
                                                     onChange={e => setData('amount', e.target.value)} 
                                                 />
                                                 <InputError message={errors.amount} />
                                             </div>
                                             <div className="grid gap-2">
-                                                <Label htmlFor="payment_method_id">Mtodo de Pago</Label>
+                                                <Label htmlFor="payment_method_id">Método de Pago</Label>
                                                 <Select value={data.payment_method_id} onValueChange={(v) => setData('payment_method_id', v)}>
                                                     <SelectTrigger>
                                                         <SelectValue />

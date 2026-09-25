@@ -94,16 +94,8 @@ export default function PurchaseShow({ purchase }: { purchase: any }) {
             <Head title={`Compra ${purchase.purchase_number}`} />
 
             <div className="flex h-full flex-1 flex-col gap-6 rounded-xl p-4 max-w-7xl mx-auto w-full">
-                {/* Header & Breadcrumbs */}
+                {/* Header */}
                 <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Link href="/purchases" className="hover:text-foreground transition-colors">Compras</Link>
-                        <span>&rsaquo;</span>
-                        <span className="bg-muted px-2.5 py-0.5 rounded-full font-medium text-foreground text-xs">
-                            Compra #{purchase.purchase_number}
-                        </span>
-                    </div>
-
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1">
                         <div className="flex items-center gap-4">
                             <Link href="/purchases">

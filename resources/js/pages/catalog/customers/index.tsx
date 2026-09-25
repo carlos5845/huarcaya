@@ -462,13 +462,6 @@ export default function CustomersIndex({ customers }: { customers: any[] }) {
                 {/* Header */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-                            <span className="text-foreground font-medium">Dashboard</span>
-                            <span>&rsaquo;</span>
-                            <span className="text-foreground font-medium">Catálogo</span>
-                            <span>&rsaquo;</span>
-                            <span className="text-foreground font-medium">Clientes</span>
-                        </div>
                         <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
                             <Users className="h-6 w-6 text-primary" />
                             Directorio de Clientes

@@ -686,11 +686,6 @@ export default function PurchasesIndex({
                 {/* Header & New Purchase Button */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-                            <Link href="/dashboard" className="hover:text-foreground transition-colors">Dashboard</Link>
-                            <span>&rsaquo;</span>
-                            <span className="text-foreground font-medium">Compras</span>
-                        </div>
                         <h1 className="text-2xl font-bold tracking-tight text-foreground">
                             Registro y Resumen de Compras
                         </h1>

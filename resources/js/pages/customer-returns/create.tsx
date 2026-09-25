@@ -58,11 +58,6 @@ export default function CustomerReturnCreate({
                             </Button>
                         </Link>
                         <div>
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-0.5">
-                                <Link href="/customer-returns" className="hover:text-foreground">Devoluciones</Link>
-                                <span>&rsaquo;</span>
-                                <span className="font-medium text-foreground">Nueva Devolución</span>
-                            </div>
                             <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
                                 <RotateCcw className="h-6 w-6 text-primary" />
                                 Seleccionar Venta para Devolución
@@ -272,13 +267,6 @@ export default function CustomerReturnCreate({
                             </Button>
                         </Link>
                         <div>
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-0.5">
-                                <Link href="/customer-returns" className="hover:text-foreground">Devoluciones</Link>
-                                <span>&rsaquo;</span>
-                                <Link href={`/sales/${sale.id}`} className="hover:text-foreground">Venta #{sale.sale_number}</Link>
-                                <span>&rsaquo;</span>
-                                <span className="font-medium text-foreground">Nueva Devolución</span>
-                            </div>
                             <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
                                 <RotateCcw className="h-6 w-6 text-primary" />
                                 Registrar Devolución (Nota de Crédito)

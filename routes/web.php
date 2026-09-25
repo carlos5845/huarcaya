@@ -8,6 +8,7 @@ use App\Http\Controllers\BrandController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\CustomerReturnController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\InventoryAdjustmentController;
 use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\KardexController;
@@ -31,11 +32,8 @@ use App\Http\Controllers\UserSessionController;
 use App\Http\Controllers\UserSetupController;
 use App\Models\Branch;
 use App\Models\Product;
-use App\Models\Purchase;
-use App\Models\Sale;
 use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -66,80 +64,7 @@ Route::middleware(['auth'])->group(function () {
         return redirect('/user/profile');
     })->name('init');
     Route::middleware(['role_or_permission:Super Admin|view_dashboard'])->group(function () {
-        Route::get('dashboard', function (Request $request) {
-            $company_id = auth()->user()->company_id;
-            $now = now();
-            $startOfMonth = $now->copy()->startOfMonth();
-            $startOfLastMonth = $now->copy()->subMonth()->startOfMonth();
-            $endOfLastMonth = $now->copy()->subMonth()->endOfMonth();
-
-            // KPI Stats
-            $stats = [
-                'revenue_this_month' => Sale::where('company_id', $company_id)->where('status', 'CONFIRMED')->where('created_at', '>=', $startOfMonth)->sum('total_amount'),
-                'revenue_last_month' => Sale::where('company_id', $company_id)->where('status', 'CONFIRMED')->whereBetween('created_at', [$startOfLastMonth, $endOfLastMonth])->sum('total_amount'),
-                'expenses_this_month' => Purchase::where('company_id', $company_id)->where('status', 'CONFIRMED')->where('created_at', '>=', $startOfMonth)->sum('total_amount'),
-                'expenses_last_month' => Purchase::where('company_id', $company_id)->where('status', 'CONFIRMED')->whereBetween('created_at', [$startOfLastMonth, $endOfLastMonth])->sum('total_amount'),
-                'sales_count_this_month' => Sale::where('company_id', $company_id)->where('created_at', '>=', $startOfMonth)->count(),
-                'sales_count_last_month' => Sale::where('company_id', $company_id)->whereBetween('created_at', [$startOfLastMonth, $endOfLastMonth])->count(),
-                'products_count' => Product::where('company_id', $company_id)->count(),
-                'recent_sales' => Sale::where('company_id', $company_id)->with(['customer', 'lines', 'creator'])->orderBy('created_at', 'desc')->take(5)->get(),
-            ];
-
-            // Sales by User Logic with Filters
-            $branchId = $request->query('branch_id', 'all');
-            $month = $request->query('month');
-            $date = $request->query('date');
-
-            $query = User::where('users.company_id', $company_id);
-
-            if ($branchId && $branchId !== 'all') {
-                $query->whereExists(function ($q) use ($branchId) {
-                    $q->select(DB::raw(1))
-                        ->from('user_branches')
-                        ->whereColumn('user_branches.user_id', 'users.id')
-                        ->where('user_branches.branch_id', $branchId);
-
-                });
-            }
-
-            $salesByUser = $query->leftJoin('sales', function ($join) use ($branchId, $date, $month) {
-                $join->on('users.id', '=', 'sales.created_by')
-                    ->where('sales.status', 'CONFIRMED');
-
-                if ($branchId && $branchId !== 'all') {
-                    $join->where('sales.branch_id', $branchId);
-                }
-
-                if ($date) {
-                    $join->whereDate('sales.created_at', $date);
-                } elseif ($month) {
-                    $year = substr($month, 0, 4);
-                    $m = substr($month, 5, 2);
-                    $join->whereYear('sales.created_at', $year)->whereMonth('sales.created_at', $m);
-                }
-            })
-                ->select('users.name',
-                    DB::raw('COALESCE(SUM(sales.total_amount), 0) as total_amount'),
-                    DB::raw('COUNT(sales.id) as total_sales')
-                )
-                ->groupBy('users.id', 'users.name')
-                ->orderByDesc('total_amount')
-                ->get();
-
-            $branches = Branch::where('company_id', $company_id)->select('id', 'name')->get();
-
-            return Inertia::render('dashboard', [
-                'stats' => $stats,
-                'salesByUser' => $salesByUser,
-                'branches' => $branches,
-                'filters' => [
-                    'branch_id' => $branchId,
-                    'month' => $month,
-                    'date' => $date,
-                ],
-            ]);
-        })->name('dashboard');
-
+        Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
     });
 
     // Ruta necesaria para la confirmación de contraseña (Fortify views=false)
