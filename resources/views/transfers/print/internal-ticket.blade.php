@@ -55,6 +55,14 @@
             border-top: 2px solid #000;
             margin: 6px 0;
         }
+        .ticket-logo {
+            max-width: 150px;
+            max-height: 48px;
+            margin: 0 auto 6px auto;
+            display: block;
+            object-fit: contain;
+            filter: grayscale(100%) contrast(140%);
+        }
         .header-title {
             font-size: 13px;
             font-weight: bold;
@@ -133,14 +141,18 @@
 </head>
 <body>
 
-    <div class="no-print-bar">
+    <div class="no-print-bar" style="display: flex; justify-content: center; gap: 8px;">
         <a href="javascript:window.print()" class="btn">
             🖨️ Imprimir Ticket (80mm)
         </a>
+        <button type="button" onclick="if(window.parent !== window){ window.parent.postMessage('close-preview', '*'); } else { window.close(); }" class="btn" style="background: #4a5568;">
+            ✕ Cerrar
+        </button>
     </div>
 
     <div class="ticket-wrapper">
         <div class="text-center">
+            <img src="{{ asset('logo-text.png') }}" alt="{{ $company->business_name ?? 'Inversiones Huarcaya' }}" class="ticket-logo" />
             <div class="header-title">{{ $company->business_name ?? 'INVERSIONES HUARCAYA' }}</div>
             <div style="font-size: 10px;">RUC: {{ $company->document_number ?? '20600000000' }}</div>
             <div style="font-size: 9px;">REPUESTOS AUTOMOTRICES</div>

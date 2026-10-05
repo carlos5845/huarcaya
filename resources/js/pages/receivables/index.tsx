@@ -20,7 +20,12 @@ import {
     AlertCircle,
     Calendar,
     FileText,
-    ArrowRight
+    ArrowRight,
+    BarChart3,
+    Printer,
+    Download,
+    TrendingUp,
+    Wallet
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -89,6 +94,46 @@ interface CustomerSummaryItem {
     earliest_due_date: string | null;
 }
 
+interface ReportData {
+    period: 'daily' | 'weekly' | 'monthly' | 'custom';
+    period_label: string;
+    start_date: string;
+    end_date: string;
+    report_date: string;
+    report_month: string;
+    report_from: string;
+    report_to: string;
+    total_collected_pen: number;
+    total_collected_usd: number;
+    collected_count: number;
+    total_new_debt_pen: number;
+    total_new_debt_usd: number;
+    new_debts_count: number;
+    total_matured_debt_pen: number;
+    matured_count: number;
+    methods_breakdown: Array<{
+        method_name: string;
+        is_cash: boolean;
+        amount_pen: number;
+        amount_usd: number;
+        count: number;
+    }>;
+    payments: Array<{
+        id: number;
+        payment_number: string;
+        operation_date: string;
+        customer_name: string;
+        customer_doc: string;
+        currency_code: string;
+        total_amount: number;
+        collector_name: string;
+        branch_name: string;
+        payment_methods: string[];
+        related_sales: string[];
+        notes: string | null;
+    }>;
+}
+
 interface Props {
     receivables: {
         data: ReceivableItem[];
@@ -100,10 +145,16 @@ interface Props {
     customers_summary: CustomerSummaryItem[];
     payment_methods: any[];
     branches: { id: number; name: string }[];
+    report_data?: ReportData;
     filters: {
         search: string;
         status: string;
         branch_id: string;
+        report_period?: string;
+        report_date?: string;
+        report_month?: string;
+        report_from?: string;
+        report_to?: string;
     };
     metrics: {
         total_active_debt_pen: number;
@@ -119,14 +170,63 @@ interface Props {
     };
 }
 
-export default function ReceivablesIndex({ receivables, customers_summary, payment_methods, branches, filters, metrics }: Props) {
+export default function ReceivablesIndex({ receivables, customers_summary, payment_methods, branches, report_data, filters, metrics }: Props) {
     const { data, setData, get } = useForm({
         search: filters.search || '',
         status: filters.status || 'ACTIVE',
         branch_id: filters.branch_id || '',
     });
 
-    const [activeTab, setActiveTab] = useState('receivables');
+    const [activeTab, setActiveTab] = useState(filters.report_period ? 'reports' : 'receivables');
+
+    // Report Period Filter states
+    const [reportPeriod, setReportPeriod] = useState(filters.report_period || 'daily');
+    const [reportDate, setReportDate] = useState(filters.report_date || getLocalDateString());
+    const [reportMonth, setReportMonth] = useState(filters.report_month || new Date().toISOString().substring(0, 7));
+    const [reportFrom, setReportFrom] = useState(filters.report_from || '');
+    const [reportTo, setReportTo] = useState(filters.report_to || '');
+
+    const applyReportFilter = (newPeriod: string, dateVal?: string, monthVal?: string, fromVal?: string, toVal?: string) => {
+        setReportPeriod(newPeriod);
+        router.get('/receivables', {
+            search: data.search,
+            status: data.status,
+            branch_id: data.branch_id,
+            report_period: newPeriod,
+            report_date: dateVal ?? reportDate,
+            report_month: monthVal ?? reportMonth,
+            report_from: fromVal ?? reportFrom,
+            report_to: toVal ?? reportTo,
+        }, {
+            preserveState: true,
+            preserveScroll: true,
+        });
+    };
+
+    const exportReportCsv = () => {
+        if (!report_data?.payments || report_data.payments.length === 0) return;
+        const headers = ['Nro Pago', 'Fecha', 'Cliente', 'Documento', 'Moneda', 'Monto', 'Metodo', 'Venta Relacionada', 'Cobrado Por', 'Notas'];
+        const rows = report_data.payments.map(p => [
+            `"${p.payment_number}"`,
+            `"${p.operation_date}"`,
+            `"${p.customer_name}"`,
+            `"${p.customer_doc}"`,
+            `"${p.currency_code}"`,
+            p.total_amount.toFixed(2),
+            `"${p.payment_methods.join(', ')}"`,
+            `"${p.related_sales.join(', ')}"`,
+            `"${p.collector_name}"`,
+            `"${(p.notes || '').replace(/"/g, '""')}"`,
+        ]);
+        const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement('a');
+        link.setAttribute('href', encodedUri);
+        link.setAttribute('download', `reporte_cobranzas_${reportPeriod}_${new Date().toISOString().slice(0, 10)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
 
     // Quick Payment Modal state
     const [selectedReceivable, setSelectedReceivable] = useState<ReceivableItem | null>(null);
@@ -368,12 +468,17 @@ export default function ReceivablesIndex({ receivables, customers_summary, payme
                             <TabsTrigger value="customers" className="gap-2 text-xs sm:text-sm">
                                 <Building2 className="h-4 w-4" /> Cartera por Cliente ({customers_summary.length})
                             </TabsTrigger>
+                            <TabsTrigger value="reports" className="gap-2 text-xs sm:text-sm">
+                                <BarChart3 className="h-4 w-4 text-purple-600 dark:text-purple-400" /> Reportes de Cobranza
+                            </TabsTrigger>
                         </TabsList>
 
                         <div className="text-xs text-muted-foreground hidden sm:block">
                             {activeTab === 'receivables' 
                                 ? 'Visualizando detalle por factura, boleta o nota al crédito' 
-                                : 'Líneas de crédito y deuda consolidada por cliente recurrente'}
+                                : activeTab === 'customers'
+                                ? 'Líneas de crédito y deuda consolidada por cliente recurrente'
+                                : `Auditoría y recaudación de cobranzas: ${report_data?.period_label || 'Período actual'}`}
                         </div>
                     </div>
 
@@ -663,6 +768,322 @@ export default function ReceivablesIndex({ receivables, customers_summary, payme
                                                         >
                                                             Ver Facturas <ArrowRight className="h-3 w-3" />
                                                         </Button>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        </Card>
+                    </TabsContent>
+
+                    {/* TAB 3: REPORTES DE COBRANZA (DIARIO, SEMANAL, MENSUAL) */}
+                    <TabsContent value="reports" className="space-y-5 m-0">
+                        {/* Selector de Períodos y Acciones */}
+                        <Card className="border shadow-xs">
+                            <CardContent className="p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-xs font-semibold text-muted-foreground mr-1 flex items-center gap-1.5">
+                                        <Calendar className="h-4 w-4 text-purple-600" /> Período:
+                                    </span>
+                                    
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant={reportPeriod === 'daily' ? 'default' : 'outline'}
+                                        onClick={() => applyReportFilter('daily', getLocalDateString())}
+                                        className="h-8 text-xs font-medium"
+                                    >
+                                        Diario (Hoy)
+                                    </Button>
+
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant={reportPeriod === 'weekly' ? 'default' : 'outline'}
+                                        onClick={() => applyReportFilter('weekly')}
+                                        className="h-8 text-xs font-medium"
+                                    >
+                                        Semanal (Esta Semana)
+                                    </Button>
+
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant={reportPeriod === 'monthly' ? 'default' : 'outline'}
+                                        onClick={() => applyReportFilter('monthly', undefined, new Date().toISOString().substring(0, 7))}
+                                        className="h-8 text-xs font-medium"
+                                    >
+                                        Mensual (Este Mes)
+                                    </Button>
+
+                                    {/* Selector de fecha puntual si es diario */}
+                                    {reportPeriod === 'daily' && (
+                                        <div className="flex items-center gap-1.5 ml-2">
+                                            <span className="text-[11px] text-muted-foreground">Fecha:</span>
+                                            <Input
+                                                type="date"
+                                                value={reportDate}
+                                                onChange={(e) => {
+                                                    setReportDate(e.target.value);
+                                                    applyReportFilter('daily', e.target.value);
+                                                }}
+                                                className="h-8 text-xs w-36"
+                                            />
+                                        </div>
+                                    )}
+
+                                    {/* Selector de mes si es mensual */}
+                                    {reportPeriod === 'monthly' && (
+                                        <div className="flex items-center gap-1.5 ml-2">
+                                            <span className="text-[11px] text-muted-foreground">Mes:</span>
+                                            <Input
+                                                type="month"
+                                                value={reportMonth}
+                                                onChange={(e) => {
+                                                    setReportMonth(e.target.value);
+                                                    applyReportFilter('monthly', undefined, e.target.value);
+                                                }}
+                                                className="h-8 text-xs w-36"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="flex items-center gap-2 self-end md:self-auto">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={exportReportCsv}
+                                        disabled={!report_data?.payments || report_data.payments.length === 0}
+                                        className="h-8 text-xs gap-1.5"
+                                    >
+                                        <Download className="h-3.5 w-3.5 text-muted-foreground" />
+                                        <span>Exportar CSV</span>
+                                    </Button>
+
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => window.print()}
+                                        className="h-8 text-xs gap-1.5"
+                                    >
+                                        <Printer className="h-3.5 w-3.5 text-muted-foreground" />
+                                        <span>Imprimir</span>
+                                    </Button>
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        {/* Banner del Período Activo */}
+                        <div className="flex items-center justify-between p-3.5 rounded-xl bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-900/60 text-purple-900 dark:text-purple-300">
+                            <div className="flex items-center gap-2.5">
+                                <BarChart3 className="h-5 w-5 text-purple-600 dark:text-purple-400 shrink-0" />
+                                <div>
+                                    <div className="text-xs font-bold uppercase tracking-wider">
+                                        Reporte de Recaudación y Cobranzas
+                                    </div>
+                                    <div className="text-sm font-semibold">
+                                        {report_data?.period_label || 'Período Activo'}
+                                    </div>
+                                </div>
+                            </div>
+                            <Badge className="bg-purple-600 text-white font-mono text-xs px-2.5 py-0.5">
+                                {report_data?.collected_count || 0} operaciones registradas
+                            </Badge>
+                        </div>
+
+                        {/* KPIs del Período */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <Card className="border shadow-xs bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900/50">
+                                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                    <CardTitle className="text-xs font-semibold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider">
+                                        Total Recaudado (Cobros)
+                                    </CardTitle>
+                                    <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300">
+                                        <Coins className="h-4 w-4" />
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="space-y-1">
+                                    <div className="text-2xl font-extrabold text-emerald-700 dark:text-emerald-300">
+                                        S/ {report_data?.total_collected_pen.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+                                    </div>
+                                    {report_data?.total_collected_usd && report_data.total_collected_usd > 0 ? (
+                                        <div className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                                            $ {report_data.total_collected_usd.toFixed(2)} USD
+                                        </div>
+                                    ) : null}
+                                    <p className="text-[11px] text-muted-foreground">
+                                        Dinero real ingresado en amortizaciones
+                                    </p>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="border shadow-xs">
+                                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                    <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                        Cobros Realizados
+                                    </CardTitle>
+                                    <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400">
+                                        <CheckCircle2 className="h-4 w-4" />
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="space-y-1">
+                                    <div className="text-2xl font-extrabold text-foreground">
+                                        {report_data?.collected_count || 0}
+                                    </div>
+                                    <p className="text-[11px] text-muted-foreground">
+                                        Recibos de abono confirmados
+                                    </p>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="border shadow-xs">
+                                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                    <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                        Nuevos Créditos Emitidos
+                                    </CardTitle>
+                                    <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400">
+                                        <TrendingUp className="h-4 w-4" />
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="space-y-1">
+                                    <div className="text-2xl font-extrabold text-foreground">
+                                        S/ {report_data?.total_new_debt_pen.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">
+                                        {report_data?.new_debts_count || 0} comprobante(s) a crédito
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="border shadow-xs">
+                                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                    <CardTitle className="text-xs font-semibold text-rose-700 dark:text-rose-400 uppercase tracking-wider">
+                                        Vencidas en el Período
+                                    </CardTitle>
+                                    <div className="p-2 rounded-lg bg-rose-100 dark:bg-rose-900/50 text-rose-600 dark:text-rose-400">
+                                        <AlertTriangle className="h-4 w-4" />
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="space-y-1">
+                                    <div className="text-2xl font-extrabold text-rose-600 dark:text-rose-400">
+                                        S/ {report_data?.total_matured_debt_pen.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+                                    </div>
+                                    <div className="text-xs text-rose-600 dark:text-rose-400">
+                                        {report_data?.matured_count || 0} deudas cumplieron fecha límite
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        {/* Desglose por Medio de Pago */}
+                        {report_data?.methods_breakdown && report_data.methods_breakdown.length > 0 && (
+                            <Card className="border shadow-xs">
+                                <CardHeader className="pb-3">
+                                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                                        <Wallet className="h-4 w-4 text-primary" /> Recaudación por Método de Pago
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                        {report_data.methods_breakdown.map((mb, idx) => (
+                                            <div key={idx} className="p-3 rounded-lg bg-muted/60 border border-border/80 flex items-center justify-between">
+                                                <div>
+                                                    <span className="text-xs font-semibold text-foreground block">
+                                                        {mb.method_name}
+                                                    </span>
+                                                    <span className="text-[10px] text-muted-foreground">
+                                                        {mb.count} transacción(es)
+                                                    </span>
+                                                </div>
+                                                <div className="text-right">
+                                                    <span className="font-bold text-sm text-foreground block font-mono">
+                                                        S/ {mb.amount_pen.toFixed(2)}
+                                                    </span>
+                                                    {mb.amount_usd > 0 && (
+                                                        <span className="text-[10px] text-muted-foreground block font-mono">
+                                                            $ {mb.amount_usd.toFixed(2)} USD
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        )}
+
+                        {/* Tabla de Detalle de Cobros / Amortizaciones */}
+                        <Card className="border shadow-xs overflow-hidden">
+                            <CardHeader className="border-b pb-3">
+                                <div className="flex items-center justify-between">
+                                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                                        <Coins className="h-4 w-4 text-emerald-600" /> Detalle de Amortizaciones Registradas
+                                    </CardTitle>
+                                    <span className="text-xs text-muted-foreground">
+                                        {report_data?.payments.length || 0} pagos en este reporte
+                                    </span>
+                                </div>
+                            </CardHeader>
+
+                            <div className="overflow-x-auto">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow className="bg-muted/40">
+                                            <TableHead className="text-xs font-semibold">Fecha / Hora</TableHead>
+                                            <TableHead className="text-xs font-semibold">N° Recibo</TableHead>
+                                            <TableHead className="text-xs font-semibold">Cliente</TableHead>
+                                            <TableHead className="text-xs font-semibold">Venta / Comprobante</TableHead>
+                                            <TableHead className="text-xs font-semibold">Medio de Pago</TableHead>
+                                            <TableHead className="text-xs font-semibold">Cobrador</TableHead>
+                                            <TableHead className="text-xs font-semibold text-right">Monto Cobrado</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {!report_data?.payments || report_data.payments.length === 0 ? (
+                                            <TableRow>
+                                                <TableCell colSpan={7} className="h-40 text-center">
+                                                    <div className="flex flex-col items-center justify-center text-muted-foreground space-y-2">
+                                                        <Coins className="h-10 w-10 text-muted-foreground/30" />
+                                                        <p className="font-medium text-sm">No se registraron cobros en el período seleccionado.</p>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            Cambia la fecha o período en los botones superiores para auditar otros días o meses.
+                                                        </p>
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : (
+                                            report_data.payments.map((p) => (
+                                                <TableRow key={p.id} className="hover:bg-muted/40 transition-colors">
+                                                    <TableCell className="text-xs font-mono">
+                                                        {p.operation_date}
+                                                    </TableCell>
+                                                    <TableCell className="text-xs font-bold text-foreground">
+                                                        {p.payment_number}
+                                                    </TableCell>
+                                                    <TableCell className="text-xs">
+                                                        <div className="font-medium text-foreground">{p.customer_name}</div>
+                                                        <div className="text-[10px] text-muted-foreground">{p.customer_doc}</div>
+                                                    </TableCell>
+                                                    <TableCell className="text-xs">
+                                                        <Badge variant="outline" className="text-[10px] font-mono">
+                                                            {p.related_sales.join(', ') || 'Abono general'}
+                                                        </Badge>
+                                                    </TableCell>
+                                                    <TableCell className="text-xs">
+                                                        <span className="font-medium text-foreground">
+                                                            {p.payment_methods.join(', ') || 'Efectivo'}
+                                                        </span>
+                                                    </TableCell>
+                                                    <TableCell className="text-xs text-muted-foreground">
+                                                        {p.collector_name}
+                                                    </TableCell>
+                                                    <TableCell className="text-right text-xs font-mono font-extrabold text-emerald-600 dark:text-emerald-400">
+                                                        {p.currency_code} {p.total_amount.toFixed(2)}
                                                     </TableCell>
                                                 </TableRow>
                                             ))

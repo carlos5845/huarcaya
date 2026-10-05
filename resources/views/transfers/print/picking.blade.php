@@ -193,17 +193,21 @@
             <a href="javascript:window.print()" class="btn btn-primary">
                 🖨️ Imprimir Hoja de Picking
             </a>
-            <a href="javascript:window.close()" class="btn btn-secondary">
+            <button type="button" onclick="if(window.parent !== window){ window.parent.postMessage('close-preview', '*'); } else { window.close(); }" class="btn btn-secondary">
                 ✕ Cerrar
-            </a>
+            </button>
         </div>
     </div>
 
     <div class="page">
         <div class="header-box">
-            <div>
-                <div class="doc-title">HOJA DE PICKING &bull; PREPARACIÓN DE ALMACÉN</div>
-                <div class="doc-sub">Lista de recolección de estantería para despacho intersucursales</div>
+            <div style="display: flex; align-items: center; gap: 14px;">
+                <!-- LOGOTIPO DE LA MARCA -->
+                <img src="{{ asset('logo-text.png') }}" alt="Logo" style="max-height: 44px; max-width: 180px; object-fit: contain;" />
+                <div>
+                    <div class="doc-title">HOJA DE PICKING &bull; PREPARACIÓN DE ALMACÉN</div>
+                    <div class="doc-sub">Lista de recolección de estantería para despacho intersucursales</div>
+                </div>
             </div>
             <div>
                 <div class="doc-number">{{ $transfer->transfer_number }}</div>

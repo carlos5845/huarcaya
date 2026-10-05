@@ -1,3 +1,4 @@
+import React, { useState } from 'react';
 import { Head, Link, router } from '@inertiajs/react';
 import { 
     ArrowLeft, 
@@ -11,11 +12,22 @@ import {
     CreditCard, 
     Package, 
     Clock,
-    RotateCcw
+    RotateCcw,
+    Receipt,
+    ChevronDown
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { DocumentPreviewModal } from '@/components/document-preview-modal';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -25,6 +37,11 @@ const breadcrumbs: BreadcrumbItem[] = [
 ];
 
 export default function SaleShow({ sale }: { sale: any }) {
+    const [previewModalOpen, setPreviewModalOpen] = useState(false);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [previewTitle, setPreviewTitle] = useState('Vista Previa de Comprobante');
+    const [previewSubtitle, setPreviewSubtitle] = useState('');
+
     const confirmSale = () => {
         if (confirm('¿Estás seguro de confirmar esta venta? Esto actualizará el inventario y no se puede deshacer de forma sencilla.')) {
             router.post(`/sales/${sale.id}/confirm`);
@@ -124,9 +141,49 @@ export default function SaleShow({ sale }: { sale: any }) {
                                             <CheckCircle className="h-3.5 w-3.5 text-emerald-600" /> Devolución Total Registrada
                                         </Badge>
                                     )}
-                                    <Button variant="outline" size="sm" onClick={() => window.print()} className="gap-2">
-                                        <Printer className="h-3.5 w-3.5" /> Imprimir Comprobante
-                                    </Button>
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button variant="outline" size="sm" className="gap-2">
+                                                <Printer className="h-3.5 w-3.5" />
+                                                <span>Imprimir</span>
+                                                <ChevronDown className="h-3 w-3 opacity-60" />
+                                            </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end" className="w-56 bg-popover text-popover-foreground border-border shadow-md">
+                                            <DropdownMenuLabel className="text-xs font-semibold">Opciones de Impresión</DropdownMenuLabel>
+                                            <DropdownMenuSeparator />
+                                            <DropdownMenuItem 
+                                                onClick={() => {
+                                                    setPreviewUrl(`/sales/${sale.id}/print/ticket`);
+                                                    setPreviewTitle(`Ticket Térmico (80 mm) - ${sale.external_document_number ? `${sale.external_document_series}-${sale.external_document_number}` : sale.sale_number}`);
+                                                    setPreviewSubtitle(sale.customer?.name || 'Venta general');
+                                                    setPreviewModalOpen(true);
+                                                }}
+                                                className="cursor-pointer text-xs gap-2 font-medium"
+                                            >
+                                                <Receipt className="h-3.5 w-3.5 text-emerald-600" />
+                                                <div>
+                                                    <div>Ticket Térmico (80 mm)</div>
+                                                    <div className="text-[10px] text-muted-foreground">Con logo de marca para ticketeras</div>
+                                                </div>
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem 
+                                                onClick={() => {
+                                                    setPreviewUrl(`/sales/${sale.id}/print/a4`);
+                                                    setPreviewTitle(`Comprobante Electrónico (A4) - ${sale.external_document_number ? `${sale.external_document_series}-${sale.external_document_number}` : sale.sale_number}`);
+                                                    setPreviewSubtitle(sale.customer_name_snapshot || sale.customer?.legal_name || sale.customer?.name || 'Cliente general');
+                                                    setPreviewModalOpen(true);
+                                                }}
+                                                className="cursor-pointer text-xs gap-2 font-medium"
+                                            >
+                                                <FileText className="h-3.5 w-3.5 text-blue-600" />
+                                                <div>
+                                                    <div>Comprobante Completo (A4)</div>
+                                                    <div className="text-[10px] text-muted-foreground">Formato oficial con membrete y RUC</div>
+                                                </div>
+                                            </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
                                 </div>
                             )}
                         </div>
@@ -512,6 +569,15 @@ export default function SaleShow({ sale }: { sale: any }) {
                     </div>
                 </div>
             </div>
+
+            {/* Document Preview Modal */}
+            <DocumentPreviewModal
+                open={previewModalOpen}
+                onOpenChange={setPreviewModalOpen}
+                url={previewUrl}
+                title={previewTitle}
+                subtitle={previewSubtitle}
+            />
         </>
     );
 }

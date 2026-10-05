@@ -1,13 +1,16 @@
 <?php
 
+use App\Http\Controllers\AlertController;
 use App\Http\Controllers\Api\SyncController;
 use App\Http\Controllers\Auth\CheckUserController;
 use App\Http\Controllers\Auth\OtpPasswordResetController;
 use App\Http\Controllers\BranchController;
 use App\Http\Controllers\BrandController;
 use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\ConflictController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\CustomerReturnController;
+use App\Http\Controllers\DailyClosingController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\InventoryAdjustmentController;
 use App\Http\Controllers\InventoryController;
@@ -19,8 +22,10 @@ use App\Http\Controllers\ProductImportController;
 use App\Http\Controllers\ProductSettingsController;
 use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\ReceivableController;
+use App\Http\Controllers\ReportController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SaleController;
+use App\Http\Controllers\SalePrintController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\TransferController;
 use App\Http\Controllers\TransferPrintController;
@@ -118,6 +123,8 @@ Route::middleware(['auth'])->group(function () {
 
     Route::middleware(['role_or_permission:Super Admin|view_sales'])->group(function () {
         Route::post('sales/{sale}/confirm', [SaleController::class, 'confirm'])->name('sales.confirm');
+        Route::get('sales/{sale}/print/ticket', [SalePrintController::class, 'ticket'])->name('sales.print.ticket');
+        Route::get('sales/{sale}/print/a4', [SalePrintController::class, 'a4'])->name('sales.print.a4');
         Route::resource('sales', SaleController::class);
 
         Route::post('customer-returns/{customer_return}/confirm', [CustomerReturnController::class, 'confirm'])->name('customer-returns.confirm');
@@ -139,6 +146,39 @@ Route::middleware(['auth'])->group(function () {
         Route::post('transfers/{transfer}/cancel', [TransferController::class, 'cancel'])->name('transfers.cancel');
         Route::resource('transfers', TransferController::class)->except(['edit', 'update', 'destroy']);
 
+    });
+
+    // Synchronization Conflicts Tray
+    Route::middleware(['role_or_permission:Super Admin|view_conflicts'])->group(function () {
+        Route::get('conflicts', [ConflictController::class, 'index'])->name('conflicts.index');
+        Route::get('conflicts/{conflict}', [ConflictController::class, 'show'])->name('conflicts.show');
+        Route::post('conflicts/{conflict}/reject', [ConflictController::class, 'reject'])->name('conflicts.reject');
+        Route::post('conflicts/{conflict}/correct', [ConflictController::class, 'correct'])->name('conflicts.correct');
+        Route::post('conflicts/{conflict}/force', [ConflictController::class, 'force'])->name('conflicts.force');
+    });
+
+    // Daily Closings (Arqueo y Cierre Diario)
+    Route::middleware(['role_or_permission:Super Admin|view_closings'])->group(function () {
+        Route::get('closings', [DailyClosingController::class, 'index'])->name('closings.index');
+        Route::get('closings/create', [DailyClosingController::class, 'create'])->name('closings.create');
+        Route::post('closings', [DailyClosingController::class, 'store'])->name('closings.store');
+        Route::get('closings/{closing}', [DailyClosingController::class, 'show'])->name('closings.show');
+        Route::get('closings/{closing}/print', [DailyClosingController::class, 'printTicket'])->name('closings.print');
+    });
+
+    // System Alerts (Centro de Alertas)
+    Route::middleware(['role_or_permission:Super Admin|view_alerts'])->group(function () {
+        Route::get('alerts', [AlertController::class, 'index'])->name('alerts.index');
+        Route::post('alerts/{alert}/read', [AlertController::class, 'markAsRead'])->name('alerts.read');
+        Route::post('alerts/read-all', [AlertController::class, 'markAllAsRead'])->name('alerts.readAll');
+        Route::post('alerts/refresh', [AlertController::class, 'refresh'])->name('alerts.refresh');
+    });
+
+    // Reports Center (Centro de Reportes)
+    Route::middleware(['role_or_permission:Super Admin|view_reports'])->group(function () {
+        Route::get('reports', [ReportController::class, 'index'])->name('reports.index');
+        Route::get('reports/export/{type}', [ReportController::class, 'exportExcel'])->name('reports.export');
+        Route::get('reports/print/{type}', [ReportController::class, 'printReport'])->name('reports.print');
     });
 
     // Products Catalog

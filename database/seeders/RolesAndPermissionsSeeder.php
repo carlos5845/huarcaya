@@ -30,6 +30,10 @@ class RolesAndPermissionsSeeder extends Seeder
             'view_adjustments',
             'view_kardex',
             'view_import',
+            'view_conflicts',
+            'view_closings',
+            'view_alerts',
+            'view_reports',
         ];
 
         foreach ($permissions as $permission) {
@@ -56,9 +60,9 @@ class RolesAndPermissionsSeeder extends Seeder
 
         // Other existing roles (kept for consistency)
         $cajero = Role::firstOrCreate(['name' => 'Cajero', 'guard_name' => 'web']);
-        $cajero->syncPermissions(Permission::whereIn('name', ['view_dashboard', 'view_sales', 'view_customers', 'view_inventory'])->get());
+        $cajero->syncPermissions(Permission::whereIn('name', ['view_dashboard', 'view_sales', 'view_customers', 'view_inventory', 'view_closings', 'view_reports'])->get());
 
         $almacenero = Role::firstOrCreate(['name' => 'Almacenero', 'guard_name' => 'web']);
-        $almacenero->syncPermissions(Permission::whereIn('name', ['view_dashboard', 'view_inventory', 'view_transfers', 'view_adjustments', 'view_kardex', 'view_products'])->get());
+        $almacenero->syncPermissions(Permission::whereIn('name', ['view_dashboard', 'view_inventory', 'view_transfers', 'view_adjustments', 'view_kardex', 'view_products', 'view_alerts', 'view_reports'])->get());
     }
 }

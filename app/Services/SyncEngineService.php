@@ -99,6 +99,34 @@ class SyncEngineService
     }
 
     /**
+     * Reprocess a specific SyncOperation, typically after administrative correction or approval.
+     */
+    public function reprocessOperation(SyncOperation $syncOp, User $user, int $branchId): array
+    {
+        $op = [
+            'uuid' => $syncOp->uuid,
+            'device_id' => $syncOp->device_id,
+            'entity_type' => $syncOp->entity_type,
+            'entity_uuid' => $syncOp->entity_uuid,
+            'operation_type' => $syncOp->operation_type,
+            'payload' => $syncOp->payload,
+            'client_timestamp' => $syncOp->client_timestamp,
+        ];
+
+        $syncOp->update(['status' => 'PROCESSING', 'error_message' => null]);
+
+        if ($syncOp->entity_type === 'Customer') {
+            return $this->processCustomerOperation($op, $user, $syncOp);
+        } elseif ($syncOp->entity_type === 'Sale') {
+            return $this->processSaleOperation($op, $user, $branchId, $syncOp);
+        } elseif ($syncOp->entity_type === 'Purchase') {
+            return $this->processPurchaseOperation($op, $user, $branchId, $syncOp);
+        }
+
+        throw new Exception("Tipo de entidad '{$syncOp->entity_type}' no soportado para reprocesamiento.");
+    }
+
+    /**
      * Process an offline customer creation or update.
      */
     private function processCustomerOperation(array $op, User $user, ?SyncOperation $existing): array

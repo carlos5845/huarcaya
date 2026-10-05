@@ -10,9 +10,14 @@ use App\Models\PaymentMethod;
 use App\Models\PaymentMethodLine;
 use App\Models\Receivable;
 use App\Models\Sale;
+use App\Models\User;
+use App\Notifications\PaymentReceivedNotification;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 
@@ -154,7 +159,145 @@ class ReceivableController extends Controller
             ];
         })->values();
 
-        // 4. Auxiliary Data
+        // 4. Report Period Logic (Daily, Weekly, Monthly, Custom)
+        $reportPeriod = $request->input('report_period', 'daily');
+        $reportDate = $request->input('report_date', now()->toDateString());
+        $reportMonth = $request->input('report_month', now()->format('Y-m'));
+        $reportFrom = $request->input('report_from');
+        $reportTo = $request->input('report_to');
+
+        if ($reportPeriod === 'weekly') {
+            $startDate = now()->startOfWeek();
+            $endDate = now()->endOfWeek();
+            $periodLabel = 'Esta Semana ('.$startDate->format('d/m').' al '.$endDate->format('d/m/Y').')';
+        } elseif ($reportPeriod === 'monthly') {
+            try {
+                $mCarbon = Carbon::createFromFormat('Y-m', $reportMonth);
+            } catch (\Exception $e) {
+                $mCarbon = now();
+            }
+            $startDate = $mCarbon->copy()->startOfMonth();
+            $endDate = $mCarbon->copy()->endOfMonth();
+            $periodLabel = 'Mes de '.$startDate->locale('es')->translatedFormat('F Y');
+        } elseif ($reportPeriod === 'custom' && $reportFrom && $reportTo) {
+            $startDate = Carbon::parse($reportFrom)->startOfDay();
+            $endDate = Carbon::parse($reportTo)->endOfDay();
+            $periodLabel = 'Del '.$startDate->format('d/m/Y').' al '.$endDate->format('d/m/Y');
+        } else {
+            $reportPeriod = 'daily';
+            try {
+                $dCarbon = Carbon::parse($reportDate);
+            } catch (\Exception $e) {
+                $dCarbon = now();
+            }
+            $startDate = $dCarbon->copy()->startOfDay();
+            $endDate = $dCarbon->copy()->endOfDay();
+            $periodLabel = 'Día '.$startDate->format('d/m/Y');
+        }
+
+        $periodPayments = Payment::query()
+            ->where('status', 'CONFIRMED')
+            ->whereBetween('operation_date', [$startDate, $endDate])
+            ->when($branchIdFilter, function ($q, $bid) {
+                $q->where('branch_id', $bid);
+            }, function ($q) use ($isSuperAdmin, $allowedBranchIds, $user) {
+                if (! $isSuperAdmin) {
+                    if (! empty($allowedBranchIds)) {
+                        $q->whereIn('branch_id', $allowedBranchIds);
+                    } elseif ($user->default_branch_id) {
+                        $q->where('branch_id', $user->default_branch_id);
+                    }
+                }
+            })
+            ->with([
+                'customer:id,legal_name,document_type,document_number,phone',
+                'branch:id,name',
+                'creator:id,name',
+                'methodLines.method:id,name,code,is_cash',
+                'allocations.receivable.sale:id,sale_number,external_document_type,external_document_series,external_document_number',
+            ])
+            ->orderBy('operation_date', 'desc')
+            ->get();
+
+        $totalCollectedPEN = (float) $periodPayments->where('currency_code', 'PEN')->sum('total_amount');
+        $totalCollectedUSD = (float) $periodPayments->where('currency_code', 'USD')->sum('total_amount');
+        $collectedOperationsCount = $periodPayments->count();
+
+        $methodsBreakdown = [];
+        foreach ($periodPayments as $payment) {
+            foreach ($payment->methodLines as $line) {
+                $mName = $line->method?->name ?? 'Otros / Varios';
+                $isCash = (bool) ($line->method?->is_cash ?? false);
+                if (! isset($methodsBreakdown[$mName])) {
+                    $methodsBreakdown[$mName] = [
+                        'method_name' => $mName,
+                        'is_cash' => $isCash,
+                        'amount_pen' => 0,
+                        'amount_usd' => 0,
+                        'count' => 0,
+                    ];
+                }
+                if ($payment->currency_code === 'USD') {
+                    $methodsBreakdown[$mName]['amount_usd'] += (float) $line->amount;
+                } else {
+                    $methodsBreakdown[$mName]['amount_pen'] += (float) $line->amount;
+                }
+                $methodsBreakdown[$mName]['count']++;
+            }
+        }
+        $methodsBreakdown = array_values($methodsBreakdown);
+
+        $newDebtsInPeriod = (clone $baseQuery)
+            ->whereBetween('issue_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')])
+            ->get();
+        $totalNewDebtPEN = (float) $newDebtsInPeriod->where('currency_code', 'PEN')->sum('original_amount');
+        $totalNewDebtUSD = (float) $newDebtsInPeriod->where('currency_code', 'USD')->sum('original_amount');
+        $newDebtsCount = $newDebtsInPeriod->count();
+
+        $maturedInPeriod = (clone $baseQuery)
+            ->where('status', 'ACTIVE')
+            ->whereBetween('due_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')])
+            ->get();
+        $totalMaturedDebtPEN = (float) $maturedInPeriod->where('currency_code', 'PEN')->sum('balance_amount');
+        $maturedCount = $maturedInPeriod->count();
+
+        $reportData = [
+            'period' => $reportPeriod,
+            'period_label' => $periodLabel,
+            'start_date' => $startDate->format('Y-m-d'),
+            'end_date' => $endDate->format('Y-m-d'),
+            'report_date' => $reportDate,
+            'report_month' => $reportMonth,
+            'report_from' => $reportFrom ?? '',
+            'report_to' => $reportTo ?? '',
+            'total_collected_pen' => round($totalCollectedPEN, 2),
+            'total_collected_usd' => round($totalCollectedUSD, 2),
+            'collected_count' => $collectedOperationsCount,
+            'total_new_debt_pen' => round($totalNewDebtPEN, 2),
+            'total_new_debt_usd' => round($totalNewDebtUSD, 2),
+            'new_debts_count' => $newDebtsCount,
+            'total_matured_debt_pen' => round($totalMaturedDebtPEN, 2),
+            'matured_count' => $maturedCount,
+            'methods_breakdown' => $methodsBreakdown,
+            'payments' => $periodPayments->map(function ($p) {
+                return [
+                    'id' => $p->id,
+                    'payment_number' => $p->payment_number,
+                    'operation_date' => $p->operation_date->format('d/m/Y H:i'),
+                    'customer_name' => $p->customer?->legal_name ?? 'Cliente General',
+                    'customer_doc' => $p->customer ? "{$p->customer->document_type}: {$p->customer->document_number}" : '',
+                    'currency_code' => $p->currency_code,
+                    'total_amount' => (float) $p->total_amount,
+                    'collector_name' => $p->creator?->name ?? 'Sistema',
+                    'branch_name' => $p->branch?->name ?? 'Central',
+                    'payment_methods' => $p->methodLines->map(fn ($ml) => $ml->method?->name ?? 'Otro')->unique()->values(),
+                    'related_sales' => $p->allocations->map(fn ($a) => $a->receivable?->sale?->sale_number ?? "CR-{$a->receivable_id}")->unique()->values(),
+                    'notes' => $p->notes,
+                ];
+            })->values(),
+        ];
+
+        // 5. Auxiliary Data
         $paymentMethods = PaymentMethod::where('company_id', $user->company_id)->where('is_active', true)->get();
         $branches = Branch::where('company_id', $user->company_id)->get(['id', 'name']);
 
@@ -163,10 +306,16 @@ class ReceivableController extends Controller
             'customers_summary' => $customersSummary,
             'payment_methods' => $paymentMethods,
             'branches' => $branches,
+            'report_data' => $reportData,
             'filters' => [
                 'search' => $search ?? '',
                 'status' => $statusFilter,
                 'branch_id' => $branchIdFilter ?? '',
+                'report_period' => $reportPeriod,
+                'report_date' => $reportDate,
+                'report_month' => $reportMonth,
+                'report_from' => $reportFrom ?? '',
+                'report_to' => $reportTo ?? '',
             ],
             'metrics' => [
                 'total_active_debt_pen' => $totalActiveDebtPEN,
@@ -268,6 +417,22 @@ class ReceivableController extends Controller
             }
 
             DB::commit();
+
+            // Enviar notificación a usuarios de la sucursal y administradores
+            try {
+                $receivable->load(['customer', 'sale']);
+                $branchUsers = User::whereHas('branches', function ($query) use ($receivable) {
+                    $query->where('branches.id', $receivable->branch_id);
+                })->orWhere('default_branch_id', $receivable->branch_id)
+                    ->get();
+
+                $adminUsers = User::role('Super Admin')->get();
+                $usersToNotify = $branchUsers->merge($adminUsers)->unique('id');
+
+                Notification::send($usersToNotify, new PaymentReceivedNotification($payment, $receivable));
+            } catch (\Exception $notifEx) {
+                Log::error('Error sending payment notification: '.$notifEx->getMessage());
+            }
 
             return back()->with('success', 'Abono registrado exitosamente. Saldo actualizado.');
         } catch (\Exception $e) {

@@ -180,3 +180,41 @@ test('receivables index correctly filters overdue debts', function () {
         ->where('receivables.data.0.days_overdue', 5)
     );
 });
+
+test('receivables index returns report data for daily, weekly and monthly periods', function () {
+    $this->actingAs($this->user);
+
+    // Register a payment to have report data
+    $this->post(route('receivables.payments.store', $this->receivable), [
+        'amount' => 300,
+        'payment_method_id' => $this->paymentMethod->id,
+        'operation_date' => now()->toDateString(),
+    ]);
+
+    // Daily report
+    $responseDaily = $this->get(route('receivables.index', ['report_period' => 'daily']));
+    $responseDaily->assertOk();
+    $responseDaily->assertInertia(fn ($page) => $page
+        ->component('receivables/index')
+        ->has('report_data')
+        ->where('report_data.period', 'daily')
+        ->where('report_data.total_collected_pen', 300)
+        ->where('report_data.collected_count', 1)
+    );
+
+    // Weekly report
+    $responseWeekly = $this->get(route('receivables.index', ['report_period' => 'weekly']));
+    $responseWeekly->assertOk();
+    $responseWeekly->assertInertia(fn ($page) => $page
+        ->where('report_data.period', 'weekly')
+        ->where('report_data.total_collected_pen', 300)
+    );
+
+    // Monthly report
+    $responseMonthly = $this->get(route('receivables.index', ['report_period' => 'monthly']));
+    $responseMonthly->assertOk();
+    $responseMonthly->assertInertia(fn ($page) => $page
+        ->where('report_data.period', 'monthly')
+        ->where('report_data.total_collected_pen', 300)
+    );
+});

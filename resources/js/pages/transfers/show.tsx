@@ -32,6 +32,7 @@ import {
     ClipboardList,
     ChevronDown
 } from 'lucide-react';
+import { DocumentPreviewModal } from '@/components/document-preview-modal';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -64,6 +65,19 @@ export default function TransfersShow({
     is_destination: boolean;
 }) {
     const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
+
+    // Modal state for in-app document viewing/printing
+    const [previewModalOpen, setPreviewModalOpen] = useState(false);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [previewTitle, setPreviewTitle] = useState('Vista Previa de Documento');
+    const [previewSubtitle, setPreviewSubtitle] = useState('');
+
+    const handleOpenPreview = (url: string, title: string, subtitle?: string) => {
+        setPreviewUrl(url);
+        setPreviewTitle(title);
+        setPreviewSubtitle(subtitle || '');
+        setPreviewModalOpen(true);
+    };
 
     useEffect(() => {
         // Polling cada 10 segundos para sincronizar estados si hay despachos o recepciones en curso
@@ -422,54 +436,70 @@ export default function TransfersShow({
                                         className="gap-2 font-medium"
                                     >
                                         <Printer className="h-4 w-4 text-primary" />
-                                        <span>Imprimir Documento</span>
+                                        <span>Imprimir Nota de Traslado</span>
                                         <ChevronDown className="h-3.5 w-3.5 opacity-60" />
                                     </Button>
                                 </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="w-[240px] bg-popover text-popover-foreground border-border shadow-md">
+                                <DropdownMenuContent align="end" className="w-[260px] bg-popover text-popover-foreground border-border shadow-md">
                                     <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                                        Documentos de Traslado
+                                        Nota de Traslado Interno
                                     </DropdownMenuLabel>
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem 
-                                        onClick={() => window.open(`/transfers/${transfer.id}/print/internal?format=a4`, '_blank')}
+                                        onClick={() => handleOpenPreview(
+                                            `/transfers/${transfer.id}/print/internal?format=a4`,
+                                            `Nota de Traslado (A4) - ${transfer.transfer_number}`,
+                                            `${transfer.source_branch?.name || transfer.sourceBranch?.name || 'Origen'} ➔ ${transfer.destination_branch?.name || transfer.destinationBranch?.name || 'Destino'}`
+                                        )}
                                         className="cursor-pointer text-xs py-2 gap-2"
                                     >
                                         <FileText className="h-4 w-4 text-blue-600" />
                                         <div>
                                             <div className="font-semibold text-foreground">Nota de Traslado (A4)</div>
-                                            <div className="text-[10px] text-muted-foreground">Con firmas de almacén y chofer</div>
+                                            <div className="text-[10px] text-muted-foreground">Documento oficial de movimiento interno</div>
                                         </div>
                                     </DropdownMenuItem>
                                     <DropdownMenuItem 
-                                        onClick={() => window.open(`/transfers/${transfer.id}/print/internal?format=ticket`, '_blank')}
+                                        onClick={() => handleOpenPreview(
+                                            `/transfers/${transfer.id}/print/internal?format=ticket`,
+                                            `Ticket de Traslado (80 mm) - ${transfer.transfer_number}`,
+                                            `${transfer.source_branch?.name || transfer.sourceBranch?.name || 'Origen'} ➔ ${transfer.destination_branch?.name || transfer.destinationBranch?.name || 'Destino'}`
+                                        )}
                                         className="cursor-pointer text-xs py-2 gap-2"
                                     >
                                         <Receipt className="h-4 w-4 text-emerald-600" />
                                         <div>
                                             <div className="font-semibold text-foreground">Ticket Térmico (80 mm)</div>
-                                            <div className="text-[10px] text-muted-foreground">Para ticketeras de mostrador</div>
+                                            <div className="text-[10px] text-muted-foreground">Para ticketeras de almacén</div>
                                         </div>
                                     </DropdownMenuItem>
                                     <DropdownMenuItem 
-                                        onClick={() => window.open(`/transfers/${transfer.id}/print/picking`, '_blank')}
+                                        onClick={() => handleOpenPreview(
+                                            `/transfers/${transfer.id}/print/picking`,
+                                            `Hoja de Picking - ${transfer.transfer_number}`,
+                                            `Almacén de origen: ${transfer.source_branch?.name || transfer.sourceBranch?.name || '-'}`
+                                        )}
                                         className="cursor-pointer text-xs py-2 gap-2"
                                     >
                                         <ClipboardList className="h-4 w-4 text-amber-600" />
                                         <div>
-                                            <div className="font-semibold text-foreground">Hoja de Picking</div>
+                                            <div className="font-semibold text-foreground">Hoja de Picking (Almacén)</div>
                                             <div className="text-[10px] text-muted-foreground">Para recolección en estantería</div>
                                         </div>
                                     </DropdownMenuItem>
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem 
-                                        onClick={() => window.open(`/transfers/${transfer.id}/print/guide`, '_blank')}
-                                        className="cursor-pointer text-xs py-2 gap-2"
+                                        onClick={() => handleOpenPreview(
+                                            `/transfers/${transfer.id}/print/guide`,
+                                            `Guía Remitente SUNAT - ${transfer.transfer_number}`,
+                                            `Formato preliminar para transporte en vía pública`
+                                        )}
+                                        className="cursor-pointer text-xs py-2 gap-2 text-muted-foreground"
                                     >
                                         <Truck className="h-4 w-4 text-primary" />
                                         <div>
-                                            <div className="font-semibold text-foreground">Guía de Remisión (SUNAT 09)</div>
-                                            <div className="text-[10px] text-muted-foreground">Formato fiscal de carretera</div>
+                                            <div className="font-medium text-foreground">Guía Remitente SUNAT (Opcional)</div>
+                                            <div className="text-[10px] text-muted-foreground">Solo transporte público / carretera</div>
                                         </div>
                                     </DropdownMenuItem>
                                 </DropdownMenuContent>
@@ -856,6 +886,15 @@ export default function TransfersShow({
                     </div>
                 </div>
             </div>
+
+            {/* Document Preview Modal */}
+            <DocumentPreviewModal
+                open={previewModalOpen}
+                onOpenChange={setPreviewModalOpen}
+                url={previewUrl}
+                title={previewTitle}
+                subtitle={previewSubtitle}
+            />
         </>
     );
 }

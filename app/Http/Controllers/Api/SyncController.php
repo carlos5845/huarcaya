@@ -54,7 +54,7 @@ class SyncController extends Controller
                     'unit_code' => $product->unit?->code ?? 'NIU',
                     'category_name' => $product->category?->name,
                     'brand_name' => $product->brand?->name,
-                    'local_stock' => $inv ? (float) $inv->physical_quantity : 0,
+                    'local_stock' => $inv ? max(0, (float) $inv->available_quantity) : 0,
                 ];
             });
 

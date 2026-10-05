@@ -2,12 +2,15 @@
     "name": "SIMAQ - Inversiones Huarcaya",
     "short_name": "SIMAQ",
     "description": "Sistema de Inventarios, Ventas y Facturación Offline",
+    "id": "/",
     "start_url": "/",
     "scope": "/",
     "display": "standalone",
+    "display_override": ["standalone", "minimal-ui"],
     "orientation": "any",
     "background_color": "#0f172a",
     "theme_color": "#0f172a",
+    "categories": ["business", "productivity", "utilities"],
     "icons": [
         {
             "src": "/icons/icon-192.png",

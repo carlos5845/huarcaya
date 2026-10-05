@@ -16,7 +16,9 @@ import {
     Clock,
     WifiOff,
     CloudOff,
-    CheckCheck
+    CheckCheck,
+    Ban,
+    AlertTriangle
 } from 'lucide-react';
 import { enqueueOfflineSale, searchLocalProducts, discardOfflineSale } from '@/services/sync-service';
 import { useNetworkStatus } from '@/hooks/use-network-status';
@@ -48,7 +50,8 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
     const { isOnline } = useNetworkStatus();
     const defaultCustomer = generic_customer_id?.toString() || (customers.length > 0 ? customers[0].id.toString() : '');
 
-    const { company_settings } = usePage<any>().props;
+    const { company_settings, auth } = usePage<any>().props;
+    const userBranchId = auth?.user?.default_branch_id || auth?.user?.branch_id;
     const globalExchangeRate = company_settings?.exchange_rate ? parseFloat(company_settings.exchange_rate) : 3.80;
 
     const [customerList, setCustomerList] = useState<any[]>(customers || []);
@@ -169,7 +172,14 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
         exchange_rate: globalExchangeRate,
         notes: '',
         tax_mode: 'INCLUDED',
-        lines: [] as { product_id: number; product_name: string; internal_code: string; quantity: number; unit_price: number }[],
+        lines: [] as {
+            product_id: number;
+            product_name: string;
+            internal_code: string;
+            quantity: number;
+            unit_price: number;
+            available_quantity?: number;
+        }[],
     });
 
     useEffect(() => {
@@ -238,7 +248,7 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
 
             if (!navigator.onLine) {
                 try {
-                    const localItems = await searchLocalProducts(searchQuery);
+                    const localItems = await searchLocalProducts(searchQuery, userBranchId);
                     setSearchResults(localItems.map(p => ({
                         id: p.id,
                         name: p.name,
@@ -255,7 +265,11 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
                 return;
             }
 
-            fetch(`/products/search?q=${encodeURIComponent(searchQuery)}`, {
+            const searchUrl = userBranchId
+                ? `/products/search?q=${encodeURIComponent(searchQuery)}&branch_id=${userBranchId}`
+                : `/products/search?q=${encodeURIComponent(searchQuery)}`;
+
+            fetch(searchUrl, {
                 headers: { 'Accept': 'application/json' }
             })
             .then(res => res.json())
@@ -266,7 +280,7 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
             .catch(async () => {
                 // Fallback to offline IndexedDB
                 try {
-                    const localItems = await searchLocalProducts(searchQuery);
+                    const localItems = await searchLocalProducts(searchQuery, userBranchId);
                     setSearchResults(localItems.map(p => ({
                         id: p.id,
                         name: p.name,
@@ -288,12 +302,28 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
 
     const addProduct = (product: any) => {
         if (data.lines.find(l => l.product_id === product.id)) {
-return;
-}
+            toast.warning(`El producto "${product.name}" ya se encuentra agregado a la lista.`);
+            return;
+        }
+
+        const stock = Number(product.available_quantity ?? product.local_stock ?? 0);
+        if (stock <= 0) {
+            toast.error(
+                `El producto "${product.name}" no cuenta con stock disponible en este almacén (Stock: 0). No es posible vender productos sin existencias.`
+            );
+            return;
+        }
 
         setData('lines', [
             ...data.lines,
-            { product_id: product.id, product_name: product.name, internal_code: product.primary_reference || product.internal_code || 'Sin código', quantity: 1, unit_price: product.suggested_price || 0 }
+            {
+                product_id: product.id,
+                product_name: product.name,
+                internal_code: product.primary_reference || product.internal_code || 'Sin código',
+                quantity: 1,
+                unit_price: product.suggested_price || 0,
+                available_quantity: stock,
+            }
         ]);
         setSearchQuery('');
         searchResults.length = 0;
@@ -328,16 +358,40 @@ return;
     const changeAmount = Math.max(0, (parseFloat(data.amount_received) || 0) - finalTotal);
     const initialPay = parseFloat(data.initial_payment_amount || '0');
     const debtAmount = Math.max(0, finalTotal - initialPay);
+    const hasStockDeficit = data.lines.some(l => l.available_quantity !== undefined && l.quantity > l.available_quantity);
 
     const handleFormSubmit = async (chosenAction: 'CONFIRM' | 'DRAFT') => {
         if (data.lines.length === 0) {
-            alert('Debe agregar al menos un producto a la venta.');
+            toast.error('Debe agregar al menos un producto a la venta.');
             return;
         }
 
         if (data.payment_type === 'CREDIT' && isGenericCustomer) {
-            alert('El Público en General solo puede comprar al contado. Seleccione o cree un cliente con RUC/DNI para ventas al crédito.');
+            toast.error('El Público en General solo puede comprar al contado. Seleccione o cree un cliente con RUC/DNI para ventas al crédito.');
             return;
+        }
+
+        // Validate stock availability when confirming sale
+        if (chosenAction === 'CONFIRM') {
+            for (const line of data.lines) {
+                let availableStock = line.available_quantity;
+                if (!navigator.onLine) {
+                    try {
+                        const localProd = await db.products.get(line.product_id);
+                        if (localProd) {
+                            availableStock = localProd.local_stock;
+                        }
+                    } catch {}
+                }
+
+                if (availableStock !== undefined && line.quantity > availableStock) {
+                    toast.error(
+                        `No es posible confirmar la venta. Stock insuficiente para "${line.product_name}". Stock disponible: ${availableStock}, Solicitado: ${line.quantity}.`,
+                        { duration: 6000 }
+                    );
+                    return;
+                }
+            }
         }
 
         if (!navigator.onLine) {
@@ -374,8 +428,9 @@ return;
 
                 setData('lines', []);
                 setOfflineNotice(`¡Venta registrada en Modo Offline! Código temporal: ${tempSaleNumber}. Guardada en tu dispositivo y lista para sincronizarse.`);
+                toast.success(`Venta offline registrada exitosamente (${tempSaleNumber})`);
             } catch (err: any) {
-                alert(`Error guardando venta offline: ${err.message}`);
+                toast.error(`Error guardando venta offline: ${err.message}`, { duration: 6000 });
             }
             return;
         }
@@ -607,27 +662,53 @@ return;
                                         </div>
                                         {searchResults.length > 0 && (
                                             <div className="absolute z-20 w-full mt-1 bg-popover text-popover-foreground border border-border rounded-lg shadow-xl max-h-64 overflow-y-auto">
-                                                {searchResults.map(p => (
-                                                    <div 
-                                                        key={p.id} 
-                                                        className="p-2.5 hover:bg-muted/70 cursor-pointer flex justify-between items-center transition-colors border-b last:border-b-0"
-                                                        onClick={() => addProduct(p)}
-                                                    >
-                                                        <div className="min-w-0 flex-1 pr-2">
-                                                            <div className="font-semibold text-sm text-foreground truncate">{p.name}</div>
-                                                            <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
-                                                                <span>{p.primary_reference || p.internal_code || 'S/C'}</span>
-                                                                {p.brand?.name && <span>| {p.brand.name}</span>}
-                                                                <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${p.available_quantity > 0 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-400' : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-400'}`}>
-                                                                    Stock: {p.available_quantity || 0}
-                                                                </span>
+                                                {searchResults.map(p => {
+                                                    const stock = Number(p.available_quantity ?? p.local_stock ?? 0);
+                                                    const isOutOfStock = stock <= 0;
+
+                                                    return (
+                                                        <div 
+                                                            key={p.id} 
+                                                            className={`p-2.5 flex justify-between items-center transition-colors border-b last:border-b-0 ${
+                                                                isOutOfStock 
+                                                                    ? 'bg-rose-50/40 dark:bg-rose-950/20 cursor-not-allowed opacity-75' 
+                                                                    : 'hover:bg-muted/70 cursor-pointer'
+                                                            }`}
+                                                            onClick={() => {
+                                                                if (isOutOfStock) {
+                                                                    toast.error(`El producto "${p.name}" no cuenta con existencias disponibles en almacén (Stock: 0).`);
+                                                                    return;
+                                                                }
+                                                                addProduct(p);
+                                                            }}
+                                                        >
+                                                            <div className="min-w-0 flex-1 pr-2">
+                                                                <div className={`font-semibold text-sm truncate ${isOutOfStock ? 'text-rose-700 dark:text-rose-400' : 'text-foreground'}`}>
+                                                                    {p.name}
+                                                                </div>
+                                                                <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
+                                                                    <span>{p.primary_reference || p.internal_code || 'S/C'}</span>
+                                                                    {p.brand?.name && <span>| {p.brand.name}</span>}
+                                                                    <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${
+                                                                        stock > 0 
+                                                                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-400' 
+                                                                            : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-400'
+                                                                    }`}>
+                                                                        {stock > 0 ? `Stock: ${stock}` : 'Sin Stock (0)'}
+                                                                    </span>
+                                                                </div>
                                                             </div>
+                                                            <Button 
+                                                                size="icon" 
+                                                                variant="ghost" 
+                                                                className={`h-7 w-7 rounded-full shrink-0 ${isOutOfStock ? 'text-rose-400 cursor-not-allowed' : ''}`}
+                                                                disabled={isOutOfStock}
+                                                            >
+                                                                {isOutOfStock ? <Ban className="h-4 w-4 text-rose-500" /> : <Plus className="h-4 w-4 text-emerald-600" />}
+                                                            </Button>
                                                         </div>
-                                                        <Button size="icon" variant="ghost" className="h-7 w-7 rounded-full shrink-0">
-                                                            <Plus className="h-4 w-4 text-emerald-600" />
-                                                        </Button>
-                                                    </div>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
                                         )}
                                     </div>
@@ -671,8 +752,19 @@ return;
                                                                 step="1" 
                                                                 value={line.quantity} 
                                                                 onChange={e => updateLine(idx, 'quantity', parseInt(e.target.value) || 0)} 
-                                                                className="h-8 text-center font-semibold"
+                                                                className={`h-8 text-center font-semibold ${
+                                                                    line.available_quantity !== undefined && line.quantity > line.available_quantity
+                                                                        ? 'border-rose-500 bg-rose-50 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300 ring-1 ring-rose-500'
+                                                                        : ''
+                                                                }`}
                                                             />
+                                                            {line.available_quantity !== undefined && (
+                                                                <span className={`text-[10px] block mt-0.5 font-medium ${
+                                                                    line.quantity > line.available_quantity ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-muted-foreground'
+                                                                }`}>
+                                                                    {line.quantity > line.available_quantity ? `Excede Disp: ${line.available_quantity}` : `Disp: ${line.available_quantity}`}
+                                                                </span>
+                                                            )}
                                                         </TableCell>
                                                         <TableCell className="text-right">
                                                             <Input 
@@ -1070,14 +1162,35 @@ return;
                                     Acciones de Emisión
                                 </h3>
                                 
+                                {hasStockDeficit && (
+                                    <div className="p-2.5 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-xs text-rose-700 dark:text-rose-300 flex items-start gap-2">
+                                        <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
+                                        <span>
+                                            Hay productos cuya cantidad solicitada supera el stock disponible en almacén. Ajusta las cantidades antes de emitir.
+                                        </span>
+                                    </div>
+                                )}
+
                                 <div className="space-y-1.5">
                                     <Button 
                                         type="button" 
                                         onClick={() => handleFormSubmit('CONFIRM')}
-                                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-2 font-semibold shadow-xs h-11" 
+                                        className={`w-full gap-2 font-semibold shadow-xs h-11 transition-colors ${
+                                            hasStockDeficit 
+                                                ? 'bg-rose-600 hover:bg-rose-700 text-white' 
+                                                : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                        }`} 
                                         disabled={processing || data.lines.length === 0 || (data.payment_type === 'CREDIT' && isGenericCustomer)}
                                     >
-                                        <CheckCircle className="h-4 w-4" /> Emitir y Confirmar Venta
+                                        {hasStockDeficit ? (
+                                            <>
+                                                <Ban className="h-4 w-4" /> Stock Insuficiente en Líneas
+                                            </>
+                                        ) : (
+                                            <>
+                                                <CheckCircle className="h-4 w-4" /> Emitir y Confirmar Venta
+                                            </>
+                                        )}
                                     </Button>
                                     <p className="text-[11px] text-muted-foreground text-center">
                                         Emite el comprobante, descuenta stock de Kardex y envía la deuda a Cuentas por Cobrar.

@@ -14,6 +14,8 @@ class TransferRequestedNotification extends Notification
 
     public $customMessage;
 
+    public $title;
+
     public $type; // 'request', 'shipped', 'received'
 
     /**
@@ -24,12 +26,19 @@ class TransferRequestedNotification extends Notification
         $this->transfer = $transfer;
         $this->type = $type;
 
+        $sourceName = $transfer->sourceBranch->name ?? 'Sucursal Origen';
+        $destName = $transfer->destinationBranch->name ?? 'Sucursal Destino';
+        $itemsCount = $this->transfer->lines()->count();
+
         if ($type === 'shipped') {
-            $this->customMessage = "Tu solicitud ya est en camino (Gua {$this->transfer->transfer_number}).";
+            $this->title = 'Traslado en Camino';
+            $this->customMessage = "La guía {$this->transfer->transfer_number} con {$itemsCount} repuesto(s) ha sido despachada desde {$sourceName} hacia {$destName}.";
         } elseif ($type === 'received') {
-            $this->customMessage = "La sucursal {$this->transfer->destinationBranch->name} ha recepcionado la mercadera (Gua {$this->transfer->transfer_number}).";
+            $this->title = 'Mercadería Recepcionada';
+            $this->customMessage = "La sucursal {$destName} recepcionó la mercadería de la guía {$this->transfer->transfer_number}.";
         } else {
-            $this->customMessage = "La sucursal {$this->transfer->destinationBranch->name} ha solicitado {$this->transfer->lines()->count()} repuesto(s). (Gua {$this->transfer->transfer_number})";
+            $this->title = 'Solicitud de Traslado';
+            $this->customMessage = "La sucursal {$destName} ha solicitado {$itemsCount} repuesto(s) a {$sourceName} (Guía {$this->transfer->transfer_number}).";
         }
     }
 
@@ -51,11 +60,15 @@ class TransferRequestedNotification extends Notification
     public function toArray(object $notifiable): array
     {
         return [
+            'title' => $this->title,
+            'message' => $this->customMessage,
+            'action_url' => "/transfers/{$this->transfer->id}",
+            'category' => 'transfers',
+            'severity' => $this->type === 'received' ? 'success' : 'info',
             'transfer_id' => $this->transfer->id,
             'transfer_number' => $this->transfer->transfer_number,
-            'destination_branch_name' => $this->transfer->destinationBranch->name,
+            'destination_branch_name' => $this->transfer->destinationBranch->name ?? null,
             'items_count' => $this->transfer->lines()->count(),
-            'message' => $this->customMessage,
             'type' => $this->type,
         ];
     }

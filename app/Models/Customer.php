@@ -31,4 +31,9 @@ class Customer extends Model
     {
         return $this->hasMany(Receivable::class);
     }
+
+    public function getNameAttribute(): string
+    {
+        return $this->trade_name ?: ($this->legal_name ?? '');
+    }
 }

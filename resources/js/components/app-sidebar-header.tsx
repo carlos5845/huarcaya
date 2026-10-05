@@ -4,6 +4,7 @@ import type { BreadcrumbItem as BreadcrumbItemType } from '@/types';
 import { NotificationsMenu } from '@/components/notifications-menu';
 import { NetworkStatusBadge } from '@/components/network-status-badge';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { PwaInstallButton } from '@/components/pwa-install-button';
 
 export function AppSidebarHeader({
     breadcrumbs = [],
@@ -18,6 +19,7 @@ export function AppSidebarHeader({
             </div>
             
             <div className="flex items-center gap-2 sm:gap-3">
+                <PwaInstallButton />
                 <NetworkStatusBadge />
                 <ThemeToggle />
                 <NotificationsMenu />

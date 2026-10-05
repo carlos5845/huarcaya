@@ -207,9 +207,9 @@
             <a href="javascript:window.print()" class="btn btn-primary">
                 🖨️ Imprimir Formato SUNAT
             </a>
-            <a href="javascript:window.close()" class="btn btn-secondary">
+            <button type="button" onclick="if(window.parent !== window){ window.parent.postMessage('close-preview', '*'); } else { window.close(); }" class="btn btn-secondary">
                 ✕ Cerrar
-            </a>
+            </button>
         </div>
     </div>
 
@@ -218,6 +218,8 @@
         <table class="header-table">
             <tr>
                 <td style="width: 62%; vertical-align: top;">
+                    <!-- LOGOTIPO DE LA MARCA -->
+                    <img src="{{ asset('logo-text.png') }}" alt="{{ $company->business_name ?? 'Inversiones Huarcaya' }}" style="max-height: 48px; max-width: 220px; object-fit: contain; margin-bottom: 6px; display: block;" />
                     <div class="company-name">{{ $company->business_name ?? 'INVERSIONES HUARCAYA S.A.C.' }}</div>
                     <div class="company-desc">
                         <strong>Comercialización y Distribución de Repuestos Automotrices</strong><br>

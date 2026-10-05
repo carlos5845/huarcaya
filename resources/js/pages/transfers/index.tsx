@@ -29,6 +29,7 @@ import {
     Receipt,
     ClipboardList
 } from 'lucide-react';
+import { DocumentPreviewModal } from '@/components/document-preview-modal';
 import {
     DropdownMenu,
     DropdownMenuCheckboxItem,
@@ -74,6 +75,19 @@ export default function TransfersIndex({
     // TanStack states
     const [sorting, setSorting] = useState<SortingState>([]);
     const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+
+    // Modal state for in-app document viewing/printing
+    const [previewModalOpen, setPreviewModalOpen] = useState(false);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [previewTitle, setPreviewTitle] = useState('Vista Previa de Documento');
+    const [previewSubtitle, setPreviewSubtitle] = useState('');
+
+    const handleOpenPreview = (url: string, title: string, subtitle?: string) => {
+        setPreviewUrl(url);
+        setPreviewTitle(title);
+        setPreviewSubtitle(subtitle || '');
+        setPreviewModalOpen(true);
+    };
 
     useEffect(() => {
         const interval = setInterval(() => {
@@ -274,40 +288,56 @@ export default function TransfersIndex({
                                 <Printer className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
                             </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-[210px] bg-popover text-popover-foreground border-border shadow-md">
-                            <DropdownMenuLabel className="text-xs font-semibold">Imprimir Traslado</DropdownMenuLabel>
+                        <DropdownMenuContent align="end" className="w-[230px] bg-popover text-popover-foreground border-border shadow-md">
+                            <DropdownMenuLabel className="text-xs font-semibold">Nota de Traslado Interno</DropdownMenuLabel>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem 
-                                onClick={() => window.open(`/transfers/${row.original.id}/print/internal?format=a4`, '_blank')}
-                                className="cursor-pointer text-xs gap-2"
+                                onClick={() => handleOpenPreview(
+                                    `/transfers/${row.original.id}/print/internal?format=a4`,
+                                    `Nota de Traslado (A4) - ${row.original.transfer_number}`,
+                                    `${row.original.source_branch?.name || 'Origen'} ➔ ${row.original.destination_branch?.name || 'Destino'}`
+                                )}
+                                className="cursor-pointer text-xs gap-2 font-medium"
                             >
                                 <FileText className="h-3.5 w-3.5 text-blue-600" /> Nota de Traslado (A4)
                             </DropdownMenuItem>
                             <DropdownMenuItem 
-                                onClick={() => window.open(`/transfers/${row.original.id}/print/internal?format=ticket`, '_blank')}
-                                className="cursor-pointer text-xs gap-2"
+                                onClick={() => handleOpenPreview(
+                                    `/transfers/${row.original.id}/print/internal?format=ticket`,
+                                    `Ticket de Traslado (80 mm) - ${row.original.transfer_number}`,
+                                    `${row.original.source_branch?.name || 'Origen'} ➔ ${row.original.destination_branch?.name || 'Destino'}`
+                                )}
+                                className="cursor-pointer text-xs gap-2 font-medium"
                             >
                                 <Receipt className="h-3.5 w-3.5 text-emerald-600" /> Ticket Térmico (80 mm)
                             </DropdownMenuItem>
                             <DropdownMenuItem 
-                                onClick={() => window.open(`/transfers/${row.original.id}/print/picking`, '_blank')}
+                                onClick={() => handleOpenPreview(
+                                    `/transfers/${row.original.id}/print/picking`,
+                                    `Hoja de Picking - ${row.original.transfer_number}`,
+                                    `Almacén de origen: ${row.original.source_branch?.name || '-'}`
+                                )}
                                 className="cursor-pointer text-xs gap-2"
                             >
-                                <ClipboardList className="h-3.5 w-3.5 text-amber-600" /> Hoja de Picking
+                                <ClipboardList className="h-3.5 w-3.5 text-amber-600" /> Hoja de Picking (Almacén)
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem 
-                                onClick={() => window.open(`/transfers/${row.original.id}/print/guide`, '_blank')}
-                                className="cursor-pointer text-xs gap-2"
+                                onClick={() => handleOpenPreview(
+                                    `/transfers/${row.original.id}/print/guide`,
+                                    `Guía Remitente SUNAT - ${row.original.transfer_number}`,
+                                    `Formato preliminar para transporte en vía pública`
+                                )}
+                                className="cursor-pointer text-xs gap-2 text-muted-foreground"
                             >
-                                <Truck className="h-3.5 w-3.5 text-primary" /> Guía Remitente (SUNAT)
+                                <Truck className="h-3.5 w-3.5 text-primary" /> Guía Remitente SUNAT (Opcional)
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
                 </div>
             ),
         },
-    ], []);
+    ], [handleOpenPreview]);
 
     const table = useReactTable({
         data: transferData,
@@ -494,6 +524,15 @@ export default function TransfersIndex({
                     </Table>
                 </div>
             </div>
+
+            {/* Document Preview Modal */}
+            <DocumentPreviewModal
+                open={previewModalOpen}
+                onOpenChange={setPreviewModalOpen}
+                url={previewUrl}
+                title={previewTitle}
+                subtitle={previewSubtitle}
+            />
         </>
     );
 }

@@ -148,6 +148,7 @@ export default function KardexIndex({ entries, branches, filters, canSeeAllBranc
             date: string;
             product_name: string;
             quantity: number;
+            sync_status?: string;
         }> = [];
 
         for (const s of pendingOfflineSales) {
@@ -158,6 +159,7 @@ export default function KardexIndex({ entries, branches, filters, canSeeAllBranc
                     date: s.operation_date,
                     product_name: l.product_name,
                     quantity: l.quantity,
+                    sync_status: s.sync_status,
                 });
             }
         }
@@ -170,6 +172,7 @@ export default function KardexIndex({ entries, branches, filters, canSeeAllBranc
                     date: p.document_date,
                     product_name: l.product_name,
                     quantity: l.quantity,
+                    sync_status: p.sync_status,
                 });
             }
         }
@@ -671,9 +674,15 @@ export default function KardexIndex({ entries, branches, filters, canSeeAllBranc
                                                     {m.type === 'SALIDA' ? `-${m.quantity}` : `+${m.quantity}`}
                                                 </TableCell>
                                                 <TableCell className="text-center">
-                                                    <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-600 border-amber-500/30">
-                                                        Pendiente Sincronizar
-                                                    </Badge>
+                                                    {m.sync_status === 'FAILED' ? (
+                                                        <Badge variant="destructive" className="text-[10px] bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30">
+                                                            Error de Sincronización
+                                                        </Badge>
+                                                    ) : (
+                                                        <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-600 border-amber-500/30">
+                                                            Pendiente Sincronizar
+                                                        </Badge>
+                                                    )}
                                                 </TableCell>
                                             </TableRow>
                                         ))}

@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
 
 class DailyClosingVersion extends Model
 {
@@ -24,6 +25,15 @@ class DailyClosingVersion extends Model
         'total_difference' => 'decimal:6',
     ];
 
+    protected static function booted(): void
+    {
+        static::creating(function ($model) {
+            if (empty($model->uuid)) {
+                $model->uuid = (string) Str::uuid();
+            }
+        });
+    }
+
     public function dailyClosing(): BelongsTo
     {
         return $this->belongsTo(DailyClosing::class);
@@ -32,5 +42,10 @@ class DailyClosingVersion extends Model
     public function cashCounts(): HasMany
     {
         return $this->hasMany(DailyClosingCashCount::class);
+    }
+
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 }

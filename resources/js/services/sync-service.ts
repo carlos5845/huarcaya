@@ -148,19 +148,23 @@ export async function enqueueOfflineSale(payload: {
 
     // Save transactionally in Dexie and deduct local stock if confirmed
     await db.transaction('rw', [db.offlineSales, db.syncQueue, db.products], async () => {
-        await db.offlineSales.add(offlineSale);
-        await db.syncQueue.add(syncItem);
-
-        // Deduct local stock in Dexie to avoid local over-selling
+        // Strict stock validation if confirmed
         if (action === 'CONFIRM') {
             for (const line of payload.lines) {
                 const product = await db.products.get(line.product_id);
-                if (product) {
-                    const newStock = Math.max(0, (product.local_stock || 0) - line.quantity);
-                    await db.products.update(line.product_id, { local_stock: newStock });
+                const currentStock = product?.local_stock ?? 0;
+                if (currentStock < line.quantity) {
+                    throw new Error(
+                        `Stock insuficiente para el producto "${line.product_name}". Stock disponible: ${currentStock}, Solicitado: ${line.quantity}. No es posible emitir la venta.`
+                    );
                 }
+                const newStock = currentStock - line.quantity;
+                await db.products.update(line.product_id, { local_stock: newStock });
             }
         }
+
+        await db.offlineSales.add(offlineSale);
+        await db.syncQueue.add(syncItem);
     });
 
     return { saleUuid, tempSaleNumber };
@@ -264,15 +268,16 @@ export async function enqueueOfflinePurchase(payload: {
 }
 
 /**
- * Discard an offline sale from Dexie and sync queue, restoring deducted local stock.
+ * Discard an offline sale from Dexie and sync queue.
+ * Only restores local stock if the sale was confirmed and was NOT a failed operation.
  */
 export async function discardOfflineSale(saleUuid: string): Promise<boolean> {
     const sale = await db.offlineSales.where('uuid').equals(saleUuid).first();
     if (!sale) return false;
 
     await db.transaction('rw', [db.offlineSales, db.syncQueue, db.products], async () => {
-        // Restore stock in local products if it was confirmed (deducted)
-        if (sale.action !== 'DRAFT') {
+        // Only restore stock in local products if it was confirmed AND it was NOT an invalid/failed sync
+        if (sale.action !== 'DRAFT' && sale.sync_status !== 'FAILED') {
             for (const line of sale.lines) {
                 const product = await db.products.get(line.product_id);
                 if (product) {
@@ -292,19 +297,29 @@ export async function discardOfflineSale(saleUuid: string): Promise<boolean> {
         }
     });
 
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('simaq:sync-finished'));
+    }
+
+    // Refresh real stock from server in background if online
+    if (typeof navigator !== 'undefined' && navigator.onLine) {
+        downloadCatalog(sale.branch_id).catch(() => {});
+    }
+
     return true;
 }
 
 /**
- * Discard an offline purchase from Dexie and sync queue, reverting added local stock.
+ * Discard an offline purchase from Dexie and sync queue.
+ * Only reverts local stock if the purchase was confirmed and NOT a failed operation.
  */
 export async function discardOfflinePurchase(purchaseUuid: string): Promise<boolean> {
     const purchase = await db.offlinePurchases.where('uuid').equals(purchaseUuid).first();
     if (!purchase) return false;
 
     await db.transaction('rw', [db.offlinePurchases, db.syncQueue, db.products], async () => {
-        // Revert stock if it was confirmed
-        if (purchase.action === 'CONFIRM') {
+        // Only revert stock if it was confirmed and NOT a failed sync
+        if (purchase.action === 'CONFIRM' && purchase.sync_status !== 'FAILED') {
             for (const line of purchase.lines) {
                 const product = await db.products.get(line.product_id);
                 if (product) {
@@ -324,17 +339,177 @@ export async function discardOfflinePurchase(purchaseUuid: string): Promise<bool
         }
     });
 
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('simaq:sync-finished'));
+    }
+
+    // Refresh real stock from server in background if online
+    if (typeof navigator !== 'undefined' && navigator.onLine) {
+        downloadCatalog(purchase.branch_id).catch(() => {});
+    }
+
     return true;
 }
 
+/**
+ * Reconciles offline records with the sync queue to ensure no unsynced sales or purchases are orphaned.
+ * Also resets any stale 'SYNCING' items (e.g. from an interrupted session) back to 'PENDING'.
+ */
+export async function reconcileSyncQueue(): Promise<void> {
+    try {
+        await db.transaction('rw', [db.syncQueue, db.offlineSales, db.offlinePurchases], async () => {
+            // 1. Reset stale SYNCING items to PENDING
+            await db.syncQueue.where('status').equals('SYNCING').modify({ status: 'PENDING' });
+
+            const queueItems = await db.syncQueue.toArray();
+            const queueSaleUuids = new Set(
+                queueItems.filter(q => q.entity_type === 'SALE' && q.payload?.uuid).map(q => q.payload.uuid)
+            );
+            const queuePurchaseUuids = new Set(
+                queueItems.filter(q => q.entity_type === 'PURCHASE' && q.payload?.uuid).map(q => q.payload.uuid)
+            );
+
+            // 2. Reconcile unsynced offline sales
+            const unsyncedSales = await db.offlineSales
+                .filter(s => s.sync_status !== 'SYNCED' && s.action !== 'DRAFT')
+                .toArray();
+
+            for (const sale of unsyncedSales) {
+                if (!queueSaleUuids.has(sale.uuid)) {
+                    const syncOpUuid = crypto.randomUUID();
+                    await db.syncQueue.add({
+                        uuid: syncOpUuid,
+                        entity_type: 'SALE',
+                        operation_type: 'CREATE',
+                        payload: {
+                            uuid: sale.uuid,
+                            branch_id: sale.branch_id,
+                            customer_id: sale.customer_id,
+                            customer_name: sale.customer_name,
+                            operation_date: sale.operation_date,
+                            payment_type: sale.payment_type,
+                            action: sale.action || 'CONFIRM',
+                            temp_sale_number: sale.sale_number,
+                            lines: sale.lines.map(l => ({
+                                product_id: l.product_id,
+                                product_name: l.product_name,
+                                quantity: l.quantity,
+                                unit_price: l.unit_price,
+                            })),
+                        },
+                        status: 'PENDING',
+                        retry_count: 0,
+                        client_timestamp: sale.created_at || new Date().toISOString(),
+                    });
+                }
+            }
+
+            // 3. Reconcile unsynced offline purchases
+            const unsyncedPurchases = await db.offlinePurchases
+                .filter(p => p.sync_status !== 'SYNCED' && p.action === 'CONFIRM')
+                .toArray();
+
+            for (const purchase of unsyncedPurchases) {
+                if (!queuePurchaseUuids.has(purchase.uuid)) {
+                    const syncOpUuid = crypto.randomUUID();
+                    await db.syncQueue.add({
+                        uuid: syncOpUuid,
+                        entity_type: 'PURCHASE',
+                        operation_type: 'CREATE',
+                        payload: {
+                            uuid: purchase.uuid,
+                            branch_id: purchase.branch_id,
+                            supplier_id: purchase.supplier_id,
+                            supplier_name: purchase.supplier_name,
+                            supplier_document_type: purchase.supplier_document_type,
+                            supplier_document_series: purchase.supplier_document_series,
+                            supplier_document_number: purchase.supplier_document_number,
+                            document_date: purchase.document_date,
+                            tax_mode: 'EXONERATED',
+                            currency_code: purchase.currency_code,
+                            exchange_rate: 1,
+                            action: purchase.action,
+                            temp_purchase_number: purchase.temp_purchase_number,
+                            document_file: purchase.document_file || null,
+                            lines: purchase.lines.map(l => ({
+                                product_id: l.product_id,
+                                product_name: l.product_name,
+                                internal_code: l.internal_code,
+                                quantity: l.quantity,
+                                unit_cost: l.unit_cost,
+                            })),
+                        },
+                        status: 'PENDING',
+                        retry_count: 0,
+                        client_timestamp: purchase.created_at || new Date().toISOString(),
+                    });
+                }
+            }
+        });
+    } catch (err) {
+        console.error('Error reconciliando cola de sincronización:', err);
+    }
+}
 
 /**
- * Synchronize all pending operations to the server batch endpoint.
+ * Retry a specific failed sync operation.
+ */
+export async function retryQueueOperation(queueId: number): Promise<boolean> {
+    const item = await db.syncQueue.get(queueId);
+    if (!item) return false;
+
+    await db.syncQueue.update(queueId, {
+        status: 'PENDING',
+        error_message: undefined,
+    });
+
+    if (item.entity_type === 'SALE' && item.payload?.uuid) {
+        await db.offlineSales.where('uuid').equals(item.payload.uuid).modify({ sync_status: 'PENDING' });
+    } else if (item.entity_type === 'PURCHASE' && item.payload?.uuid) {
+        await db.offlinePurchases.where('uuid').equals(item.payload.uuid).modify({ sync_status: 'PENDING' });
+    }
+
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('simaq:sync-finished'));
+    }
+
+    return true;
+}
+
+/**
+ * Discard an operation from the queue and remove from local offline sales/purchases.
+ */
+export async function discardQueueOperation(queueId: number): Promise<boolean> {
+    const item = await db.syncQueue.get(queueId);
+    if (!item) return false;
+
+    let res = false;
+    if (item.entity_type === 'SALE' && item.payload?.uuid) {
+        res = await discardOfflineSale(item.payload.uuid);
+    } else if (item.entity_type === 'PURCHASE' && item.payload?.uuid) {
+        res = await discardOfflinePurchase(item.payload.uuid);
+    } else {
+        await db.syncQueue.delete(queueId);
+        res = true;
+    }
+
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('simaq:sync-finished'));
+    }
+
+    return res;
+}
+
+/**
+ * Synchronize all pending and failed operations to the server batch endpoint.
  */
 export async function syncPendingOperations(branchId?: number): Promise<SyncBatchResult> {
+    // 1. Reconcile any missing queue items and unstick frozen SYNCING states
+    await reconcileSyncQueue();
+
+    // 2. Fetch both PENDING and FAILED operations so failures can be retried
     const pendingOps = await db.syncQueue
-        .where('status')
-        .equals('PENDING')
+        .filter(op => op.status === 'PENDING' || op.status === 'FAILED')
         .toArray();
 
     if (pendingOps.length === 0) {
@@ -389,6 +564,7 @@ export async function syncPendingOperations(branchId?: number): Promise<SyncBatc
                     syncedCount++;
                     await db.syncQueue.where('uuid').equals(res.uuid).modify({
                         status: 'SYNCED',
+                        error_message: undefined,
                     });
 
                     // Also mark offlineSale
@@ -412,9 +588,23 @@ export async function syncPendingOperations(branchId?: number): Promise<SyncBatc
                     failedCount++;
                     await db.syncQueue.where('uuid').equals(res.uuid).modify({
                         status: 'FAILED',
-                        error_message: res.message,
-                        retry_count: queueItem.retry_count + 1,
+                        error_message: res.message || 'Error no especificado por el servidor',
+                        retry_count: (queueItem.retry_count || 0) + 1,
                     });
+
+                    // Also mark offlineSale / offlinePurchase as FAILED
+                    const saleUuid = queueItem.payload?.uuid;
+                    if (saleUuid) {
+                        await db.offlineSales.where('uuid').equals(saleUuid).modify({
+                            sync_status: 'FAILED',
+                        });
+                    }
+                    const purchaseUuid = queueItem.payload?.uuid;
+                    if (purchaseUuid) {
+                        await db.offlinePurchases.where('uuid').equals(purchaseUuid).modify({
+                            sync_status: 'FAILED',
+                        });
+                    }
                 }
             }
         });
@@ -423,6 +613,11 @@ export async function syncPendingOperations(branchId?: number): Promise<SyncBatc
         if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('simaq:sync-finished', { detail: { syncedCount, failedCount } }));
         }
+
+        // Re-download catalog in background to ensure local stock matches server 100%
+        downloadCatalog(branchId).catch(err => {
+            console.warn('[SyncService] Post-sync catalog refresh error:', err);
+        });
 
         return { syncedCount, failedCount, results };
     } catch (err: any) {

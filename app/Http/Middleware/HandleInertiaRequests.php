@@ -2,8 +2,10 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Conflict;
 use App\Models\Setting;
 use App\Models\SettingValue;
+use App\Services\AlertService;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -72,6 +74,45 @@ class HandleInertiaRequests extends Middleware
                 return [
                     'exchange_rate' => $exchangeRate,
                 ];
+            },
+            'pending_conflicts_count' => function () use ($request) {
+                $user = $request->user();
+                if (! $user) {
+                    return 0;
+                }
+
+                if ($user->hasRole('Super Admin')) {
+                    return Conflict::pending()->count();
+                }
+
+                $allowedBranchIds = $user->branches()->where('branches.status', 'ACTIVE')->pluck('branches.id')->toArray();
+                if (empty($allowedBranchIds) && $user->default_branch_id) {
+                    $allowedBranchIds = [$user->default_branch_id];
+                }
+
+                if (empty($allowedBranchIds)) {
+                    return 0;
+                }
+
+                $allowedBranchValues = array_unique(array_merge(
+                    array_map('intval', $allowedBranchIds),
+                    array_map('strval', $allowedBranchIds)
+                ));
+
+                return Conflict::pending()->where(function ($q) use ($allowedBranchValues, $allowedBranchIds) {
+                    $q->whereIn('client_state->branch_id', $allowedBranchValues)
+                        ->orWhereHas('syncOperation.device', function ($dq) use ($allowedBranchIds) {
+                            $dq->whereIn('branch_id', $allowedBranchIds);
+                        });
+                })->count();
+            },
+            'active_alerts_count' => function () use ($request) {
+                $user = $request->user();
+                if (! $user) {
+                    return 0;
+                }
+
+                return app(AlertService::class)->getUnreadCountForUser($user);
             },
         ];
     }

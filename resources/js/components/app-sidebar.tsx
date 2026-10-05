@@ -1,8 +1,26 @@
 import { Link, usePage } from '@inertiajs/react';
-import { ArrowRightLeft, Landmark, Undo2 } from 'lucide-react';
-import { BookOpen, FolderGit2, LayoutGrid, Building, Users, Tags, LayoutList, Scale, PackageSearch, Box, FileSpreadsheet, ClipboardList } from 'lucide-react';
+import {
+    LayoutGrid,
+    BarChart3,
+    Bell,
+    AlertTriangle,
+    Receipt,
+    Landmark,
+    Undo2,
+    Users,
+    ShoppingBag,
+    Truck,
+    ArrowRightLeft,
+    Calculator,
+    PackageSearch,
+    Box,
+    ClipboardList,
+    FileSpreadsheet,
+    UserCheck,
+    Building,
+    ShieldAlert,
+} from 'lucide-react';
 import AppLogo from '@/components/app-logo';
-import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';
 import {
@@ -15,22 +33,7 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
-import type { NavItem, SharedData } from '@/types';
-/*
-const footerNavItems: NavItem[] = [
-    {
-        title: 'Repository',
-        href: 'https://github.com/laravel/react-starter-kit',
-        icon: FolderGit2,
-    },
-    {
-        title: 'Documentation',
-        href: 'https://laravel.com/docs/starter-kits#react',
-        icon: BookOpen,
-    },
-];
-* */
-
+import type { NavGroup, NavItem, SharedData } from '@/types';
 
 export function AppSidebar() {
     const { auth } = usePage<SharedData>().props;
@@ -38,123 +41,170 @@ export function AppSidebar() {
     const permissions = auth.permissions || [];
     const hasPerm = (p: string) => isSuperAdmin || permissions.includes(p);
 
-    const mainNavItems: NavItem[] = [];
+    const pendingConflictsCount = Number((usePage().props as any).pending_conflicts_count || 0);
+    const activeAlertsCount = Number((usePage().props as any).active_alerts_count || 0);
 
+    // 1. General y Reportes
+    const generalItems: NavItem[] = [];
     if (hasPerm('view_dashboard') || isSuperAdmin) {
-        mainNavItems.push({
+        generalItems.push({
             title: 'Dashboard',
             href: dashboard.url(),
             icon: LayoutGrid,
         });
     }
-
-    if (hasPerm('view_users')) {
-        mainNavItems.push({
-            title: 'Usuarios',
-            href: '/users',
-            icon: Users,
+    if (hasPerm('view_reports') || isSuperAdmin) {
+        generalItems.push({
+            title: 'Reportes',
+            href: '/reports',
+            icon: BarChart3,
         });
     }
-    
-    if (hasPerm('view_branches')) {
-        mainNavItems.push({
-            title: 'Sucursales',
-            href: '/branches',
-            icon: Building,
-        });
-    }
-
-    if (hasPerm('view_inventory') || hasPerm('view_inventory_general')) {
-        mainNavItems.push({
-            title: 'Inventario',
-            href: '/inventory',
-            icon: PackageSearch,
+    if (hasPerm('view_alerts') || isSuperAdmin) {
+        generalItems.push({
+            title: 'Alertas',
+            href: '/alerts',
+            icon: Bell,
+            badge: activeAlertsCount > 0 ? activeAlertsCount : undefined,
         });
     }
 
-    if (hasPerm('view_products')) {
-        mainNavItems.push({
-            title: 'Repuestos',
-            href: '/products',
-            icon: Box,
-        });
-    }
-
-    if (hasPerm('view_kardex')) {
-        mainNavItems.push({
-            title: 'Kardex',
-            href: '/kardex',
-            icon: PackageSearch,
-        });
-    }
-
-    //     if (hasPerm('view_adjustments')) {
-    //         mainNavItems.push({
-    //             title: 'Ajustes',
-    //             href: '/inventory/adjustments',
-    //             icon: ClipboardList,
-    //         });
-    //     }
-
-    if (hasPerm('view_purchases')) {
-        mainNavItems.push({
-            title: 'Compras',
-            href: '/purchases',
-            icon: FileSpreadsheet,
-        });
-    }
-
+    // 2. Comercial y Ventas
+    const salesItems: NavItem[] = [];
     if (hasPerm('view_sales')) {
-        mainNavItems.push({
+        salesItems.push({
             title: 'Ventas',
             href: '/sales',
-            icon: FileSpreadsheet,
+            icon: Receipt,
         });
-        
-        mainNavItems.push({
+        salesItems.push({
             title: 'Cuentas por Cobrar',
             href: '/receivables',
             icon: Landmark,
         });
-        
-        mainNavItems.push({
+        salesItems.push({
             title: 'Devoluciones',
             href: '/customer-returns',
             icon: Undo2,
         });
     }
-
-    if (hasPerm('view_transfers')) {
-        mainNavItems.push({
-            title: 'Transferencias',
-            href: '/transfers',
-            icon: ArrowRightLeft,
-        });
-    }
-
     if (hasPerm('view_customers')) {
-        mainNavItems.push({
+        salesItems.push({
             title: 'Clientes',
             href: '/customers',
             icon: Users,
         });
     }
 
+    // 3. Operaciones y Logística
+    const operationsItems: NavItem[] = [];
+    if (hasPerm('view_purchases')) {
+        operationsItems.push({
+            title: 'Compras',
+            href: '/purchases',
+            icon: ShoppingBag,
+        });
+    }
     if (hasPerm('view_suppliers')) {
-        mainNavItems.push({
+        operationsItems.push({
             title: 'Proveedores',
             href: '/suppliers',
-            icon: Building,
+            icon: Truck,
+        });
+    }
+    if (hasPerm('view_transfers')) {
+        operationsItems.push({
+            title: 'Transferencias',
+            href: '/transfers',
+            icon: ArrowRightLeft,
+        });
+    }
+    if (hasPerm('view_closings') || isSuperAdmin) {
+        operationsItems.push({
+            title: 'Cierre Diario',
+            href: '/closings',
+            icon: Calculator,
         });
     }
 
+    // 4. Inventario y Almacén
+    const inventoryItems: NavItem[] = [];
+    if (hasPerm('view_inventory') || hasPerm('view_inventory_general')) {
+        inventoryItems.push({
+            title: 'Inventario',
+            href: '/inventory',
+            icon: PackageSearch,
+        });
+    }
+    if (hasPerm('view_products')) {
+        inventoryItems.push({
+            title: 'Repuestos',
+            href: '/products',
+            icon: Box,
+        });
+    }
+    if (hasPerm('view_kardex')) {
+        inventoryItems.push({
+            title: 'Kardex',
+            href: '/kardex',
+            icon: ClipboardList,
+        });
+    }
     if (hasPerm('view_import')) {
-        mainNavItems.push({
+        inventoryItems.push({
             title: 'Importar Catálogo',
             href: '/catalog/import',
             icon: FileSpreadsheet,
         });
     }
+
+    // 5. Administración
+    const adminItems: NavItem[] = [];
+    if (hasPerm('view_users')) {
+        adminItems.push({
+            title: 'Usuarios',
+            href: '/users',
+            icon: UserCheck,
+        });
+    }
+    if (hasPerm('view_branches')) {
+        adminItems.push({
+            title: 'Sucursales',
+            href: '/branches',
+            icon: Building,
+        });
+    }
+    if (hasPerm('view_conflicts') || isSuperAdmin) {
+        adminItems.push({
+            title: 'Conflictos',
+            href: '/conflicts',
+            icon: ShieldAlert,
+            badge: pendingConflictsCount > 0 ? pendingConflictsCount : undefined,
+        });
+    }
+
+    const navGroups: NavGroup[] = [
+        {
+            title: 'General',
+            items: generalItems,
+        },
+        {
+            title: 'Comercial y Ventas',
+            items: salesItems,
+        },
+        {
+            title: 'Operaciones y Logística',
+            items: operationsItems,
+        },
+        {
+            title: 'Inventario y Almacén',
+            items: inventoryItems,
+        },
+        {
+            title: 'Administración',
+            items: adminItems,
+        },
+    ];
 
     return (
         <Sidebar collapsible="icon" variant="inset">
@@ -171,7 +221,7 @@ export function AppSidebar() {
             </SidebarHeader>
 
             <SidebarContent>
-                <NavMain items={mainNavItems} />
+                <NavMain groups={navGroups} />
             </SidebarContent>
 
             <SidebarFooter>

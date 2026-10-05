@@ -14,8 +14,11 @@ import {
     CreditCard,
     Package,
     Save,
-    Pencil
+    Pencil,
+    Ban,
+    AlertTriangle
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -129,7 +132,11 @@ export default function SaleEdit({
 
         const delayDebounceFn = setTimeout(() => {
             setIsSearching(true);
-            fetch(`/products/search?q=${encodeURIComponent(searchQuery)}`, {
+            const searchUrl = sale?.branch_id
+                ? `/products/search?q=${encodeURIComponent(searchQuery)}&branch_id=${sale.branch_id}`
+                : `/products/search?q=${encodeURIComponent(searchQuery)}`;
+
+            fetch(searchUrl, {
                 headers: { 'Accept': 'application/json' }
             })
             .then(res => res.json())
@@ -144,9 +151,20 @@ export default function SaleEdit({
     }, [searchQuery]);
 
     const addProduct = (product: any) => {
+        const available = Number(product.available_quantity ?? product.local_stock ?? 0);
+        if (available <= 0) {
+            toast.error(`El producto "${product.name}" no cuenta con stock disponible en este almacén (Stock: 0).`);
+            return;
+        }
+
         const existingIndex = data.lines.findIndex(l => l.product_id === product.id);
         if (existingIndex >= 0) {
-            updateLine(existingIndex, 'quantity', data.lines[existingIndex].quantity + 1);
+            const newQty = data.lines[existingIndex].quantity + 1;
+            if (newQty > available) {
+                toast.error(`No es posible agregar más unidades de "${product.name}". Stock disponible: ${available}.`);
+                return;
+            }
+            updateLine(existingIndex, 'quantity', newQty);
         } else {
             setData('lines', [
                 ...data.lines,
@@ -156,6 +174,7 @@ export default function SaleEdit({
                     internal_code: product.primary_reference || product.internal_code || 'S/C',
                     quantity: 1,
                     unit_price: parseFloat(product.sale_price) || 0,
+                    available_quantity: available,
                 }
             ]);
         }
@@ -203,13 +222,25 @@ export default function SaleEdit({
 
     const handleFormSubmit = (chosenAction: 'CONFIRM' | 'DRAFT') => {
         if (data.lines.length === 0) {
-            alert('Debe agregar al menos un producto a la venta.');
+            toast.error('Debe agregar al menos un producto a la venta.');
             return;
         }
 
         if (data.payment_type === 'CREDIT' && isGenericCustomer) {
-            alert('El Público en General solo puede comprar al contado. Seleccione o cree un cliente con RUC/DNI para ventas al crédito.');
+            toast.error('El Público en General solo puede comprar al contado. Seleccione o cree un cliente con RUC/DNI para ventas al crédito.');
             return;
+        }
+
+        if (chosenAction === 'CONFIRM') {
+            for (const line of data.lines) {
+                if (line.available_quantity !== undefined && line.quantity > line.available_quantity) {
+                    toast.error(
+                        `No es posible confirmar la venta. Stock insuficiente para "${line.product_name}". Stock disponible: ${line.available_quantity}, Solicitado: ${line.quantity}.`,
+                        { duration: 6000 }
+                    );
+                    return;
+                }
+            }
         }
 
         router.put(`/sales/${sale.id}`, {
@@ -425,27 +456,46 @@ export default function SaleEdit({
                                         </div>
                                         {searchResults.length > 0 && (
                                             <div className="absolute z-20 w-full mt-1 bg-popover text-popover-foreground border border-border rounded-lg shadow-xl max-h-64 overflow-y-auto">
-                                                {searchResults.map(p => (
-                                                    <div 
-                                                        key={p.id} 
-                                                        className="p-2.5 hover:bg-muted/70 cursor-pointer flex justify-between items-center transition-colors border-b last:border-b-0"
-                                                        onClick={() => addProduct(p)}
-                                                    >
-                                                        <div className="min-w-0 flex-1 pr-2">
-                                                            <div className="font-semibold text-sm text-foreground truncate">{p.name}</div>
-                                                            <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
-                                                                <span>{p.primary_reference || p.internal_code || 'S/C'}</span>
-                                                                {p.brand?.name && <span>| {p.brand.name}</span>}
-                                                                <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${p.available_quantity > 0 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-400' : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-400'}`}>
-                                                                    Stock: {p.available_quantity || 0}
-                                                                </span>
+                                                {searchResults.map(p => {
+                                                    const stock = Number(p.available_quantity ?? p.local_stock ?? 0);
+                                                    const isOutOfStock = stock <= 0;
+
+                                                    return (
+                                                        <div 
+                                                            key={p.id} 
+                                                            className={`p-2.5 flex justify-between items-center transition-colors border-b last:border-b-0 ${
+                                                                isOutOfStock ? 'bg-rose-50/40 dark:bg-rose-950/20 cursor-not-allowed opacity-75' : 'hover:bg-muted/70 cursor-pointer'
+                                                            }`}
+                                                            onClick={() => {
+                                                                if (isOutOfStock) {
+                                                                    toast.error(`"${p.name}" no tiene existencias disponibles (Stock: 0).`);
+                                                                    return;
+                                                                }
+                                                                addProduct(p);
+                                                            }}
+                                                        >
+                                                            <div className="min-w-0 flex-1 pr-2">
+                                                                <div className={`font-semibold text-sm truncate ${isOutOfStock ? 'text-rose-700 dark:text-rose-400' : 'text-foreground'}`}>
+                                                                    {p.name}
+                                                                </div>
+                                                                <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
+                                                                    <span>{p.primary_reference || p.internal_code || 'S/C'}</span>
+                                                                    {p.brand?.name && <span>| {p.brand.name}</span>}
+                                                                    <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${
+                                                                        stock > 0 
+                                                                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-400' 
+                                                                            : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-400'
+                                                                    }`}>
+                                                                        {stock > 0 ? `Stock: ${stock}` : 'Sin Stock (0)'}
+                                                                    </span>
+                                                                </div>
                                                             </div>
+                                                            <Button size="icon" variant="ghost" className="h-7 w-7 rounded-full shrink-0" disabled={isOutOfStock}>
+                                                                {isOutOfStock ? <Ban className="h-4 w-4 text-rose-500" /> : <Plus className="h-4 w-4 text-emerald-600" />}
+                                                            </Button>
                                                         </div>
-                                                        <Button size="icon" variant="ghost" className="h-7 w-7 rounded-full shrink-0">
-                                                            <Plus className="h-4 w-4 text-emerald-600" />
-                                                        </Button>
-                                                    </div>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
                                         )}
                                     </div>
@@ -489,8 +539,19 @@ export default function SaleEdit({
                                                                 step="1" 
                                                                 value={line.quantity} 
                                                                 onChange={e => updateLine(idx, 'quantity', parseInt(e.target.value) || 0)} 
-                                                                className="h-8 text-center font-semibold"
+                                                                className={`h-8 text-center font-semibold ${
+                                                                    line.available_quantity !== undefined && line.quantity > line.available_quantity
+                                                                        ? 'border-rose-500 bg-rose-50 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300 ring-1 ring-rose-500'
+                                                                        : ''
+                                                                }`}
                                                             />
+                                                            {line.available_quantity !== undefined && (
+                                                                <span className={`text-[10px] block mt-0.5 font-medium ${
+                                                                    line.quantity > line.available_quantity ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-muted-foreground'
+                                                                }`}>
+                                                                    {line.quantity > line.available_quantity ? `Excede Disp: ${line.available_quantity}` : `Disp: ${line.available_quantity}`}
+                                                                </span>
+                                                            )}
                                                         </TableCell>
                                                         <TableCell className="text-right">
                                                             <Input 
