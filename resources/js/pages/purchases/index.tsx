@@ -32,7 +32,8 @@ import {
     Clock, 
     RotateCcw,
     WifiOff,
-    Trash2
+    Trash2,
+    ImageIcon,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -50,6 +51,7 @@ import {
 import AppLayout from '@/layouts/app-layout';
 import { useMergedPurchases } from '@/hooks/use-merged-purchases';
 import { OfflinePurchaseDetailDialog } from '@/components/offline-purchase-detail-dialog';
+import { DocumentPreviewModal } from '@/components/document-preview-modal';
 import { formatAppDate } from '@/lib/utils';
 import type { LocalOfflinePurchase } from '@/lib/db';
 import type { BreadcrumbItem } from '@/types';
@@ -69,6 +71,42 @@ const columnLabels: Record<string, string> = {
     total_amount: 'Total Compra',
     currency_code: 'Moneda',
     status: 'Estado',
+};
+
+const getDocumentInfo = (pathOrName: string | null | undefined) => {
+    if (!pathOrName) return null;
+    const lower = pathOrName.toLowerCase();
+    const isPdf = lower.endsWith('.pdf');
+    const isImage = /\.(png|jpe?g|webp|gif|svg|bmp)$/i.test(lower) || lower.startsWith('data:image/');
+
+    if (isPdf) {
+        return {
+            type: 'pdf' as const,
+            label: 'Comprobante PDF',
+            shortLabel: 'PDF',
+            icon: FileText,
+            colorClass: 'text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 border-rose-200 dark:border-rose-900/50',
+            badgeBg: 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100 dark:bg-rose-950/30 dark:text-rose-400 dark:border-rose-800',
+        };
+    }
+    if (isImage) {
+        return {
+            type: 'image' as const,
+            label: 'Comprobante Foto / Imagen',
+            shortLabel: 'Foto',
+            icon: ImageIcon,
+            colorClass: 'text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/40 border-blue-200 dark:border-blue-900/50',
+            badgeBg: 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-800',
+        };
+    }
+    return {
+        type: 'other' as const,
+        label: 'Comprobante Adjunto',
+        shortLabel: 'Doc',
+        icon: FileText,
+        colorClass: 'text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900/50',
+        badgeBg: 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800',
+    };
 };
 
 export default function PurchasesIndex({ 
@@ -92,6 +130,30 @@ export default function PurchasesIndex({
     // Offline detail modal state
     const [selectedOfflinePurchase, setSelectedOfflinePurchase] = useState<LocalOfflinePurchase | null>(null);
     const [openOfflineDialog, setOpenOfflineDialog] = useState(false);
+
+    // Document preview modal state
+    const [previewDoc, setPreviewDoc] = useState<{
+        open: boolean;
+        url: string | null;
+        title: string;
+        subtitle?: string;
+        fileName?: string;
+    }>({
+        open: false,
+        url: null,
+        title: '',
+    });
+
+    const handleOpenPreview = (url: string | null, title: string, subtitle?: string, fileName?: string) => {
+        if (!url) return;
+        setPreviewDoc({
+            open: true,
+            url,
+            title,
+            subtitle,
+            fileName,
+        });
+    };
 
     // Client-side TanStack Table states
     const [sorting, setSorting] = useState<SortingState>([]);
@@ -306,11 +368,36 @@ export default function PurchasesIndex({
             ),
             cell: ({ row }) => {
                 const p = row.original;
+                const docPath = p.is_offline ? (p.raw_offline_data?.document_file?.name || '') : p.document_file_path;
+                const docUrl = p.is_offline ? p.raw_offline_data?.document_file?.base64 : (p.document_file_path ? `/storage/${p.document_file_path}` : null);
+                const docInfo = getDocumentInfo(docPath || docUrl);
+
                 return (
-                    <div className="space-y-0.5 min-w-[140px]">
-                        <Badge variant="outline" className="text-[10px] bg-muted/40 font-semibold uppercase">
-                            {p.supplier_document_type || 'FACTURA'}
-                        </Badge>
+                    <div className="space-y-1 min-w-[140px]">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                            <Badge variant="outline" className="text-[10px] bg-muted/40 font-semibold uppercase">
+                                {p.supplier_document_type || 'FACTURA'}
+                            </Badge>
+                            {docInfo && docUrl && (
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenPreview(
+                                            docUrl,
+                                            `Comprobante: ${p.supplier_document_series ? `${p.supplier_document_series}-` : ''}${p.supplier_document_number || p.purchase_number}`,
+                                            `${p.supplier_name || 'Proveedor'} • ${docInfo.label}`,
+                                            docPath?.split('/').pop()
+                                        );
+                                    }}
+                                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border transition-all cursor-pointer ${docInfo.badgeBg}`}
+                                    title={`Ver ${docInfo.label}`}
+                                >
+                                    <docInfo.icon className="h-2.5 w-2.5" />
+                                    <span>{docInfo.shortLabel}</span>
+                                </button>
+                            )}
+                        </div>
                         <div className="font-mono text-xs text-foreground font-medium">
                             {p.supplier_document_series ? `${p.supplier_document_series}-` : ''}
                             {p.supplier_document_number || 'S/N'}
@@ -576,20 +663,26 @@ export default function PurchasesIndex({
                 const p = row.original;
 
                 if (p.is_offline) {
+                    const offlineDoc = p.raw_offline_data?.document_file;
+                    const offlineDocInfo = getDocumentInfo(offlineDoc?.name || offlineDoc?.base64);
+
                     return (
                         <div className="flex justify-end items-center gap-1.5">
-                            {p.raw_offline_data?.document_file && (
-                                <a 
-                                    href={p.raw_offline_data.document_file.base64} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    download={p.raw_offline_data.document_file.name}
-                                    title={`Ver comprobante local: ${p.raw_offline_data.document_file.name}`}
+                            {offlineDoc && offlineDocInfo && (
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className={`h-8 w-8 transition-colors ${offlineDocInfo.colorClass}`}
+                                    onClick={() => handleOpenPreview(
+                                        offlineDoc.base64,
+                                        `Comprobante Local: ${p.supplier_document_series ? `${p.supplier_document_series}-` : ''}${p.supplier_document_number || p.purchase_number}`,
+                                        `${p.supplier_name || 'Proveedor'} • ${offlineDocInfo.label}`,
+                                        offlineDoc.name
+                                    )}
+                                    title={`Ver ${offlineDocInfo.label}: ${offlineDoc.name}`}
                                 >
-                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40">
-                                        <ExternalLink className="h-4 w-4" />
-                                    </Button>
-                                </a>
+                                    <offlineDocInfo.icon className="h-4 w-4" />
+                                </Button>
                             )}
                             <Button
                                 variant="outline"
@@ -625,19 +718,25 @@ export default function PurchasesIndex({
                     );
                 }
 
+                const docInfo = getDocumentInfo(p.document_file_path);
+
                 return (
                     <div className="flex justify-end items-center gap-1.5">
-                        {p.document_file_path && (
-                            <a 
-                                href={`/storage/${p.document_file_path}`} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                title="Ver comprobante adjunto"
+                        {p.document_file_path && docInfo && (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className={`h-8 w-8 transition-colors ${docInfo.colorClass}`}
+                                onClick={() => handleOpenPreview(
+                                    `/storage/${p.document_file_path}`,
+                                    `Comprobante: ${p.supplier_document_series ? `${p.supplier_document_series}-` : ''}${p.supplier_document_number || p.purchase_number}`,
+                                    `${p.supplier_name || 'Proveedor'} • ${docInfo.label}`,
+                                    p.document_file_path.split('/').pop()
+                                )}
+                                title={`Ver ${docInfo.label}`}
                             >
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-primary hover:bg-primary/10">
-                                    <ExternalLink className="h-4 w-4" />
-                                </Button>
-                            </a>
+                                <docInfo.icon className="h-4 w-4" />
+                            </Button>
                         )}
 
                         {p.status === 'DRAFT' && (
@@ -657,7 +756,7 @@ export default function PurchasesIndex({
                 );
             },
         },
-    ], [showColumnFilters, discardOfflinePurchase]);
+    ], [showColumnFilters, discardOfflinePurchase, handleOpenPreview]);
 
     // Initialize React Table
     const table = useReactTable({
@@ -1022,6 +1121,23 @@ export default function PurchasesIndex({
                 open={openOfflineDialog}
                 onOpenChange={setOpenOfflineDialog}
                 onDiscard={discardOfflinePurchase}
+                onPreviewDocument={(base64, name) => {
+                    handleOpenPreview(
+                        base64,
+                        `Comprobante Local: ${selectedOfflinePurchase?.supplier_document_series ? `${selectedOfflinePurchase.supplier_document_series}-` : ''}${selectedOfflinePurchase?.supplier_document_number || selectedOfflinePurchase?.temp_purchase_number}`,
+                        `${selectedOfflinePurchase?.supplier_name || 'Proveedor'} • Documento Offline`,
+                        name
+                    );
+                }}
+            />
+
+            <DocumentPreviewModal
+                open={previewDoc.open}
+                onOpenChange={(open) => setPreviewDoc((prev) => ({ ...prev, open }))}
+                url={previewDoc.url}
+                title={previewDoc.title}
+                subtitle={previewDoc.subtitle}
+                fileName={previewDoc.fileName}
             />
         </>
     );

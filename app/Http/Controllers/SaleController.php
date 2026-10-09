@@ -226,17 +226,17 @@ class SaleController extends Controller
                     throw new \Exception("El precio de '{$product->name}' (S/ ".number_format($lineData['unit_price'], 2).') es menor al permitido (S/ '.number_format($minPrice->amount, 2).'). Autorización requerida.');
                 }
 
-                $lineTotal = $lineData['quantity'] * $lineData['unit_price'];
+                $lineTotal = round($lineData['quantity'] * $lineData['unit_price'], 2);
                 $lineTax = 0;
 
                 if ($validated['tax_mode'] === 'INCLUDED') {
-                    $lineTax = $lineTotal - ($lineTotal / 1.18);
+                    $lineTax = round($lineTotal - ($lineTotal / 1.18), 2);
                 } elseif ($validated['tax_mode'] === 'PLUS_TAX') {
-                    $lineTax = $lineTotal * 0.18;
-                    $lineTotal += $lineTax;
+                    $lineTax = round($lineTotal * 0.18, 2);
+                    $lineTotal = round($lineTotal + $lineTax, 2);
                 }
 
-                $subtotal += $lineTotal;
+                $subtotal += round($lineTotal - $lineTax, 2);
                 $taxAmount += $lineTax;
 
                 SaleLine::create([
@@ -249,17 +249,25 @@ class SaleController extends Controller
                     'quantity' => $lineData['quantity'],
                     'unit_price' => $lineData['unit_price'],
                     'unit_cost_base' => 0,
-                    'line_subtotal' => $lineTotal - $lineTax,
+                    'line_subtotal' => round($lineTotal - $lineTax, 2),
                     'discount_amount' => 0,
                     'tax_amount' => $lineTax,
                     'line_total' => $lineTotal,
                 ]);
             }
 
+            $subtotal = round($subtotal, 2);
+            $taxAmount = round($taxAmount, 2);
+            $totalAmount = round($subtotal + $taxAmount, 2);
+            $initPay = min(round((float) ($validated['initial_payment_amount'] ?? 0), 2), $totalAmount);
+            $isPaid = $validated['payment_type'] === 'CASH' || ($totalAmount - $initPay < 0.01);
+
             $sale->update([
-                'subtotal_amount' => $subtotal - $taxAmount,
+                'subtotal_amount' => $subtotal,
                 'tax_amount' => $taxAmount,
-                'total_amount' => $subtotal,
+                'total_amount' => $totalAmount,
+                'initial_payment_amount' => $initPay,
+                'payment_status' => $isPaid ? 'PAID' : ($initPay > 0 ? 'PARTIAL' : 'UNPAID'),
             ]);
 
             if ($action === 'CONFIRM') {
@@ -268,10 +276,13 @@ class SaleController extends Controller
 
                 $msg = 'Venta emitida y confirmada exitosamente. Stock deducido en Kardex.';
                 if ($sale->payment_type === 'CREDIT') {
-                    $initPay = (float) ($sale->initial_payment_amount ?? 0);
-                    $remDebt = (float) $sale->total_amount - $initPay;
+                    $remDebt = max(0, round((float) $sale->total_amount - $initPay, 2));
                     $currencySym = $sale->currency_code === 'USD' ? '$' : 'S/';
-                    $msg .= " Registrada en Cuentas por Cobrar con un saldo pendiente de {$currencySym} ".number_format($remDebt, 2).'.';
+                    if ($remDebt < 0.01) {
+                        $msg .= ' La venta quedó cancelada al 100% con el adelanto inicial.';
+                    } else {
+                        $msg .= " Registrada en Cuentas por Cobrar con un saldo pendiente de {$currencySym} ".number_format($remDebt, 2).'.';
+                    }
                 }
 
                 return redirect()->route('sales.show', $sale->id)->with('success', $msg);
@@ -446,17 +457,17 @@ class SaleController extends Controller
                     throw new \Exception("El precio de '{$product->name}' (S/ ".number_format($lineData['unit_price'], 2).'). Autorización requerida.');
                 }
 
-                $lineTotal = $lineData['quantity'] * $lineData['unit_price'];
+                $lineTotal = round($lineData['quantity'] * $lineData['unit_price'], 2);
                 $lineTax = 0;
 
                 if ($validated['tax_mode'] === 'INCLUDED') {
-                    $lineTax = $lineTotal - ($lineTotal / 1.18);
+                    $lineTax = round($lineTotal - ($lineTotal / 1.18), 2);
                 } elseif ($validated['tax_mode'] === 'PLUS_TAX') {
-                    $lineTax = $lineTotal * 0.18;
-                    $lineTotal += $lineTax;
+                    $lineTax = round($lineTotal * 0.18, 2);
+                    $lineTotal = round($lineTotal + $lineTax, 2);
                 }
 
-                $subtotal += $lineTotal;
+                $subtotal += round($lineTotal - $lineTax, 2);
                 $taxAmount += $lineTax;
 
                 SaleLine::create([
@@ -469,17 +480,25 @@ class SaleController extends Controller
                     'quantity' => $lineData['quantity'],
                     'unit_price' => $lineData['unit_price'],
                     'unit_cost_base' => 0,
-                    'line_subtotal' => $lineTotal - $lineTax,
+                    'line_subtotal' => round($lineTotal - $lineTax, 2),
                     'discount_amount' => 0,
                     'tax_amount' => $lineTax,
                     'line_total' => $lineTotal,
                 ]);
             }
 
+            $subtotal = round($subtotal, 2);
+            $taxAmount = round($taxAmount, 2);
+            $totalAmount = round($subtotal + $taxAmount, 2);
+            $initPay = min(round((float) ($validated['initial_payment_amount'] ?? 0), 2), $totalAmount);
+            $isPaid = $validated['payment_type'] === 'CASH' || ($totalAmount - $initPay < 0.01);
+
             $sale->update([
-                'subtotal_amount' => $subtotal - $taxAmount,
+                'subtotal_amount' => $subtotal,
                 'tax_amount' => $taxAmount,
-                'total_amount' => $subtotal,
+                'total_amount' => $totalAmount,
+                'initial_payment_amount' => $initPay,
+                'payment_status' => $isPaid ? 'PAID' : ($initPay > 0 ? 'PARTIAL' : 'UNPAID'),
             ]);
 
             if ($action === 'CONFIRM') {
@@ -488,10 +507,13 @@ class SaleController extends Controller
 
                 $msg = 'Venta actualizada y emitida exitosamente. Stock deducido en Kardex.';
                 if ($sale->payment_type === 'CREDIT') {
-                    $initPay = (float) ($sale->initial_payment_amount ?? 0);
-                    $remDebt = (float) $sale->total_amount - $initPay;
+                    $remDebt = max(0, round((float) $sale->total_amount - $initPay, 2));
                     $currencySym = $sale->currency_code === 'USD' ? '$' : 'S/';
-                    $msg .= " Registrada en Cuentas por Cobrar con un saldo pendiente de {$currencySym} ".number_format($remDebt, 2).'.';
+                    if ($remDebt < 0.01) {
+                        $msg .= ' La venta quedó cancelada al 100% con el adelanto inicial.';
+                    } else {
+                        $msg .= " Registrada en Cuentas por Cobrar con un saldo pendiente de {$currencySym} ".number_format($remDebt, 2).'.';
+                    }
                 }
 
                 return redirect()->route('sales.show', $sale->id)->with('success', $msg);

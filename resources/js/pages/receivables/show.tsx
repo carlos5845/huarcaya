@@ -64,8 +64,11 @@ const breadcrumbs: BreadcrumbItem[] = [
 export default function ReceivableShow({ receivable, payment_methods }: { receivable: any; payment_methods: any[] }) {
     // Math calculations
     const originalAmount = parseFloat(receivable.original_amount || '0');
-    const balanceAmount = parseFloat(receivable.balance_amount || '0');
-    const paidAmount = Math.max(0, originalAmount - balanceAmount);
+    const rawBalance = parseFloat(receivable.balance_amount || '0');
+    const isZeroBalance = rawBalance < 0.01;
+    const balanceAmount = isZeroBalance ? 0 : rawBalance;
+    const isFullyPaid = receivable.status === 'PAID' || isZeroBalance;
+    const paidAmount = isFullyPaid ? originalAmount : Math.max(0, originalAmount - balanceAmount);
     const paidPercentage = originalAmount > 0 ? (paidAmount / originalAmount) * 100 : 0;
 
     // Date and overdue status calculations
@@ -77,11 +80,11 @@ export default function ReceivableShow({ receivable, payment_methods }: { receiv
 
     let daysDifference = 0;
     let isOverdue = false;
-    if (dueDate) {
+    if (dueDate && !isFullyPaid) {
         const dueTime = new Date(dueDate).setHours(0, 0, 0, 0);
         const diffTime = dueTime - today.getTime();
         daysDifference = Math.round(diffTime / (1000 * 60 * 60 * 24));
-        isOverdue = daysDifference < 0 && receivable.status === 'ACTIVE';
+        isOverdue = daysDifference < 0 && receivable.status === 'ACTIVE' && balanceAmount >= 0.01;
     }
     const daysOverdue = isOverdue ? Math.abs(daysDifference) : 0;
     const daysRemaining = daysDifference >= 0 ? daysDifference : 0;
@@ -187,7 +190,7 @@ export default function ReceivableShow({ receivable, payment_methods }: { receiv
                                     <Coins className="h-6 w-6 text-primary" />
                                     Detalle de Cuenta por Cobrar
                                 </h1>
-                                {receivable.status === 'PAID' ? (
+                                {isFullyPaid ? (
                                     <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 gap-1.5 px-3 py-1 text-xs font-semibold">
                                         <CheckCircle2 className="w-3.5 h-3.5" /> Totalmente Cancelado
                                     </Badge>
@@ -258,7 +261,7 @@ export default function ReceivableShow({ receivable, payment_methods }: { receiv
                                 </Link>
                             </>
                         )}
-                        {receivable.status === 'ACTIVE' && (
+                        {receivable.status === 'ACTIVE' && !isFullyPaid && (
                             <Button
                                 onClick={() => {
                                     setData('amount', balanceAmount.toFixed(2));
@@ -324,19 +327,19 @@ export default function ReceivableShow({ receivable, payment_methods }: { receiv
 
                     {/* Saldo Pendiente */}
                     <Card className="border border-border/70 shadow-xs relative overflow-hidden">
-                        <div className={`absolute top-0 right-0 w-24 h-24 ${balanceAmount > 0 ? (isOverdue ? 'bg-rose-500/5' : 'bg-amber-500/5') : 'bg-emerald-500/5'} rounded-full -mr-8 -mt-8 pointer-events-none`} />
+                        <div className={`absolute top-0 right-0 w-24 h-24 ${!isFullyPaid && balanceAmount > 0 ? (isOverdue ? 'bg-rose-500/5' : 'bg-amber-500/5') : 'bg-emerald-500/5'} rounded-full -mr-8 -mt-8 pointer-events-none`} />
                         <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Saldo Pendiente</span>
-                            <div className={`p-2 rounded-xl ${balanceAmount > 0 ? (isOverdue ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400') : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'}`}>
+                            <div className={`p-2 rounded-xl ${!isFullyPaid && balanceAmount > 0 ? (isOverdue ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400') : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'}`}>
                                 <Wallet className="h-4 w-4" />
                             </div>
                         </CardHeader>
                         <CardContent>
-                            <div className={`text-2xl font-bold tracking-tight font-mono ${balanceAmount > 0 ? (isOverdue ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400') : 'text-emerald-600 dark:text-emerald-400'}`}>
+                            <div className={`text-2xl font-bold tracking-tight font-mono ${!isFullyPaid && balanceAmount > 0 ? (isOverdue ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400') : 'text-emerald-600 dark:text-emerald-400'}`}>
                                 {formatMoney(balanceAmount)}
                             </div>
                             <p className="text-xs text-muted-foreground mt-1">
-                                {balanceAmount <= 0 ? (
+                                {isFullyPaid || balanceAmount <= 0 ? (
                                     <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
                                         <CheckCircle2 className="h-3.5 w-3.5" /> Deuda completamente saldada
                                     </span>
@@ -349,10 +352,10 @@ export default function ReceivableShow({ receivable, payment_methods }: { receiv
 
                     {/* Vencimiento */}
                     <Card className="border border-border/70 shadow-xs relative overflow-hidden">
-                        <div className={`absolute top-0 right-0 w-24 h-24 ${isOverdue ? 'bg-rose-500/5' : 'bg-purple-500/5'} rounded-full -mr-8 -mt-8 pointer-events-none`} />
+                        <div className={`absolute top-0 right-0 w-24 h-24 ${isOverdue ? 'bg-rose-500/5' : isFullyPaid ? 'bg-emerald-500/5' : 'bg-purple-500/5'} rounded-full -mr-8 -mt-8 pointer-events-none`} />
                         <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Vencimiento</span>
-                            <div className={`p-2 rounded-xl ${isOverdue ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400' : 'bg-purple-500/10 text-purple-600 dark:text-purple-400'}`}>
+                            <div className={`p-2 rounded-xl ${isOverdue ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400' : isFullyPaid ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-purple-500/10 text-purple-600 dark:text-purple-400'}`}>
                                 <CalendarClock className="h-4 w-4" />
                             </div>
                         </CardHeader>
@@ -361,8 +364,10 @@ export default function ReceivableShow({ receivable, payment_methods }: { receiv
                                 {formatAppDate(receivable.due_date)}
                             </div>
                             <p className="text-xs mt-1 font-medium">
-                                {receivable.status === 'PAID' ? (
-                                    <span className="text-emerald-600 dark:text-emerald-400">Cancelado a tiempo</span>
+                                {isFullyPaid ? (
+                                    <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                                        <CheckCircle2 className="h-3.5 w-3.5" /> Cancelado a tiempo
+                                    </span>
                                 ) : isOverdue ? (
                                     <span className="text-rose-600 dark:text-rose-400 flex items-center gap-1">
                                         <AlertCircle className="h-3.5 w-3.5" /> Vencido hace {daysOverdue} {daysOverdue === 1 ? 'día' : 'días'}
@@ -534,7 +539,7 @@ export default function ReceivableShow({ receivable, payment_methods }: { receiv
                             </CardDescription>
                         </div>
 
-                        {receivable.status === 'ACTIVE' && (
+                        {receivable.status === 'ACTIVE' && !isFullyPaid && (
                             <Button
                                 onClick={() => {
                                     setData('amount', balanceAmount.toFixed(2));

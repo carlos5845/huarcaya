@@ -517,11 +517,14 @@ export default function ReceivablesIndex({ receivables, customers_summary, payme
                                             receivables.data.map((r) => {
                                                 const origAmount = parseFloat(r.original_amount.toString());
                                                 const balAmount = parseFloat(r.balance_amount.toString());
-                                                const paidAmount = r.paid_amount;
+                                                const isPaid = r.status === 'PAID' || balAmount < 0.01;
+                                                const effectiveBalAmount = isPaid ? 0 : balAmount;
+                                                const paidAmount = isPaid ? origAmount : r.paid_amount;
                                                 const curr = r.currency_code === 'USD' ? '$' : 'S/';
+                                                const isOverdue = r.is_overdue && !isPaid;
 
                                                 return (
-                                                    <TableRow key={r.id} className={r.is_overdue ? 'bg-rose-50/30 dark:bg-rose-950/10' : ''}>
+                                                    <TableRow key={r.id} className={isOverdue ? 'bg-rose-50/30 dark:bg-rose-950/10' : ''}>
                                                         {/* Emisión */}
                                                         <TableCell className="text-xs text-muted-foreground font-mono">
                                                             {new Date(r.issue_date).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' })}
@@ -533,7 +536,11 @@ export default function ReceivablesIndex({ receivables, customers_summary, payme
                                                                 <div className="text-xs font-semibold text-foreground">
                                                                     {r.due_date ? new Date(r.due_date).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'Sin plazo'}
                                                                 </div>
-                                                                {r.is_overdue ? (
+                                                                {isPaid ? (
+                                                                    <Badge className="bg-emerald-100 text-emerald-800 text-[10px] px-1.5 py-0 font-medium">
+                                                                        Cancelado
+                                                                    </Badge>
+                                                                ) : isOverdue ? (
                                                                     <Badge variant="destructive" className="text-[10px] px-1.5 py-0 font-semibold gap-1 bg-rose-600">
                                                                         <AlertCircle className="h-2.5 w-2.5" /> Vencida ({r.days_overdue}d)
                                                                     </Badge>
@@ -599,25 +606,25 @@ export default function ReceivablesIndex({ receivables, customers_summary, payme
                                                                 <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
                                                                     <div 
                                                                         className="bg-emerald-500 h-1.5 rounded-full transition-all" 
-                                                                        style={{ width: `${Math.min(100, r.paid_percentage)}%` }} 
+                                                                        style={{ width: `${isPaid ? 100 : Math.min(100, r.paid_percentage)}%` }} 
                                                                     />
                                                                 </div>
                                                                 <div className="text-[10px] text-muted-foreground">
-                                                                    {r.paid_percentage}% cubierto
+                                                                    {isPaid ? 100 : r.paid_percentage}% cubierto
                                                                 </div>
                                                             </div>
                                                         </TableCell>
 
                                                         {/* Saldo Pendiente */}
                                                         <TableCell className="text-right">
-                                                            <div className={`text-base font-extrabold ${r.is_overdue ? 'text-rose-600 dark:text-rose-400' : balAmount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600'}`}>
-                                                                {curr} {balAmount.toFixed(2)}
+                                                            <div className={`text-base font-extrabold ${isOverdue ? 'text-rose-600 dark:text-rose-400' : effectiveBalAmount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600'}`}>
+                                                                {curr} {effectiveBalAmount.toFixed(2)}
                                                             </div>
                                                         </TableCell>
 
                                                         {/* Estado */}
                                                         <TableCell className="text-center">
-                                                            {r.status === 'PAID' ? (
+                                                            {isPaid ? (
                                                                 <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 font-medium">
                                                                     Pagado Total
                                                                 </Badge>
@@ -635,7 +642,7 @@ export default function ReceivablesIndex({ receivables, customers_summary, payme
                                                         {/* Acciones */}
                                                         <TableCell className="text-right">
                                                             <div className="flex items-center justify-end gap-1.5">
-                                                                {r.status === 'ACTIVE' && balAmount > 0 && (
+                                                                {r.status === 'ACTIVE' && !isPaid && effectiveBalAmount > 0 && (
                                                                     <Button 
                                                                         variant="outline" 
                                                                         size="sm" 

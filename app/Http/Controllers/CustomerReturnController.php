@@ -340,11 +340,20 @@ class CustomerReturnController extends Controller
         // 2. Anular o Amortizar Saldos de Cuentas por Cobrar
         $receivable = Receivable::where('sale_id', $customerReturn->sale_id)->first();
         if ($receivable && $receivable->status === 'ACTIVE') {
-            $newBalance = max(0, $receivable->balance_amount - $customerReturn->total_amount);
+            $rawBalance = (float) $receivable->balance_amount - (float) $customerReturn->total_amount;
+            $isPaid = $rawBalance < 0.01;
+            $newBalance = $isPaid ? 0.00 : round($rawBalance, 2);
+
             $receivable->update([
                 'balance_amount' => $newBalance,
-                'status' => $newBalance <= 0 ? 'PAID' : 'ACTIVE',
+                'status' => $isPaid ? 'PAID' : 'ACTIVE',
             ]);
+
+            if ($receivable->sale) {
+                $receivable->sale->update([
+                    'payment_status' => $isPaid ? 'PAID' : 'PARTIAL',
+                ]);
+            }
 
             $receivable->notes = $receivable->notes."\n".'Amortizado por devolución '.$customerReturn->return_number.' ('.$customerReturn->total_amount.')';
             $receivable->save();

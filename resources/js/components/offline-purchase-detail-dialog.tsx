@@ -19,6 +19,7 @@ interface OfflinePurchaseDetailDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     onDiscard?: (uuid: string) => void;
+    onPreviewDocument?: (base64: string, name: string) => void;
 }
 
 export function OfflinePurchaseDetailDialog({
@@ -26,6 +27,7 @@ export function OfflinePurchaseDetailDialog({
     open,
     onOpenChange,
     onDiscard,
+    onPreviewDocument,
 }: OfflinePurchaseDetailDialogProps) {
     if (!purchase) return null;
 
@@ -116,16 +118,26 @@ export function OfflinePurchaseDetailDialog({
                                 </p>
                             </div>
                         </div>
-                        <a
-                            href={purchase.document_file.base64}
-                            download={purchase.document_file.name}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                        >
-                            <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs font-medium border-blue-300 dark:border-blue-800 text-blue-700 dark:text-blue-300 hover:bg-blue-100/50">
-                                <Eye className="h-3.5 w-3.5" /> Ver / Descargar
+                        {onPreviewDocument ? (
+                            <Button 
+                                size="sm" 
+                                variant="outline" 
+                                type="button"
+                                className="h-8 gap-1.5 text-xs font-medium border-blue-300 dark:border-blue-800 text-blue-700 dark:text-blue-300 hover:bg-blue-100/50"
+                                onClick={() => onPreviewDocument(purchase.document_file.base64, purchase.document_file.name)}
+                            >
+                                <Eye className="h-3.5 w-3.5" /> Ver Comprobante
                             </Button>
-                        </a>
+                        ) : (
+                            <a
+                                href={purchase.document_file.base64}
+                                download={purchase.document_file.name}
+                            >
+                                <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs font-medium border-blue-300 dark:border-blue-800 text-blue-700 dark:text-blue-300 hover:bg-blue-100/50">
+                                    <Eye className="h-3.5 w-3.5" /> Descargar
+                                </Button>
+                            </a>
+                        )}
                     </div>
                 )}
 

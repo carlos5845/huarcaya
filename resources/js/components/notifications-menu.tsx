@@ -49,6 +49,28 @@ export function NotificationsMenu() {
     const [isMarkingAll, setIsMarkingAll] = useState(false);
     const initialLoadRef = useRef(true);
 
+    const resolveNotifActionUrl = (notifData: any) => {
+        let url = notifData?.action_url || (notifData?.transfer_id ? `/transfers/${notifData.transfer_id}` : null);
+        if (!url) return null;
+
+        if (url === '/inventory' || url === '/inventory/') {
+            const params = new URLSearchParams();
+            if (notifData.branch_id) {
+                params.set('branch_id', String(notifData.branch_id));
+            }
+            if (notifData.product_id) {
+                params.set('product_id', String(notifData.product_id));
+            }
+            if (notifData.product_name) {
+                params.set('search', notifData.product_name);
+            }
+            const qs = params.toString();
+            return qs ? `/inventory?${qs}` : '/inventory';
+        }
+
+        return url;
+    };
+
     const getCsrfToken = () => {
         return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
     };
@@ -114,19 +136,20 @@ export function NotificationsMenu() {
                     if (!initialLoadRef.current && newItems.length > 0) {
                         newItems.forEach(n => {
                             const title = n.data.title || 'Nueva Notificación';
+                            const targetUrl = resolveNotifActionUrl(n.data);
                             toast.info(title, {
                                 description: n.data.message,
-                                action: n.data.action_url ? {
+                                action: targetUrl ? {
                                     label: 'Ver detalle',
                                     onClick: () => {
-                                        markAsRead(n.id, n.data.action_url);
+                                        markAsRead(n.id, targetUrl);
                                     }
                                 } : undefined
                             });
 
                             // Notificación nativa si la ventana no tiene el foco
                             if (document.hidden || !document.hasFocus()) {
-                                notifyBrowser(title, n.data.message, n.data.action_url);
+                                notifyBrowser(title, n.data.message, targetUrl);
                             }
                         });
                     }
@@ -396,7 +419,7 @@ export function NotificationsMenu() {
                     ) : (
                         filteredNotifications.map((notification) => {
                             const { data, created_at, id } = notification;
-                            const actionUrl = data.action_url || (data.transfer_id ? `/transfers/${data.transfer_id}` : null);
+                            const actionUrl = resolveNotifActionUrl(data);
 
                             return (
                                 <div

@@ -348,9 +348,9 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
         : data.tax_mode === 'PLUS_TAX' 
             ? (total * 0.18) 
             : 0;
-    const finalTotal = data.tax_mode === 'PLUS_TAX' 
+    const finalTotal = Math.round((data.tax_mode === 'PLUS_TAX' 
         ? (total * 1.18) 
-        : total;
+        : total) * 100) / 100;
     const currencySymbol = data.currency_code === 'USD' ? '$' : 'S/';
 
     const selectedCustomer = customerList.find((s) => s.id.toString() === data.customer_id);
@@ -368,6 +368,11 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
 
         if (data.payment_type === 'CREDIT' && isGenericCustomer) {
             toast.error('El Público en General solo puede comprar al contado. Seleccione o cree un cliente con RUC/DNI para ventas al crédito.');
+            return;
+        }
+
+        if (data.payment_type === 'CREDIT' && initialPay > finalTotal + 0.009) {
+            toast.error(`El adelanto inicial (${currencySymbol} ${initialPay.toFixed(2)}) no puede exceder el total de la venta (${currencySymbol} ${finalTotal.toFixed(2)}).`);
             return;
         }
 
@@ -881,19 +886,32 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
 
                                     {data.payment_type === 'CREDIT' && (
                                         <div className="space-y-1.5">
-                                            <Label htmlFor="initial_payment_amount" className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
-                                                Enganche / Adelanto Inicial
-                                            </Label>
+                                            <div className="flex items-center justify-between">
+                                                <Label htmlFor="initial_payment_amount" className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
+                                                    Enganche / Adelanto Inicial
+                                                </Label>
+                                                {initialPay >= finalTotal && finalTotal > 0 && (
+                                                    <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                                                        Cubre el 100%
+                                                    </span>
+                                                )}
+                                            </div>
                                             <Input 
                                                 type="number" 
                                                 step="0.01" 
                                                 min="0" 
+                                                max={finalTotal > 0 ? finalTotal.toFixed(2) : undefined}
                                                 id="initial_payment_amount" 
                                                 placeholder="0.00" 
                                                 value={data.initial_payment_amount} 
                                                 onChange={e => setData('initial_payment_amount', e.target.value)} 
                                                 className="h-9 font-mono"
                                             />
+                                            {initialPay >= finalTotal && finalTotal > 0 ? (
+                                                <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
+                                                    El adelanto cubre el total de la venta; la operación quedará liquidada sin saldo pendiente.
+                                                </p>
+                                            ) : null}
                                             <InputError message={errors.initial_payment_amount} />
                                         </div>
                                     )}
@@ -948,8 +966,16 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
                                         </div>
                                         <div className="flex justify-between items-center">
                                             <span className="text-muted-foreground">Saldo Deudor por Cobrar:</span>
-                                            <span className="font-bold text-rose-600 dark:text-rose-400 text-base">{currencySymbol} {debtAmount.toFixed(2)}</span>
+                                            <span className={`font-bold text-base ${debtAmount < 0.01 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                                {currencySymbol} {debtAmount < 0.01 ? '0.00' : debtAmount.toFixed(2)}
+                                            </span>
                                         </div>
+                                        {debtAmount < 0.01 && initialPay > 0 && (
+                                            <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs flex items-center gap-1.5 font-medium">
+                                                <CheckCircle className="h-3.5 w-3.5 shrink-0" />
+                                                <span>Venta liquidada con el adelanto. No generará deuda pendiente.</span>
+                                            </div>
+                                        )}
                                         {data.due_date && (
                                             <div className="flex justify-between items-center text-xs text-muted-foreground pt-1 border-t">
                                                 <span>Fecha Límite de Vencimiento:</span>

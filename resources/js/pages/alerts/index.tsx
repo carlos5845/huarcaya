@@ -198,6 +198,29 @@ export default function AlertsIndex({
     const assignedBranchName = branches.find(b => String(b.id) === String(branchId))?.name 
         || (branches.length === 1 ? branches[0].name : 'Todas las sucursales');
 
+    const resolveAlertActionUrl = (alert: any) => {
+        let url = alert.context_data?.action_url;
+        if (!url) return null;
+
+        // Si la URL apunta a /inventory sin parámetros específicos y tenemos contexto del producto y sucursal
+        if (url === '/inventory' || url === '/inventory/') {
+            const params = new URLSearchParams();
+            if (alert.branch_id) {
+                params.set('branch_id', String(alert.branch_id));
+            }
+            if (alert.context_data?.product_id) {
+                params.set('product_id', String(alert.context_data.product_id));
+            }
+            if (alert.context_data?.product_name) {
+                params.set('search', alert.context_data.product_name);
+            }
+            const qs = params.toString();
+            return qs ? `/inventory?${qs}` : '/inventory';
+        }
+
+        return url;
+    };
+
     return (
         <>
             <Head title="Centro de Alertas y Notificaciones Operativas" />
@@ -490,7 +513,7 @@ export default function AlertsIndex({
                                                 asChild
                                                 className="gap-1.5"
                                             >
-                                                <Link href={alert.context_data.action_url}>
+                                                <Link href={resolveAlertActionUrl(alert) || alert.context_data.action_url}>
                                                     <span>{alert.context_data.action_label || 'Resolver Incidencia'}</span>
                                                     <ExternalLink className="h-3.5 w-3.5" />
                                                 </Link>

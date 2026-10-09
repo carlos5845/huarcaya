@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Head, Link, router } from '@inertiajs/react';
 import { 
     ArrowLeft, 
@@ -20,12 +20,15 @@ import {
     File, 
     Clock, 
     ShieldCheck, 
-    AlertCircle 
+    AlertCircle,
+    Eye,
+    ImageIcon
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
+import { DocumentPreviewModal } from '@/components/document-preview-modal';
 import { formatAppDate } from '@/lib/utils';
 import type { BreadcrumbItem } from '@/types';
 
@@ -36,6 +39,18 @@ const breadcrumbs: BreadcrumbItem[] = [
 ];
 
 export default function PurchaseShow({ purchase }: { purchase: any }) {
+    const [previewDoc, setPreviewDoc] = useState<{
+        open: boolean;
+        url: string | null;
+        title: string;
+        subtitle?: string;
+        fileName?: string;
+    }>({
+        open: false,
+        url: null,
+        title: '',
+    });
+
     const confirmPurchase = () => {
         if (confirm('¿Estás seguro de confirmar esta compra? Esto ingresará los productos al inventario (Kardex) y creará los lotes correspondientes.')) {
             router.post(`/purchases/${purchase.id}/confirm`);
@@ -505,32 +520,50 @@ export default function PurchaseShow({ purchase }: { purchase: any }) {
                                 </div>
                             </div>
 
-                            {purchase.document_file_path ? (
-                                <div className="p-4 rounded-xl border border-border bg-muted/20 flex items-center justify-between gap-4">
-                                    <div className="flex items-center gap-3 min-w-0">
-                                        <div className="h-10 w-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
-                                            <FileText className="w-5 h-5" />
+                            {purchase.document_file_path ? (() => {
+                                const isImg = /\.(png|jpe?g|webp|gif|svg|bmp)$/i.test(purchase.document_file_path);
+                                const isPdf = purchase.document_file_path.toLowerCase().endsWith('.pdf');
+                                const docFileName = purchase.document_file_path.split('/').pop();
+
+                                return (
+                                    <div className="p-4 rounded-xl border border-border bg-muted/20 flex items-center justify-between gap-4">
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <div className={`h-10 w-10 rounded-lg flex items-center justify-center shrink-0 border ${
+                                                isImg 
+                                                    ? 'bg-blue-500/10 border-blue-500/20 text-blue-600 dark:text-blue-400' 
+                                                    : isPdf 
+                                                    ? 'bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400'
+                                                    : 'bg-primary/10 border-primary/20 text-primary'
+                                            }`}>
+                                                {isImg ? <ImageIcon className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <p className="font-semibold text-sm text-foreground truncate">
+                                                    {isImg ? 'Fotografía / Comprobante Adjunto' : isPdf ? 'Factura / Comprobante PDF' : 'Documento Adjunto'}
+                                                </p>
+                                                <p className="text-xs text-muted-foreground font-mono truncate">
+                                                    {docFileName}
+                                                </p>
+                                            </div>
                                         </div>
-                                        <div className="min-w-0">
-                                            <p className="font-semibold text-sm text-foreground truncate">
-                                                Factura / Documento Adjunto
-                                            </p>
-                                            <p className="text-xs text-muted-foreground font-mono truncate">
-                                                {purchase.document_file_path.split('/').pop()}
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <a 
-                                        href={`/storage/${purchase.document_file_path}`} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                    >
-                                        <Button size="sm" variant="outline" className="gap-1.5 shrink-0 text-primary border-primary/30 hover:bg-primary/10">
-                                            <ExternalLink className="w-3.5 h-3.5" /> Ver Documento
+                                        <Button 
+                                            type="button"
+                                            size="sm" 
+                                            variant="outline" 
+                                            className="gap-1.5 shrink-0 text-primary border-primary/30 hover:bg-primary/10"
+                                            onClick={() => setPreviewDoc({
+                                                open: true,
+                                                url: `/storage/${purchase.document_file_path}`,
+                                                title: `Comprobante: ${purchase.supplier_document_series ? `${purchase.supplier_document_series}-` : ''}${purchase.supplier_document_number || purchase.purchase_number}`,
+                                                subtitle: `${purchase.supplier?.business_name || 'Proveedor'} • ${isImg ? 'Imagen / Foto' : isPdf ? 'Documento PDF' : 'Archivo'}`,
+                                                fileName: docFileName,
+                                            })}
+                                        >
+                                            <Eye className="w-3.5 h-3.5" /> Ver Documento
                                         </Button>
-                                    </a>
-                                </div>
-                            ) : (
+                                    </div>
+                                );
+                            })() : (
                                 <p className="text-xs text-muted-foreground italic py-2">
                                     No se adjuntó ningún archivo PDF o imagen a esta compra.
                                 </p>
@@ -594,6 +627,15 @@ export default function PurchaseShow({ purchase }: { purchase: any }) {
                     </div>
                 </div>
             </div>
+
+            <DocumentPreviewModal
+                open={previewDoc.open}
+                onOpenChange={(open) => setPreviewDoc((prev) => ({ ...prev, open }))}
+                url={previewDoc.url}
+                title={previewDoc.title}
+                subtitle={previewDoc.subtitle}
+                fileName={previewDoc.fileName}
+            />
         </>
     );
 }

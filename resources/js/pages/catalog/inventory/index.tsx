@@ -74,6 +74,7 @@ type Props = {
         branch_id: string | null;
         search: string | null;
         stock_status: string | null;
+        product_id?: string | null;
     };
 };
 
@@ -82,10 +83,10 @@ export default function InventoryIndex({ products, branches, filters, kpis }: Pr
     const isSuperAdmin = auth.roles?.includes('Super Admin') || auth.permissions?.includes('view_inventory_general');
 
     const activeStockStatus = filters.stock_status || 'all';
-    const [selectedBranch, setSelectedBranch] = React.useState<string>(filters.branch_id || 'ALL');
+    const [selectedBranch, setSelectedBranch] = React.useState<string>(filters.branch_id ? String(filters.branch_id) : 'ALL');
 
     React.useEffect(() => {
-        setSelectedBranch(filters.branch_id || 'ALL');
+        setSelectedBranch(filters.branch_id ? String(filters.branch_id) : 'ALL');
     }, [filters.branch_id]);
 
     const handleBranchChange = (value: string) => {
@@ -297,7 +298,7 @@ export default function InventoryIndex({ products, branches, filters, kpis }: Pr
                             <Filter className="h-4 w-4" />
                             Filtrar
                         </Button>
-                        {(filters.search || filters.stock_status || (filters.branch_id && filters.branch_id !== 'ALL')) && (
+                        {(filters.search || filters.stock_status || (filters.branch_id && filters.branch_id !== 'ALL') || filters.product_id) && (
                             <Button type="button" variant="outline" onClick={handleResetFilters} title="Limpiar filtros">
                                 <RotateCcw className="h-4 w-4" />
                             </Button>
@@ -356,6 +357,32 @@ export default function InventoryIndex({ products, branches, filters, kpis }: Pr
                     </div>
                 </div>
 
+                {/* Banner de enfoque derivado de alerta */}
+                {filters.product_id && (
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-800 dark:text-amber-300 text-xs shadow-xs animate-in fade-in duration-300">
+                        <div className="flex items-center gap-2.5">
+                            <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                                <AlertTriangle className="h-4 w-4 shrink-0" />
+                            </div>
+                            <div>
+                                <span className="font-semibold text-sm">Vista filtrada por alerta de repuesto</span>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                    Mostrando el repuesto específico y sus existencias en {branches.find(b => String(b.id) === String(filters.branch_id))?.name || (filters.branch_id && filters.branch_id !== 'ALL' ? `Sede #${filters.branch_id}` : 'todas las sedes')}.
+                                </p>
+                            </div>
+                        </div>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleResetFilters}
+                            className="h-8 gap-1.5 text-xs border-amber-500/30 text-amber-800 dark:text-amber-200 hover:bg-amber-500/20 shrink-0 self-start sm:self-auto font-medium"
+                        >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                            Ver Todo el Inventario
+                        </Button>
+                    </div>
+                )}
+
                 {/* Tabla de Inventario Enriquecida */}
                 <div className="rounded-xl border bg-card shadow-xs overflow-hidden">
                     <div className="overflow-x-auto">
@@ -389,14 +416,23 @@ export default function InventoryIndex({ products, branches, filters, kpis }: Pr
                                         ? branches.find(b => b.id.toString() === filters.branch_id?.toString())?.name || 'Sede Seleccionada'
                                         : 'Global (Todas)';
 
+                                    const isAlertTarget = Boolean(filters.product_id && String(product.id) === String(filters.product_id));
+
                                     return (
-                                        <tr key={product.id} className="hover:bg-muted/30 transition-colors">
+                                        <tr key={product.id} className={`hover:bg-muted/30 transition-colors ${isAlertTarget ? 'bg-amber-500/10 dark:bg-amber-950/20 ring-1 ring-inset ring-amber-500/30' : ''}`}>
                                             {/* Producto */}
                                             <td className="px-4 py-3 min-w-[260px]">
                                                 <div className="flex flex-col">
-                                                    <span className="font-semibold text-foreground text-sm">
-                                                        {product.name}
-                                                    </span>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-semibold text-foreground text-sm">
+                                                            {product.name}
+                                                        </span>
+                                                        {isAlertTarget && (
+                                                            <Badge className="text-[10px] h-4 px-1.5 font-semibold bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-500/40">
+                                                                Repuesto de Alerta
+                                                            </Badge>
+                                                        )}
+                                                    </div>
                                                     <div className="flex items-center gap-1.5 mt-0.5 text-xs text-muted-foreground font-mono">
                                                         <span>Ref: {product.primary_reference || '-'}</span>
                                                         {product.internal_code && (

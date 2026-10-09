@@ -192,7 +192,9 @@ Route::middleware(['auth'])->group(function () {
     Route::middleware(['role_or_permission:Super Admin|view_import'])->group(function () {
         Route::get('catalog/import', [ProductImportController::class, 'index'])->name('catalog.import');
         Route::get('catalog/import/template', [ProductImportController::class, 'downloadTemplate'])->name('catalog.import.template');
+        Route::post('catalog/import/preview', [ProductImportController::class, 'preview'])->name('catalog.import.preview');
         Route::post('catalog/import', [ProductImportController::class, 'store'])->name('catalog.import.store');
+        Route::get('catalog/import/batches/{batch}/errors', [ProductImportController::class, 'downloadErrors'])->name('catalog.import.errors');
 
     });
 

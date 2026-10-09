@@ -317,17 +317,17 @@ class SyncEngineService
 
                 $quantity = (float) ($lineData['quantity'] ?? 1);
                 $unitPrice = (float) ($lineData['unit_price'] ?? 0);
-                $lineTotal = $quantity * $unitPrice;
+                $lineTotal = round($quantity * $unitPrice, 2);
                 $lineTax = 0;
 
                 if ($taxMode === 'INCLUDED') {
-                    $lineTax = $lineTotal - ($lineTotal / 1.18);
+                    $lineTax = round($lineTotal - ($lineTotal / 1.18), 2);
                 } elseif ($taxMode === 'PLUS_TAX') {
-                    $lineTax = $lineTotal * 0.18;
-                    $lineTotal += $lineTax;
+                    $lineTax = round($lineTotal * 0.18, 2);
+                    $lineTotal = round($lineTotal + $lineTax, 2);
                 }
 
-                $subtotal += $lineTotal;
+                $subtotal += round($lineTotal - $lineTax, 2);
                 $taxAmount += $lineTax;
 
                 SaleLine::create([
@@ -340,17 +340,21 @@ class SyncEngineService
                     'quantity' => $quantity,
                     'unit_price' => $unitPrice,
                     'unit_cost_base' => 0,
-                    'line_subtotal' => $lineTotal - $lineTax,
+                    'line_subtotal' => round($lineTotal - $lineTax, 2),
                     'discount_amount' => 0,
                     'tax_amount' => $lineTax,
                     'line_total' => $lineTotal,
                 ]);
             }
 
+            $subtotal = round($subtotal, 2);
+            $taxAmount = round($taxAmount, 2);
+            $totalAmount = round($subtotal + $taxAmount, 2);
+
             $sale->update([
-                'subtotal_amount' => $subtotal - $taxAmount,
+                'subtotal_amount' => $subtotal,
                 'tax_amount' => $taxAmount,
-                'total_amount' => $subtotal,
+                'total_amount' => $totalAmount,
             ]);
 
             // 5. Confirm sale (deducts Kardex, FIFO lots, creates payments/receivables)

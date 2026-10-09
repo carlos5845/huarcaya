@@ -177,6 +177,8 @@ class AlertService
             $branchName = $inv->branch?->name ?? 'Sede Central';
             $unit = strtolower($inv->product?->unit?->name ?? 'unidades');
 
+            $actionUrl = "/inventory?branch_id={$inv->branch_id}&product_id={$inv->product_id}&search=".urlencode($productName);
+
             $this->upsertAlert(
                 company: $company,
                 branchId: $inv->branch_id,
@@ -189,7 +191,7 @@ class AlertService
                     'product_id' => $inv->product_id,
                     'product_name' => $productName,
                     'stock' => 0,
-                    'action_url' => '/inventory',
+                    'action_url' => $actionUrl,
                     'action_label' => 'Ver en Inventario',
                 ]
             );
@@ -229,6 +231,8 @@ class AlertService
             $cleanStock = $this->formatQty($inv->physical_quantity);
             $unit = strtolower($inv->product?->unit?->name ?? 'unidades');
 
+            $actionUrl = "/kardex?branch_id={$inv->branch_id}&search=".urlencode($productName);
+
             $this->upsertAlert(
                 company: $company,
                 branchId: $inv->branch_id,
@@ -239,8 +243,9 @@ class AlertService
                 message: "El repuesto '{$productName}'{$brandText} registra un saldo negativo de {$cleanStock} {$unit} en {$branchName}. Se requiere realizar un conteo físico y regularizar con un ajuste de inventario.",
                 contextData: [
                     'product_id' => $inv->product_id,
+                    'product_name' => $productName,
                     'stock' => (float) $inv->physical_quantity,
-                    'action_url' => '/kardex',
+                    'action_url' => $actionUrl,
                     'action_label' => 'Auditar en Kardex',
                 ]
             );
@@ -287,6 +292,8 @@ class AlertService
                 $cleanMinStock = $this->formatQty($threshold);
                 $unit = strtolower($inv->product?->unit?->name ?? 'unidades');
 
+                $actionUrl = "/inventory?branch_id={$inv->branch_id}&product_id={$inv->product_id}&search=".urlencode($productName);
+
                 $this->upsertAlert(
                     company: $company,
                     branchId: $inv->branch_id,
@@ -297,10 +304,11 @@ class AlertService
                     message: "Quedan solo {$cleanCurrentStock} {$unit} de '{$productName}'{$brandText} en {$branchName}, alcanzando el nivel mínimo de seguridad ({$cleanMinStock} {$unit}). Se recomienda reabastecer con una orden de compra preventiva.",
                     contextData: [
                         'product_id' => $inv->product_id,
+                        'product_name' => $productName,
                         'current_stock' => (float) $inv->physical_quantity,
                         'min_stock' => $threshold,
-                        'action_url' => '/purchases/create',
-                        'action_label' => 'Crear Orden de Compra',
+                        'action_url' => $actionUrl,
+                        'action_label' => 'Ver en Inventario',
                     ]
                 );
             } else {
@@ -323,7 +331,7 @@ class AlertService
             ->whereIn('branch_id', $branchIds)
             ->where('status', 'ACTIVE')
             ->where('due_date', '<', now()->startOfDay())
-            ->where('balance_amount', '>', 0)
+            ->where('balance_amount', '>=', 0.01)
             ->get();
 
         foreach ($overdue as $rec) {
@@ -360,7 +368,7 @@ class AlertService
         $resolvedReceivables = Receivable::whereIn('branch_id', $branchIds)
             ->where(function ($q) {
                 $q->where('status', '!=', 'ACTIVE')
-                    ->orWhere('balance_amount', '<=', 0);
+                    ->orWhere('balance_amount', '<', 0.01);
             })
             ->pluck('id');
 

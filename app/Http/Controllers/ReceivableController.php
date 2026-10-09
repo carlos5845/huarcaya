@@ -50,21 +50,23 @@ class ReceivableController extends Controller
             });
 
         // 1. Calculate Global Portfolio KPIs
-        $totalActiveDebtPEN = (float) (clone $baseQuery)->where('status', 'ACTIVE')->where('currency_code', 'PEN')->sum('balance_amount');
-        $totalActiveDebtUSD = (float) (clone $baseQuery)->where('status', 'ACTIVE')->where('currency_code', 'USD')->sum('balance_amount');
+        $totalActiveDebtPEN = (float) (clone $baseQuery)->where('status', 'ACTIVE')->where('balance_amount', '>=', 0.01)->where('currency_code', 'PEN')->sum('balance_amount');
+        $totalActiveDebtUSD = (float) (clone $baseQuery)->where('status', 'ACTIVE')->where('balance_amount', '>=', 0.01)->where('currency_code', 'USD')->sum('balance_amount');
 
-        $overdueQuery = (clone $baseQuery)->where('status', 'ACTIVE')->where('due_date', '<', $today);
+        $overdueQuery = (clone $baseQuery)->where('status', 'ACTIVE')->where('balance_amount', '>=', 0.01)->where('due_date', '<', $today);
         $totalOverdueDebtPEN = (float) (clone $overdueQuery)->where('currency_code', 'PEN')->sum('balance_amount');
         $totalOverdueDebtUSD = (float) (clone $overdueQuery)->where('currency_code', 'USD')->sum('balance_amount');
         $overdueCount = (clone $overdueQuery)->count();
 
-        $currentQuery = (clone $baseQuery)->where('status', 'ACTIVE')->where('due_date', '>=', $today);
+        $currentQuery = (clone $baseQuery)->where('status', 'ACTIVE')->where('balance_amount', '>=', 0.01)->where('due_date', '>=', $today);
         $totalCurrentDebtPEN = (float) (clone $currentQuery)->where('currency_code', 'PEN')->sum('balance_amount');
         $totalCurrentDebtUSD = (float) (clone $currentQuery)->where('currency_code', 'USD')->sum('balance_amount');
         $currentCount = (clone $currentQuery)->count();
 
-        $totalPaidCount = (clone $baseQuery)->where('status', 'PAID')->count();
-        $debtorCustomersCount = (clone $baseQuery)->where('status', 'ACTIVE')->distinct('customer_id')->count('customer_id');
+        $totalPaidCount = (clone $baseQuery)->where(function ($q) {
+            $q->where('status', 'PAID')->orWhere('balance_amount', '<', 0.01);
+        })->count();
+        $debtorCustomersCount = (clone $baseQuery)->where('status', 'ACTIVE')->where('balance_amount', '>=', 0.01)->distinct('customer_id')->count('customer_id');
 
         // 2. Query Paginated Receivables with Filters
         $statusFilter = $request->input('status', 'ACTIVE');
@@ -103,12 +105,17 @@ class ReceivableController extends Controller
 
         // Enrich items with computed status attributes
         $paginatedReceivables->through(function ($receivable) use ($today) {
-            $orig = (float) $receivable->original_amount;
-            $bal = (float) $receivable->balance_amount;
+            $orig = round((float) $receivable->original_amount, 2);
+            $bal = round((float) $receivable->balance_amount, 2);
+            if ($bal < 0.01 && $receivable->status === 'ACTIVE') {
+                $bal = 0.00;
+                $receivable->update(['balance_amount' => 0.00, 'status' => 'PAID']);
+                $receivable->sale?->update(['payment_status' => 'PAID']);
+            }
             $paid = max(0, $orig - $bal);
             $paidPct = $orig > 0 ? round(($paid / $orig) * 100, 1) : 0;
 
-            $isOverdue = $receivable->status === 'ACTIVE' && $receivable->due_date && $receivable->due_date->startOfDay()->lt($today);
+            $isOverdue = $receivable->status === 'ACTIVE' && $bal >= 0.01 && $receivable->due_date && $receivable->due_date->startOfDay()->lt($today);
             $daysOverdue = $isOverdue ? (int) $receivable->due_date->startOfDay()->diffInDays($today) : 0;
             $daysRemaining = (! $isOverdue && $receivable->status === 'ACTIVE' && $receivable->due_date) ? (int) $today->diffInDays($receivable->due_date->startOfDay()) : 0;
 
@@ -403,16 +410,19 @@ class ReceivableController extends Controller
                 'allocated_amount' => $validated['amount'],
             ]);
 
-            $newBalance = max(0, $receivable->balance_amount - $validated['amount']);
+            $rawBalance = (float) $receivable->balance_amount - (float) $validated['amount'];
+            $isPaid = $rawBalance < 0.01;
+            $newBalance = $isPaid ? 0.00 : round($rawBalance, 2);
+
             $receivable->update([
                 'balance_amount' => $newBalance,
-                'status' => $newBalance <= 0 ? 'PAID' : 'ACTIVE',
+                'status' => $isPaid ? 'PAID' : 'ACTIVE',
             ]);
 
             // Update sale payment status
             if ($receivable->sale) {
                 $receivable->sale->update([
-                    'payment_status' => $newBalance <= 0 ? 'PAID' : 'PARTIAL',
+                    'payment_status' => $isPaid ? 'PAID' : 'PARTIAL',
                 ]);
             }
 
@@ -477,10 +487,11 @@ class ReceivableController extends Controller
             ]);
 
             // Restaurar saldo de la cuenta por cobrar
-            $restoredBalance = min((float) $receivable->original_amount, (float) $receivable->balance_amount + (float) $allocation->allocated_amount);
+            $restoredBalance = min(round((float) $receivable->original_amount, 2), round((float) $receivable->balance_amount + (float) $allocation->allocated_amount, 2));
+            $isStillPaid = $restoredBalance < 0.01;
             $receivable->update([
-                'balance_amount' => $restoredBalance,
-                'status' => $restoredBalance > 0 ? 'ACTIVE' : 'PAID',
+                'balance_amount' => $isStillPaid ? 0.00 : $restoredBalance,
+                'status' => $isStillPaid ? 'PAID' : 'ACTIVE',
             ]);
 
             // Actualizar estado de pago en la venta
@@ -488,9 +499,11 @@ class ReceivableController extends Controller
                 $totalPaid = PaymentAllocation::whereHas('payment', fn ($q) => $q->where('status', 'CONFIRMED'))
                     ->where('receivable_id', $receivable->id)
                     ->sum('allocated_amount');
+                $totalPaid = round((float) $totalPaid, 2);
 
+                $origAmount = round((float) $receivable->original_amount, 2);
                 $newPaymentStatus = 'UNPAID';
-                if ($totalPaid >= (float) $receivable->original_amount) {
+                if ($totalPaid >= $origAmount - 0.009) {
                     $newPaymentStatus = 'PAID';
                 } elseif ($totalPaid > 0) {
                     $newPaymentStatus = 'PARTIAL';

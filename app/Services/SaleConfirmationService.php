@@ -195,9 +195,14 @@ class SaleConfirmationService
         if ($sale->payment_type === 'CASH' || $sale->payment_type === 'CREDIT') {
             $isCash = $sale->payment_type === 'CASH';
 
-            $initialPayment = $isCash ? $sale->total_amount : ($sale->initial_payment_amount ?? 0);
-            $balance = $sale->total_amount - $initialPayment;
-            $status = $balance <= 0 ? 'PAID' : 'ACTIVE';
+            $totalAmount = round((float) $sale->total_amount, 2);
+            $initialPayment = $isCash ? $totalAmount : round((float) ($sale->initial_payment_amount ?? 0), 2);
+            $initialPayment = min($initialPayment, $totalAmount);
+
+            $rawBalance = $totalAmount - $initialPayment;
+            $isFullySettled = $rawBalance < 0.01;
+            $balance = $isFullySettled ? 0.00 : round($rawBalance, 2);
+            $status = $isFullySettled ? 'PAID' : 'ACTIVE';
 
             // Generar Cuentas por Cobrar (Receivable)
             $receivable = Receivable::create([
@@ -210,7 +215,7 @@ class SaleConfirmationService
                 'issue_date' => $sale->operation_date,
                 'due_date' => $sale->due_date ?? $sale->operation_date,
                 'currency_code' => $sale->currency_code,
-                'original_amount' => $sale->total_amount,
+                'original_amount' => $totalAmount,
                 'balance_amount' => $balance,
                 'status' => $status,
                 'notes' => $isCash ? 'Generado automáticamente por Venta al Contado' : 'Generado por Venta al Crédito',
@@ -252,7 +257,9 @@ class SaleConfirmationService
                 ]);
             }
 
-            $sale->payment_status = $balance <= 0 ? 'PAID' : ($initialPayment > 0 ? 'PARTIAL' : 'UNPAID');
+            $sale->payment_status = $isFullySettled ? 'PAID' : ($initialPayment > 0 ? 'PARTIAL' : 'UNPAID');
+            $sale->total_amount = $totalAmount;
+            $sale->initial_payment_amount = $initialPayment;
             $sale->save();
         }
 

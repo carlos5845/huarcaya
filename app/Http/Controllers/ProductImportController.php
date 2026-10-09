@@ -2,187 +2,174 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Brand;
-use App\Models\Category;
-use App\Models\Inventory;
-use App\Models\Lot;
-use App\Models\Product;
-use App\Models\Unit;
+use App\Models\Branch;
+use App\Models\ImportBatch;
+use App\Services\ProductImportService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Inertia\Inertia;
-use Spatie\SimpleExcel\SimpleExcelReader;
-use Spatie\SimpleExcel\SimpleExcelWriter;
+use Inertia\Response;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class ProductImportController extends Controller
 {
-    public function index()
+    public function __construct(
+        protected ProductImportService $importService
+    ) {}
+
+    /**
+     * Muestra la vista principal de importación masiva y el historial de lotes.
+     */
+    public function index(Request $request): Response
     {
-        return Inertia::render('catalog/import/index');
-    }
+        $user = $request->user();
+        $companyId = $user->company_id;
 
-    public function downloadTemplate()
-    {
-        $headers = [
-            'referencia_original',
-            'nombre_repuesto',
-            'marca',
-            'categoria',
-            'unidad_medida',
-            'precio_base',
-            'stock_inicial',
-        ];
+        $isSuperAdmin = $user->hasRole('Super Admin') || $user->can('manage_branches');
+        $branches = $isSuperAdmin
+            ? Branch::where('company_id', $companyId)->where('status', 'ACTIVE')->orderBy('name')->get(['id', 'name', 'code'])
+            : $user->branches()->where('branches.status', 'ACTIVE')->orderBy('name')->get(['branches.id', 'branches.name', 'branches.code']);
 
-        $filename = 'plantilla_importacion.xlsx';
-        $path = storage_path('app/public/'.$filename);
+        $defaultBranchId = $user->default_branch_id ?? $branches->first()?->id;
 
-        $writer = SimpleExcelWriter::create($path)->addHeader($headers);
-        $writer->addRow([
-            'referencia_original' => 'FIL-12345',
-            'nombre_repuesto' => 'Filtro de Aceite Toyota',
-            'marca' => 'Toyota',
-            'categoria' => 'Filtros',
-            'unidad_medida' => 'Unidad',
-            'precio_base' => '45.50',
-            'stock_inicial' => '10',
+        $recentBatches = ImportBatch::with('creator:id,name,username')
+            ->where('company_id', $companyId)
+            ->where('entity_type', 'PRODUCTS')
+            ->orderBy('id', 'desc')
+            ->limit(10)
+            ->get();
+
+        return Inertia::render('catalog/import/index', [
+            'branches' => $branches,
+            'defaultBranchId' => $defaultBranchId,
+            'recentBatches' => $recentBatches,
         ]);
-
-        return response()->download($path)->deleteFileAfterSend();
     }
 
-    public function store(Request $request)
+    /**
+     * Descarga la plantilla oficial en formato XLSX para importación de repuestos.
+     */
+    public function downloadTemplate(): BinaryFileResponse
+    {
+        $path = $this->importService->generateTemplate();
+
+        return response()->download($path, 'plantilla_importacion_repuestos.xlsx');
+    }
+
+    /**
+     * Analiza y valida el archivo cargado sin persistir productos (Dry-run / Preview).
+     */
+    public function preview(Request $request)
     {
         $request->validate([
-            'file' => 'required|file|mimes:xlsx,csv,txt',
+            'file' => 'required|file|extensions:xlsx,csv,txt,xls|max:20480',
+            'branch_id' => 'nullable|integer',
         ]);
 
         $user = $request->user();
-        $branchId = $user->default_branch_id;
 
-        if (! $branchId) {
-            $branches = $user->branches;
-            if ($branches->isEmpty()) {
-                return back()->with('error', 'No tienes una sucursal asignada para cargar inventario.');
-            }
-            $branchId = $branches->first()->id;
-        }
-
-        $companyId = $user->company_id;
-
-        $file = $request->file('file');
-
-        $stats = [
-            'created' => 0,
-            'updated' => 0,
-            'errors' => 0,
-        ];
-
-        DB::beginTransaction();
         try {
-            $reader = SimpleExcelReader::create($file->path(), $file->getClientOriginalExtension());
-            $headers = $reader->getHeaders();
+            $analysis = $this->importService->analyze(
+                $request->file('file'),
+                $user->company_id,
+                $request->filled('branch_id') ? (int) $request->branch_id : null
+            );
 
-            if (! in_array('referencia_original', $headers) || ! in_array('nombre_repuesto', $headers)) {
-                throw new \Exception("El archivo no tiene el formato correcto. Faltan las columnas 'referencia_original' o 'nombre_repuesto'. Asegúrate de usar la plantilla.");
-            }
+            return response()->json([
+                'success' => true,
+                'data' => $analysis,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
 
-            $reader->getRows()
-                ->each(function (array $row) use (&$stats, $branchId, $companyId) {
-                    $ref = $row['referencia_original'] ?? '';
-                    $name = $row['nombre_repuesto'] ?? '';
+    /**
+     * Ejecuta la importación del archivo confirmado.
+     */
+    public function store(Request $request)
+    {
+        $request->validate([
+            'branch_id' => 'required|integer|exists:branches,id',
+            'duplicate_strategy' => 'required|string|in:UPDATE_AND_ADD_STOCK,ONLY_NEW,OVERWRITE_STOCK',
+            'temp_file_token' => 'nullable|string',
+            'file' => 'nullable|file|extensions:xlsx,csv,txt,xls|max:20480',
+            'file_name' => 'nullable|string',
+        ]);
 
-                    if (empty($ref) || empty($name)) {
-                        $stats['errors']++;
-
-                        return; // continue loop
-                    }
-
-                    $normalizedRef = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $ref));
-
-                    $brand = null;
-                    if (! empty($row['marca'])) {
-                        $brandName = trim($row['marca']);
-                        $normalizedBrand = Str::upper(preg_replace('/[^A-Za-z0-9]/', '', $brandName));
-                        $brand = Brand::firstOrCreate(
-                            ['normalized_name' => $normalizedBrand, 'company_id' => $companyId],
-                            ['uuid' => Str::uuid(), 'name' => $brandName, 'code' => Str::upper(substr(Str::slug($brandName), 0, 10)), 'status' => 'ACTIVE']
-                        );
-                    }
-
-                    $categoryName = ! empty($row['categoria']) ? trim($row['categoria']) : 'Sin Categoría';
-                    $normalizedCat = Str::upper(preg_replace('/[^A-Za-z0-9]/', '', $categoryName));
-                    $category = Category::firstOrCreate(
-                        ['normalized_name' => $normalizedCat, 'company_id' => $companyId],
-                        ['uuid' => Str::uuid(), 'name' => $categoryName, 'code' => Str::upper(substr(Str::slug($categoryName), 0, 10)), 'status' => 'ACTIVE']
-                    );
-
-                    $unitName = ! empty($row['unidad_medida']) ? trim($row['unidad_medida']) : 'Unidad';
-                    $unit = Unit::firstOrCreate(
-                        ['name' => $unitName, 'company_id' => $companyId],
-                        ['uuid' => Str::uuid(), 'code' => Str::upper(substr(Str::slug($unitName), 0, 10)), 'symbol' => substr($unitName, 0, 3), 'status' => 'ACTIVE']
-                    );
-
-                    $product = Product::where('normalized_reference', $normalizedRef)
-                        ->where('company_id', $companyId)
-                        ->first();
-                    if (! $product) {
-                        $product = Product::create([
-                            'uuid' => Str::uuid(),
-                            'company_id' => $companyId,
-                            'primary_reference' => $ref,
-                            'normalized_reference' => $normalizedRef,
-                            'name' => trim($name),
-                            'normalized_name' => Str::slug(trim($name)),
-                            'brand_id' => $brand?->id,
-                            'category_id' => $category?->id,
-                            'unit_id' => $unit?->id,
-                            'status' => 'ACTIVE',
-                        ]);
-                        $stats['created']++;
-                    } else {
-                        $stats['updated']++;
-                    }
-
-                    $stock = (float) ($row['stock_inicial'] ?? 0);
-                    $basePrice = (float) ($row['precio_base'] ?? 0);
-
-                    $inventory = Inventory::firstOrNew([
-                        'branch_id' => $branchId,
-                        'product_id' => $product->id,
-                    ]);
-
-                    if (! $inventory->exists) {
-                        $inventory->uuid = Str::uuid();
-                        $inventory->physical_quantity = max(0, $stock);
-                        $inventory->available_quantity = max(0, $stock);
-                        $inventory->average_cost = $basePrice;
-                        $inventory->status = 'ACTIVE';
-                        $inventory->save();
-
-                        if ($stock > 0) {
-                            // Crear lote por defecto para el inventario importado con stock
-                            Lot::create([
-                                'uuid' => (string) Str::uuid(),
-                                'branch_id' => $branchId,
-                                'product_id' => $product->id,
-                                'lot_number' => 'LOTE-IMPORT-'.date('Ymd'),
-                                'original_quantity' => $stock,
-                                'current_quantity' => $stock,
-                                'unit_cost' => $basePrice,
-                                'status' => 'ACTIVE',
-                            ]);
-                        }
-                    }
-                });
-
-            DB::commit();
-        } catch (\Exception $e) {
-            DB::rollBack();
-
-            return back()->with('error', 'Error procesando el archivo: '.$e->getMessage());
+        if (! $request->filled('temp_file_token') && ! $request->hasFile('file')) {
+            return back()->with('error', 'Debes adjuntar o previsualizar un archivo antes de importar.');
         }
 
-        return back()->with('success', "Importación completada. Creados: {$stats['created']}, Actualizados/Ignorados: {$stats['updated']}, Errores: {$stats['errors']}");
+        $user = $request->user();
+        $branchId = (int) $request->branch_id;
+
+        // Validar que la sucursal pertenezca a la empresa del usuario
+        $branch = Branch::where('id', $branchId)
+            ->where('company_id', $user->company_id)
+            ->first();
+
+        if (! $branch) {
+            return back()->with('error', 'La sucursal seleccionada no pertenece a tu empresa o no es válida.');
+        }
+
+        try {
+            $filePath = $this->importService->resolveFilePath(
+                $request->input('temp_file_token'),
+                $request->file('file')
+            );
+
+            $result = $this->importService->executeImport(
+                $filePath,
+                $user->company_id,
+                $branchId,
+                $user->id,
+                $request->input('duplicate_strategy', 'UPDATE_AND_ADD_STOCK'),
+                $request->input('file_name')
+            );
+
+            $message = "Importación procesada. Total: {$result['total']} repuestos. Creados: {$result['created']}, Actualizados: {$result['updated']}, Omitidos: {$result['skipped']}, Observados: {$result['failed']}.";
+
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => $message,
+                    'result' => $result,
+                ]);
+            }
+
+            return back()->with('success', $message);
+        } catch (\Throwable $e) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Error al procesar la importación: '.$e->getMessage(),
+                ], 500);
+            }
+
+            return back()->with('error', 'Error al procesar la importación: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * Descarga el reporte de filas fallidas / observadas en formato Excel.
+     */
+    public function downloadErrors(ImportBatch $batch, Request $request)
+    {
+        $user = $request->user();
+
+        if ($batch->company_id !== $user->company_id) {
+            abort(403, 'No tienes autorización para acceder a este lote.');
+        }
+
+        $path = $this->importService->generateErrorsFile($batch);
+
+        if (! $path || ! file_exists($path)) {
+            return back()->with('info', 'Este lote no contiene filas con observaciones para descargar.');
+        }
+
+        return response()->download($path, "errores_lote_{$batch->id}.xlsx")->deleteFileAfterSend();
     }
 }

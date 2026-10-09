@@ -57,20 +57,24 @@ export default function SaleShow({ sale }: { sale: any }) {
         ? Number(sale.tax_amount) 
         : (total > 0 ? total - subtotal : 0);
 
-    const paidAmount = sale.receivable 
-        ? (Number(sale.receivable.original_amount) - Number(sale.receivable.balance_amount)).toFixed(2)
-        : Number(sale.initial_payment_amount || 0).toFixed(2);
+    const rawBalance = sale.receivable 
+        ? Number(sale.receivable.balance_amount)
+        : Math.max(0, total - Number(sale.initial_payment_amount || 0));
+    const isZeroBalance = rawBalance < 0.01;
+    const effectiveBalance = isZeroBalance ? 0 : rawBalance;
 
-    const pendingAmount = sale.receivable 
-        ? Number(sale.receivable.balance_amount).toFixed(2)
-        : Math.max(0, total - Number(sale.initial_payment_amount || 0)).toFixed(2);
+    const paidAmount = sale.receivable 
+        ? (Number(sale.receivable.original_amount) - effectiveBalance).toFixed(2)
+        : (isZeroBalance ? total : Number(sale.initial_payment_amount || 0)).toFixed(2);
+
+    const pendingAmount = effectiveBalance.toFixed(2);
 
     const rawDueDate = sale.receivable?.due_date || sale.due_date;
     const dueDateFormatted = rawDueDate 
         ? new Date(rawDueDate).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' })
         : 'N/A';
 
-    const isFullyPaid = sale.payment_type === 'CASH' || (sale.receivable && Number(sale.receivable.balance_amount) <= 0);
+    const isFullyPaid = sale.payment_type === 'CASH' || sale.payment_status === 'PAID' || isZeroBalance || (sale.receivable && (sale.receivable.status === 'PAID' || Number(sale.receivable.balance_amount) < 0.01));
 
     return (
         <>
@@ -424,7 +428,9 @@ export default function SaleShow({ sale }: { sale: any }) {
                                     </div>
                                     <div className="flex justify-between items-center">
                                         <span className="text-muted-foreground">Saldo Pendiente / Deuda:</span>
-                                        <span className="font-bold text-rose-600 dark:text-rose-400 text-base">{currencySymbol} {pendingAmount}</span>
+                                        <span className={`font-bold text-base ${isFullyPaid ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                            {currencySymbol} {pendingAmount}
+                                        </span>
                                     </div>
                                     <div className="flex justify-between items-center text-xs text-muted-foreground pt-1">
                                         <span>Fecha Límite de Vencimiento:</span>

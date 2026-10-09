@@ -21,7 +21,9 @@ import {
     Percent, 
     Save, 
     Loader2,
-    ExternalLink
+    ExternalLink,
+    Eye,
+    ImageIcon
 } from 'lucide-react';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
@@ -35,6 +37,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from '@/components/ui/command';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import AppLayout from '@/layouts/app-layout';
+import { DocumentPreviewModal } from '@/components/document-preview-modal';
 import { cn, normalizeSearch, getLocalDateString } from '@/lib/utils';
 import type { BreadcrumbItem } from '@/types';
 
@@ -53,6 +56,18 @@ export default function PurchaseEdit({
 }) {
     const { company_settings } = usePage<any>().props;
     const globalExchangeRate = company_settings?.exchange_rate ? parseFloat(company_settings.exchange_rate) : 3.80;
+
+    const [previewDoc, setPreviewDoc] = useState<{
+        open: boolean;
+        url: string | null;
+        title: string;
+        subtitle?: string;
+        fileName?: string;
+    }>({
+        open: false,
+        url: null,
+        title: '',
+    });
 
     // Detect tax mode from existing amounts if possible
     const initialTaxMode = (() => {
@@ -819,22 +834,39 @@ export default function PurchaseEdit({
                                 )}
                             </div>
 
-                            {purchase.document_file_path && !data.document_file && (
-                                <div className="p-3 rounded-lg border border-border bg-muted/30 flex items-center justify-between text-xs mb-2">
-                                    <div className="flex items-center gap-2 truncate">
-                                        <File className="w-4 h-4 text-primary shrink-0" />
-                                        <span className="truncate">Comprobante actual guardado</span>
+                            {purchase.document_file_path && !data.document_file && (() => {
+                                const isImg = /\.(png|jpe?g|webp|gif|svg|bmp)$/i.test(purchase.document_file_path);
+                                const isPdf = purchase.document_file_path.toLowerCase().endsWith('.pdf');
+                                const docFileName = purchase.document_file_path.split('/').pop();
+
+                                return (
+                                    <div className="p-3 rounded-lg border border-border bg-muted/30 flex items-center justify-between text-xs mb-2">
+                                        <div className="flex items-center gap-2 truncate">
+                                            {isImg ? (
+                                                <ImageIcon className="w-4 h-4 text-blue-600 shrink-0" />
+                                            ) : isPdf ? (
+                                                <FileText className="w-4 h-4 text-rose-600 shrink-0" />
+                                            ) : (
+                                                <File className="w-4 h-4 text-primary shrink-0" />
+                                            )}
+                                            <span className="truncate">Comprobante guardado ({docFileName})</span>
+                                        </div>
+                                        <button 
+                                            type="button"
+                                            onClick={() => setPreviewDoc({
+                                                open: true,
+                                                url: `/storage/${purchase.document_file_path}`,
+                                                title: `Comprobante: ${purchase.supplier_document_series ? `${purchase.supplier_document_series}-` : ''}${purchase.supplier_document_number || purchase.purchase_number}`,
+                                                subtitle: `${purchase.supplier?.business_name || 'Proveedor'} • Comprobante Guardado`,
+                                                fileName: docFileName,
+                                            })}
+                                            className="text-primary hover:underline flex items-center gap-1 shrink-0 font-medium cursor-pointer"
+                                        >
+                                            Ver <Eye className="w-3.5 h-3.5" />
+                                        </button>
                                     </div>
-                                    <a 
-                                        href={`/storage/${purchase.document_file_path}`} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="text-primary hover:underline flex items-center gap-1 shrink-0 font-medium"
-                                    >
-                                        Ver <ExternalLink className="w-3 h-3" />
-                                    </a>
-                                </div>
-                            )}
+                                );
+                            })()}
 
                             <div className="border-2 border-dashed border-border rounded-xl p-4 flex flex-col items-center justify-center text-center hover:bg-muted/30 transition-colors relative cursor-pointer">
                                 <input 
@@ -1001,6 +1033,15 @@ export default function PurchaseEdit({
                     </form>
                 </DialogContent>
             </Dialog>
+
+            <DocumentPreviewModal
+                open={previewDoc.open}
+                onOpenChange={(open) => setPreviewDoc((prev) => ({ ...prev, open }))}
+                url={previewDoc.url}
+                title={previewDoc.title}
+                subtitle={previewDoc.subtitle}
+                fileName={previewDoc.fileName}
+            />
         </>
     );
 }

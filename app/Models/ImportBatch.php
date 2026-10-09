@@ -25,4 +25,9 @@ class ImportBatch extends Model
     {
         return $this->hasMany(ImportBatchRow::class);
     }
+
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
 }

@@ -31,6 +31,7 @@ class InventoryController extends Controller
         }
 
         $branchId = $request->input('branch_id');
+        $productId = $request->input('product_id');
         $search = $request->input('search');
         $stockStatus = $request->input('stock_status', 'all');
 
@@ -43,7 +44,9 @@ class InventoryController extends Controller
 
         // --- CÁLCULO DE KPIS EJECUTIVOS ---
         $prodKpiQuery = Product::query();
-        if ($search) {
+        if ($productId) {
+            $prodKpiQuery->where('products.id', $productId);
+        } elseif ($search) {
             $prodKpiQuery->where(function ($q) use ($search) {
                 $q->whereLikeAccentInsensitive('name', "%{$search}%")
                     ->orWhereLikeAccentInsensitive('primary_reference', "%{$search}%")
@@ -61,7 +64,9 @@ class InventoryController extends Controller
             $invKpiQuery->whereIn('inventories.branch_id', $allowedBranchIds);
         }
 
-        if ($search) {
+        if ($productId) {
+            $invKpiQuery->where('inventories.product_id', $productId);
+        } elseif ($search) {
             $invKpiQuery->whereHas('product', function ($q) use ($search) {
                 $q->whereLikeAccentInsensitive('name', "%{$search}%")
                     ->orWhereLikeAccentInsensitive('primary_reference', "%{$search}%")
@@ -117,7 +122,9 @@ class InventoryController extends Controller
         // --- CONSULTA PRINCIPAL DE PRODUCTOS ---
         $query = Product::with(['brand', 'category', 'unit', 'prices', 'inventories.branch']);
 
-        if ($search) {
+        if ($productId) {
+            $query->where('products.id', $productId);
+        } elseif ($search) {
             $query->where(function ($q) use ($search) {
                 $q->whereLikeAccentInsensitive('name', "%{$search}%")
                     ->orWhereLikeAccentInsensitive('primary_reference', "%{$search}%")
@@ -259,6 +266,7 @@ class InventoryController extends Controller
                 'branch_id' => $branchId,
                 'search' => $search,
                 'stock_status' => $stockStatus,
+                'product_id' => $productId,
             ],
         ]);
     }
