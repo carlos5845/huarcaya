@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Services\SingleDeviceSessionService;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Database\Eloquent\Builder;
@@ -76,12 +77,8 @@ class AppServiceProvider extends ServiceProvider
                 ]);
             }
 
-            // Opción B: Si el usuario ya tiene sesiones abiertas, las cerramos automáticamente
-            // para permitirle ingresar en este nuevo dispositivo y no dejarlo bloqueado.
-            DB::table('sessions')
-                ->where('user_id', $event->user->id)
-                ->where('id', '!=', request()->session()->getId())
-                ->delete();
+            // Cerrar limpiamente otras sesiones y registrar motivo de terminación
+            app(SingleDeviceSessionService::class)->terminateOtherSessions($event->user, request());
         });
     }
 

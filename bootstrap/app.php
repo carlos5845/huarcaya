@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\CheckAccountStatus;
+use App\Http\Middleware\CheckTerminatedSession;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use Illuminate\Foundation\Application;
@@ -28,6 +29,7 @@ return Application::configure(basePath: dirname(__DIR__))
             AddLinkHeadersForPreloadedAssets::class,
             AuthenticateSession::class,
             CheckAccountStatus::class,
+            CheckTerminatedSession::class,
         ]);
 
         $middleware->alias([

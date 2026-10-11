@@ -7,6 +7,7 @@ use App\Models\Setting;
 use App\Models\SettingValue;
 use App\Services\AlertService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
@@ -55,6 +56,54 @@ class HandleInertiaRequests extends Middleware
             'flash' => [
                 'success' => $request->session()->get('success'),
                 'error' => $request->session()->get('error'),
+                'status' => function () use ($request) {
+                    if ($status = $request->session()->get('status')) {
+                        return $status;
+                    }
+
+                    $sessionCookieName = config('session.cookie');
+                    $cookieSessionId = $request->query('ts')
+                        ?: ($request->cookie($sessionCookieName) ?: $request->cookies->get($sessionCookieName));
+
+                    if (! $cookieSessionId && $request->hasSession()) {
+                        $cookieSessionId = $request->session()->getId();
+                    }
+
+                    if ($cookieSessionId && Cache::has("terminated_session:{$cookieSessionId}")) {
+                        $terminatedData = Cache::get("terminated_session:{$cookieSessionId}");
+                        if ($terminatedData && isset($terminatedData['terminated_by'])) {
+                            $by = $terminatedData['terminated_by'];
+                            $device = $by['device'] ?? 'Otro dispositivo';
+                            $ip = $by['ip'] ?? 'Desconocida';
+                            $time = $by['time'] ?? now()->format('d/m/Y h:i A');
+
+                            return "Tu sesión fue cerrada automáticamente porque se inició sesión con tu cuenta desde otro dispositivo ({$device}, IP: {$ip}) el {$time}.";
+                        }
+                    }
+
+                    return null;
+                },
+                'terminated_info' => function () use ($request) {
+                    if ($info = $request->session()->get('terminated_info')) {
+                        return $info;
+                    }
+
+                    $sessionCookieName = config('session.cookie');
+                    $cookieSessionId = $request->query('ts')
+                        ?: ($request->cookie($sessionCookieName) ?: $request->cookies->get($sessionCookieName));
+
+                    if (! $cookieSessionId && $request->hasSession()) {
+                        $cookieSessionId = $request->session()->getId();
+                    }
+
+                    if ($cookieSessionId && Cache::has("terminated_session:{$cookieSessionId}")) {
+                        $terminatedData = Cache::get("terminated_session:{$cookieSessionId}");
+
+                        return $terminatedData['terminated_by'] ?? null;
+                    }
+
+                    return null;
+                },
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             'company_settings' => function () use ($request) {

@@ -49,6 +49,36 @@ const breadcrumbs = [
     { title: 'Importación Masiva', href: '/catalog/import' },
 ];
 
+function getCookie(name: string): string | null {
+    if (typeof document === 'undefined') return null;
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) {
+        return decodeURIComponent(parts.pop()?.split(';').shift() || '');
+    }
+    return null;
+}
+
+function getCsrfHeaders(): Record<string, string> {
+    const metaToken = typeof document !== 'undefined'
+        ? (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content
+        : null;
+    const xsrfCookie = getCookie('XSRF-TOKEN');
+
+    const headers: Record<string, string> = {
+        'Accept': 'application/json',
+    };
+
+    if (metaToken) {
+        headers['X-CSRF-TOKEN'] = metaToken;
+    }
+    if (xsrfCookie) {
+        headers['X-XSRF-TOKEN'] = xsrfCookie;
+    }
+
+    return headers;
+}
+
 interface Branch {
     id: number;
     name: string;
@@ -143,14 +173,24 @@ export default function ImportIndex({ branches = [], defaultBranchId, recentBatc
 
     const handleFileChange = (file: File | null) => {
         if (!file) {
-            setSelectedFile(null);
             return;
         }
 
         const validExts = ['.xlsx', '.xls', '.csv'];
-        const hasValidExt = validExts.some((ext) => file.name.toLowerCase().endsWith(ext));
+        const fileNameLower = (file.name || '').toLowerCase();
+        const hasValidExt = validExts.some((ext) => fileNameLower.endsWith(ext));
 
-        if (!hasValidExt) {
+        const validMimes = [
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'application/vnd.ms-excel',
+            'text/csv',
+            'text/plain',
+            'application/csv',
+            'application/octet-stream',
+        ];
+        const hasValidMime = validMimes.includes(file.type);
+
+        if (!hasValidExt && !hasValidMime) {
             setPreviewError('El archivo debe ser en formato Excel (.xlsx, .xls) o CSV (.csv).');
             setSelectedFile(null);
             if (fileInputRef.current) fileInputRef.current.value = '';
@@ -199,13 +239,9 @@ export default function ImportIndex({ branches = [], defaultBranchId, recentBatc
         formData.append('branch_id', selectedBranchId);
 
         try {
-            const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '';
             const response = await fetch('/catalog/import/preview', {
                 method: 'POST',
-                headers: {
-                    'X-CSRF-TOKEN': csrfToken,
-                    'Accept': 'application/json',
-                },
+                headers: getCsrfHeaders(),
                 body: formData,
             });
 
@@ -245,13 +281,9 @@ export default function ImportIndex({ branches = [], defaultBranchId, recentBatc
         }
 
         try {
-            const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '';
             const response = await fetch('/catalog/import', {
                 method: 'POST',
-                headers: {
-                    'X-CSRF-TOKEN': csrfToken,
-                    'Accept': 'application/json',
-                },
+                headers: getCsrfHeaders(),
                 body: formData,
             });
 
@@ -514,7 +546,7 @@ export default function ImportIndex({ branches = [], defaultBranchId, recentBatc
                                         </CardHeader>
                                         <CardContent>
                                             <div
-                                                className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center transition-all cursor-pointer ${
+                                                className={`relative border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center transition-all cursor-pointer ${
                                                     dragActive
                                                         ? 'border-primary bg-primary/5 scale-[0.99]'
                                                         : 'border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30'
@@ -523,34 +555,36 @@ export default function ImportIndex({ branches = [], defaultBranchId, recentBatc
                                                 onDragLeave={handleDrag}
                                                 onDragOver={handleDrag}
                                                 onDrop={handleDrop}
-                                                onClick={() => fileInputRef.current?.click()}
                                             >
-                                                <div className="p-3 bg-primary/10 rounded-full text-primary mb-3">
-                                                    <Upload className="h-8 w-8" />
-                                                </div>
-                                                <p className="text-sm font-semibold mb-1 text-foreground">
-                                                    Haz clic para examinar o arrastra tu archivo aquí
-                                                </p>
-                                                <p className="text-xs text-muted-foreground mb-4">
-                                                    Formatos soportados: .xlsx, .xls, .csv (Hasta 20 MB)
-                                                </p>
-
                                                 <input
                                                     type="file"
                                                     ref={fileInputRef}
-                                                    className="hidden"
+                                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
                                                     accept=".xlsx,.xls,.csv"
-                                                    onChange={(e) => handleFileChange(e.target.files ? e.target.files[0] : null)}
+                                                    onChange={(e) => {
+                                                        const file = e.target.files?.[0] || null;
+                                                        if (file) {
+                                                            handleFileChange(file);
+                                                        }
+                                                    }}
                                                 />
+
+                                                <div className="p-3 bg-primary/10 rounded-full text-primary mb-3 pointer-events-none">
+                                                    <Upload className="h-8 w-8" />
+                                                </div>
+                                                <p className="text-sm font-semibold mb-1 text-foreground text-center pointer-events-none">
+                                                    Haz clic para examinar o arrastra tu archivo aquí
+                                                </p>
+                                                <p className="text-xs text-muted-foreground mb-4 text-center pointer-events-none">
+                                                    Formatos soportados: .xlsx, .xls, .csv (Hasta 20 MB)
+                                                </p>
 
                                                 <Button
                                                     type="button"
                                                     variant="secondary"
                                                     size="sm"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        fileInputRef.current?.click();
-                                                    }}
+                                                    className="pointer-events-none"
+                                                    tabIndex={-1}
                                                 >
                                                     Explorar en el equipo
                                                 </Button>
