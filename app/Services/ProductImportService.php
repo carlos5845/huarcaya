@@ -224,10 +224,10 @@ class ProductImportService
             'marca' => null,
             'categoria' => null,
             'unidad_medida' => null,
-            'costo_compra' => 0.0,
-            'precio_venta' => 0.0,
-            'stock_inicial' => 0.0,
-            'stock_minimo' => 0.0,
+            'costo_compra' => null,
+            'precio_venta' => null,
+            'stock_inicial' => null,
+            'stock_minimo' => null,
             'descripcion' => null,
             '_raw' => $rawRow,
         ];
@@ -236,8 +236,24 @@ class ProductImportService
             $canonical = $this->canonicalizeHeader((string) $key);
             if ($canonical) {
                 if (in_array($canonical, ['costo_compra', 'precio_venta', 'stock_inicial', 'stock_minimo'])) {
-                    $cleanedNum = str_replace([',', ' '], ['', ''], (string) $value);
-                    $mapped[$canonical] = is_numeric($cleanedNum) ? (float) $cleanedNum : $value;
+                    if ($value === null) {
+                        $mapped[$canonical] = null;
+
+                        continue;
+                    }
+
+                    $strVal = is_string($value) ? trim($value) : (string) $value;
+                    $normalizedLower = strtolower($strVal);
+
+                    if ($strVal === '' || $strVal === '-' || $normalizedLower === 'n/a' || $normalizedLower === 'null' || $normalizedLower === 'none') {
+                        $mapped[$canonical] = null;
+
+                        continue;
+                    }
+
+                    // Limpiar posibles símbolos de moneda, comas y espacios
+                    $cleanedNum = str_replace(['S/', 's/', '$', ',', ' '], '', $strVal);
+                    $mapped[$canonical] = is_numeric($cleanedNum) ? (float) $cleanedNum : $strVal;
                 } else {
                     $mapped[$canonical] = is_string($value) ? trim($value) : $value;
                 }
@@ -335,17 +351,37 @@ class ProductImportService
                 $errors[] = 'Falta el nombre del repuesto.';
             }
 
-            if (! is_numeric($mapped['costo_compra']) || (float) $mapped['costo_compra'] < 0) {
-                $errors[] = 'El costo de compra debe ser un número mayor o igual a 0.';
+            // Los campos numéricos son opcionales: solo dan error si se escribió un texto no numérico o número negativo
+            if ($mapped['costo_compra'] !== null) {
+                if (! is_numeric($mapped['costo_compra'])) {
+                    $errors[] = 'El costo de compra contiene caracteres inválidos.';
+                } elseif ((float) $mapped['costo_compra'] < 0) {
+                    $errors[] = 'El costo de compra no puede ser menor a 0.';
+                }
             }
-            if (! is_numeric($mapped['precio_venta']) || (float) $mapped['precio_venta'] < 0) {
-                $errors[] = 'El precio de venta debe ser un número mayor o igual a 0.';
+
+            if ($mapped['precio_venta'] !== null) {
+                if (! is_numeric($mapped['precio_venta'])) {
+                    $errors[] = 'El precio de venta contiene caracteres inválidos.';
+                } elseif ((float) $mapped['precio_venta'] < 0) {
+                    $errors[] = 'El precio de venta no puede ser menor a 0.';
+                }
             }
-            if (! is_numeric($mapped['stock_inicial']) || (float) $mapped['stock_inicial'] < 0) {
-                $errors[] = 'El stock inicial debe ser un número mayor o igual a 0.';
+
+            if ($mapped['stock_inicial'] !== null) {
+                if (! is_numeric($mapped['stock_inicial'])) {
+                    $errors[] = 'El stock inicial contiene caracteres inválidos.';
+                } elseif ((float) $mapped['stock_inicial'] < 0) {
+                    $errors[] = 'El stock inicial no puede ser menor a 0.';
+                }
             }
-            if (! is_numeric($mapped['stock_minimo']) || (float) $mapped['stock_minimo'] < 0) {
-                $errors[] = 'El stock mínimo debe ser un número mayor o igual a 0.';
+
+            if ($mapped['stock_minimo'] !== null) {
+                if (! is_numeric($mapped['stock_minimo'])) {
+                    $errors[] = 'El stock mínimo contiene caracteres inválidos.';
+                } elseif ((float) $mapped['stock_minimo'] < 0) {
+                    $errors[] = 'El stock mínimo no puede ser menor a 0.';
+                }
             }
 
             $normalizedRef = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $ref));
@@ -371,10 +407,10 @@ class ProductImportService
                     'marca' => $mapped['marca'] ?? '',
                     'categoria' => $mapped['categoria'] ?? '',
                     'unidad_medida' => $mapped['unidad_medida'] ?? 'Unidad',
-                    'costo_compra' => is_numeric($mapped['costo_compra']) ? (float) $mapped['costo_compra'] : 0,
-                    'precio_venta' => is_numeric($mapped['precio_venta']) ? (float) $mapped['precio_venta'] : 0,
-                    'stock_inicial' => is_numeric($mapped['stock_inicial']) ? (float) $mapped['stock_inicial'] : 0,
-                    'stock_minimo' => is_numeric($mapped['stock_minimo']) ? (float) $mapped['stock_minimo'] : 0,
+                    'costo_compra' => ($mapped['costo_compra'] !== null && is_numeric($mapped['costo_compra'])) ? (float) $mapped['costo_compra'] : null,
+                    'precio_venta' => ($mapped['precio_venta'] !== null && is_numeric($mapped['precio_venta'])) ? (float) $mapped['precio_venta'] : null,
+                    'stock_inicial' => ($mapped['stock_inicial'] !== null && is_numeric($mapped['stock_inicial'])) ? (float) $mapped['stock_inicial'] : null,
+                    'stock_minimo' => ($mapped['stock_minimo'] !== null && is_numeric($mapped['stock_minimo'])) ? (float) $mapped['stock_minimo'] : null,
                     'status' => $status,
                     'error_message' => ! empty($errors) ? implode(' ', $errors) : null,
                 ];
@@ -487,16 +523,28 @@ class ProductImportService
                 continue;
             }
 
-            if (! is_numeric($mapped['costo_compra']) || (float) $mapped['costo_compra'] < 0 ||
-                ! is_numeric($mapped['precio_venta']) || (float) $mapped['precio_venta'] < 0 ||
-                ! is_numeric($mapped['stock_inicial']) || (float) $mapped['stock_inicial'] < 0) {
+            // Validar errores numéricos en campos provistos
+            $numericError = null;
+            foreach (['costo_compra' => 'costo de compra', 'precio_venta' => 'precio de venta', 'stock_inicial' => 'stock inicial', 'stock_minimo' => 'stock mínimo'] as $field => $label) {
+                if ($mapped[$field] !== null) {
+                    if (! is_numeric($mapped[$field])) {
+                        $numericError = "El campo '{$label}' contiene caracteres no numéricos.";
+                        break;
+                    } elseif ((float) $mapped[$field] < 0) {
+                        $numericError = "El campo '{$label}' no puede ser un número negativo.";
+                        break;
+                    }
+                }
+            }
+
+            if ($numericError) {
                 $failedCount++;
                 $batchRowInserts[] = [
                     'import_batch_id' => $batch->id,
                     'row_number' => $rowNumber,
                     'raw_data' => json_encode($rawRow, JSON_UNESCAPED_UNICODE),
                     'status' => 'FAILED',
-                    'error_message' => 'Los valores de costo, precio o stock contienen números inválidos o negativos.',
+                    'error_message' => $numericError,
                     'created_at' => now(),
                     'updated_at' => now(),
                 ];
@@ -505,10 +553,10 @@ class ProductImportService
             }
 
             $normalizedRef = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $ref));
-            $costoCompra = (float) $mapped['costo_compra'];
-            $precioVenta = (float) $mapped['precio_venta'];
-            $stockInicial = (float) $mapped['stock_inicial'];
-            $stockMinimo = (float) $mapped['stock_minimo'];
+            $costoCompra = $mapped['costo_compra'] !== null ? (float) $mapped['costo_compra'] : 0.0;
+            $precioVenta = $mapped['precio_venta'] !== null ? (float) $mapped['precio_venta'] : null;
+            $stockInicial = $mapped['stock_inicial'] !== null ? (float) $mapped['stock_inicial'] : 0.0;
+            $stockMinimo = $mapped['stock_minimo'] !== null ? (float) $mapped['stock_minimo'] : null;
 
             try {
                 DB::transaction(function () use (
@@ -583,8 +631,8 @@ class ProductImportService
                             'created_by' => $userId,
                         ]);
 
-                        // Registrar Precio de Venta
-                        if ($precioVenta > 0) {
+                        // Registrar Precio de Venta (solo si se especificó y es > 0)
+                        if ($precioVenta !== null && $precioVenta > 0) {
                             $product->prices()->create([
                                 'uuid' => (string) Str::uuid(),
                                 'branch_id' => null, // Global para todas las sucursales
@@ -597,8 +645,8 @@ class ProductImportService
                             ]);
                         }
 
-                        // Registrar Stock Mínimo
-                        if ($stockMinimo > 0) {
+                        // Registrar Stock Mínimo (solo si se especificó y es > 0)
+                        if ($stockMinimo !== null && $stockMinimo > 0) {
                             $product->minStocks()->create([
                                 'uuid' => (string) Str::uuid(),
                                 'branch_id' => $branchId,
@@ -609,8 +657,8 @@ class ProductImportService
                             ]);
                         }
 
-                        // Registrar Inventario Inicial con Kardex y Lote
-                        if ($stockInicial > 0) {
+                        // Registrar Inventario Inicial con Kardex y Lote (solo si stock_inicial fue provisto y es > 0)
+                        if ($mapped['stock_inicial'] !== null && $stockInicial > 0) {
                             $this->kardexService->recordEntry([
                                 'branch_id' => $branchId,
                                 'product_id' => $product->id,
@@ -672,19 +720,22 @@ class ProductImportService
                         if ($category && $product->category_id !== $category->id) {
                             $updateData['category_id'] = $category->id;
                         }
-                        if (! empty($mapped['codigo_interno']) && empty($product->internal_code)) {
+                        if ($unit && $product->unit_id !== $unit->id) {
+                            $updateData['unit_id'] = $unit->id;
+                        }
+                        if (! empty($mapped['codigo_interno']) && $product->internal_code !== trim($mapped['codigo_interno'])) {
                             $updateData['internal_code'] = trim($mapped['codigo_interno']);
                         }
-                        if (! empty($mapped['descripcion']) && empty($product->description)) {
-                            $updateData['description'] = $mapped['descripcion'];
+                        if (! empty($mapped['descripcion']) && $product->description !== trim($mapped['descripcion'])) {
+                            $updateData['description'] = trim($mapped['descripcion']);
                         }
 
                         if (! empty($updateData)) {
                             $product->update($updateData);
                         }
 
-                        // Actualizar o crear precio de venta si viene en el Excel
-                        if ($precioVenta > 0) {
+                        // Actualizar o crear precio de venta si viene en el archivo
+                        if ($mapped['precio_venta'] !== null && $precioVenta > 0) {
                             $existingPrice = ProductPrice::where('product_id', $product->id)
                                 ->where('price_type', 'PUBLIC')
                                 ->whereNull('branch_id')
@@ -706,8 +757,8 @@ class ProductImportService
                             }
                         }
 
-                        // Actualizar o crear stock mínimo
-                        if ($stockMinimo > 0) {
+                        // Actualizar o crear stock mínimo si viene en el archivo
+                        if ($mapped['stock_minimo'] !== null && $stockMinimo > 0) {
                             $existingMin = ProductMinStock::where('product_id', $product->id)
                                 ->where('branch_id', $branchId)
                                 ->first();
@@ -726,68 +777,87 @@ class ProductImportService
                             }
                         }
 
-                        // Manejo de Stock según estrategia
-                        if ($duplicateStrategy === 'UPDATE_AND_ADD_STOCK') {
-                            if ($stockInicial > 0) {
-                                $this->kardexService->recordEntry([
-                                    'branch_id' => $branchId,
-                                    'product_id' => $product->id,
-                                    'quantity' => $stockInicial,
-                                    'unit_cost' => $costoCompra,
-                                    'operation_type' => 'INVENTARIO_INICIAL',
-                                    'reference' => 'INVENTARIO ADICIONAL - LOTE IMP #'.$batch->id,
-                                    'user_id' => $userId,
-                                ]);
+                        $currentInv = Inventory::where('branch_id', $branchId)
+                            ->where('product_id', $product->id)
+                            ->first();
 
-                                Lot::create([
-                                    'uuid' => (string) Str::uuid(),
-                                    'branch_id' => $branchId,
-                                    'product_id' => $product->id,
-                                    'lot_number' => 'LOT-IMP-'.date('Ymd').'-'.strtoupper(Str::random(4)),
-                                    'original_quantity' => $stockInicial,
-                                    'current_quantity' => $stockInicial,
-                                    'unit_cost' => $costoCompra,
-                                    'status' => 'ACTIVE',
+                        // Actualizar costo promedio si no tenía costo asignado y viene un costo nuevo
+                        if ($mapped['costo_compra'] !== null && $costoCompra > 0) {
+                            if ($currentInv && (float) $currentInv->average_cost <= 0) {
+                                $currentInv->update([
+                                    'average_cost' => $costoCompra,
                                 ]);
+                                Lot::where('branch_id', $branchId)
+                                    ->where('product_id', $product->id)
+                                    ->where('unit_cost', '<=', 0)
+                                    ->update(['unit_cost' => $costoCompra]);
                             }
-                        } elseif ($duplicateStrategy === 'OVERWRITE_STOCK') {
-                            $currentInv = Inventory::where('branch_id', $branchId)
-                                ->where('product_id', $product->id)
-                                ->first();
+                        }
 
-                            $currentQty = $currentInv ? (float) $currentInv->physical_quantity : 0.0;
-                            $diff = $stockInicial - $currentQty;
+                        $effectiveUnitCost = ($mapped['costo_compra'] !== null && $costoCompra > 0)
+                            ? $costoCompra
+                            : ($currentInv && (float) $currentInv->average_cost > 0 ? (float) $currentInv->average_cost : 0.0);
 
-                            if ($diff > 0) {
-                                $this->kardexService->recordEntry([
-                                    'branch_id' => $branchId,
-                                    'product_id' => $product->id,
-                                    'quantity' => $diff,
-                                    'unit_cost' => $costoCompra,
-                                    'operation_type' => 'AJUSTE_POSITIVO',
-                                    'reference' => 'SOBRESCRITURA DE STOCK - LOTE IMP #'.$batch->id,
-                                    'user_id' => $userId,
-                                ]);
+                        // Manejo de Stock según estrategia (solo si stock_inicial fue provisto explícitamente)
+                        if ($mapped['stock_inicial'] !== null) {
+                            if ($duplicateStrategy === 'UPDATE_AND_ADD_STOCK') {
+                                if ($stockInicial > 0) {
+                                    $this->kardexService->recordEntry([
+                                        'branch_id' => $branchId,
+                                        'product_id' => $product->id,
+                                        'quantity' => $stockInicial,
+                                        'unit_cost' => $effectiveUnitCost,
+                                        'operation_type' => 'INVENTARIO_INICIAL',
+                                        'reference' => 'INVENTARIO ADICIONAL - LOTE IMP #'.$batch->id,
+                                        'user_id' => $userId,
+                                    ]);
 
-                                Lot::create([
-                                    'uuid' => (string) Str::uuid(),
-                                    'branch_id' => $branchId,
-                                    'product_id' => $product->id,
-                                    'lot_number' => 'LOT-AJUSTE-'.date('Ymd').'-'.strtoupper(Str::random(4)),
-                                    'original_quantity' => $diff,
-                                    'current_quantity' => $diff,
-                                    'unit_cost' => $costoCompra,
-                                    'status' => 'ACTIVE',
-                                ]);
-                            } elseif ($diff < 0) {
-                                $this->kardexService->recordExit([
-                                    'branch_id' => $branchId,
-                                    'product_id' => $product->id,
-                                    'quantity' => abs($diff),
-                                    'operation_type' => 'AJUSTE_NEGATIVO',
-                                    'reference' => 'SOBRESCRITURA DE STOCK - LOTE IMP #'.$batch->id,
-                                    'user_id' => $userId,
-                                ]);
+                                    Lot::create([
+                                        'uuid' => (string) Str::uuid(),
+                                        'branch_id' => $branchId,
+                                        'product_id' => $product->id,
+                                        'lot_number' => 'LOT-IMP-'.date('Ymd').'-'.strtoupper(Str::random(4)),
+                                        'original_quantity' => $stockInicial,
+                                        'current_quantity' => $stockInicial,
+                                        'unit_cost' => $effectiveUnitCost,
+                                        'status' => 'ACTIVE',
+                                    ]);
+                                }
+                            } elseif ($duplicateStrategy === 'OVERWRITE_STOCK') {
+                                $currentQty = $currentInv ? (float) $currentInv->physical_quantity : 0.0;
+                                $diff = $stockInicial - $currentQty;
+
+                                if ($diff > 0) {
+                                    $this->kardexService->recordEntry([
+                                        'branch_id' => $branchId,
+                                        'product_id' => $product->id,
+                                        'quantity' => $diff,
+                                        'unit_cost' => $effectiveUnitCost,
+                                        'operation_type' => 'AJUSTE_POSITIVO',
+                                        'reference' => 'SOBRESCRITURA DE STOCK - LOTE IMP #'.$batch->id,
+                                        'user_id' => $userId,
+                                    ]);
+
+                                    Lot::create([
+                                        'uuid' => (string) Str::uuid(),
+                                        'branch_id' => $branchId,
+                                        'product_id' => $product->id,
+                                        'lot_number' => 'LOT-AJUSTE-'.date('Ymd').'-'.strtoupper(Str::random(4)),
+                                        'original_quantity' => $diff,
+                                        'current_quantity' => $diff,
+                                        'unit_cost' => $effectiveUnitCost,
+                                        'status' => 'ACTIVE',
+                                    ]);
+                                } elseif ($diff < 0) {
+                                    $this->kardexService->recordExit([
+                                        'branch_id' => $branchId,
+                                        'product_id' => $product->id,
+                                        'quantity' => abs($diff),
+                                        'operation_type' => 'AJUSTE_NEGATIVO',
+                                        'reference' => 'SOBRESCRITURA DE STOCK - LOTE IMP #'.$batch->id,
+                                        'user_id' => $userId,
+                                    ]);
+                                }
                             }
                         }
 

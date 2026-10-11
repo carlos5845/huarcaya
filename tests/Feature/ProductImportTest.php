@@ -406,3 +406,146 @@ test('estrategia OVERWRITE_STOCK ajusta inventario a la cantidad exacta del Exce
 
     @unlink($tempPath);
 });
+
+test('permite importar repuestos con costo y precio vacios o guiones y previsualiza sin error', function () {
+    $tempPath = tempnam(sys_get_temp_dir(), 'test_empty_fields_').'.xlsx';
+    $writer = SimpleExcelWriter::create($tempPath)->addHeader([
+        'referencia_original', 'nombre_repuesto', 'marca', 'stock_inicial', 'costo_compra', 'precio_venta',
+    ]);
+    // Fila con solo referencia, nombre, marca y stock, sin costos ni precios
+    $writer->addRow([
+        'referencia_original' => 'PISTA-CORONA-592',
+        'nombre_repuesto' => 'PISTA DE CORONA',
+        'marca' => 'M&M',
+        'stock_inicial' => 8,
+        'costo_compra' => '', // vacío
+        'precio_venta' => '-', // guión
+    ]);
+    $writer->close();
+
+    $uploadedFile = new UploadedFile($tempPath, 'pistas.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true);
+
+    $response = $this->actingAs($this->user)->postJson(route('catalog.import.preview'), [
+        'file' => $uploadedFile,
+        'branch_id' => $this->branch->id,
+    ]);
+
+    $response->assertOk()
+        ->assertJson([
+            'success' => true,
+            'data' => [
+                'total_rows' => 1,
+                'valid_new' => 1,
+                'invalid_rows' => 0,
+            ],
+        ]);
+
+    $sampleRow = $response->json('data.sample_rows.0');
+    expect($sampleRow['costo_compra'])->toBeNull();
+    expect($sampleRow['precio_venta'])->toBeNull();
+    expect($sampleRow['stock_inicial'])->toEqual(8.0);
+    expect($sampleRow['status'])->toBe('NEW');
+
+    // Ahora ejecutar importación
+    $uploadedFile2 = new UploadedFile($tempPath, 'pistas.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true);
+    $storeResponse = $this->actingAs($this->user)->postJson(route('catalog.import.store'), [
+        'file' => $uploadedFile2,
+        'branch_id' => $this->branch->id,
+        'duplicate_strategy' => 'UPDATE_AND_ADD_STOCK',
+    ]);
+
+    $storeResponse->assertOk()
+        ->assertJson([
+            'success' => true,
+            'result' => [
+                'total' => 1,
+                'created' => 1,
+                'failed' => 0,
+            ],
+        ]);
+
+    $product = Product::where('primary_reference', 'PISTA-CORONA-592')->first();
+    expect($product)->not->toBeNull();
+    expect($product->name)->toBe('PISTA DE CORONA');
+
+    $inv = Inventory::where('product_id', $product->id)->where('branch_id', $this->branch->id)->first();
+    expect((float) $inv->physical_quantity)->toEqual(8.0);
+
+    @unlink($tempPath);
+});
+
+test('segunda importacion actualiza precios y datos tecnicos faltantes sin duplicar ni alterar stock si viene vacio', function () {
+    // 1. Primera importación con solo datos básicos y 10 de stock inicial
+    $tempPath1 = tempnam(sys_get_temp_dir(), 'test_part1_').'.xlsx';
+    $writer1 = SimpleExcelWriter::create($tempPath1)->addHeader([
+        'referencia_original', 'nombre_repuesto', 'marca', 'stock_inicial',
+    ]);
+    $writer1->addRow([
+        'referencia_original' => 'CORONA-88',
+        'nombre_repuesto' => 'CORONA SIN PRECIO',
+        'marca' => 'GENERICA',
+        'stock_inicial' => 10,
+    ]);
+    $writer1->close();
+
+    $this->actingAs($this->user)->postJson(route('catalog.import.store'), [
+        'file' => new UploadedFile($tempPath1, 'part1.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true),
+        'branch_id' => $this->branch->id,
+        'duplicate_strategy' => 'UPDATE_AND_ADD_STOCK',
+    ])->assertOk();
+
+    $product = Product::where('primary_reference', 'CORONA-88')->first();
+    expect($product)->not->toBeNull();
+    expect($product->prices()->count())->toBe(0);
+
+    $inv1 = Inventory::where('product_id', $product->id)->where('branch_id', $this->branch->id)->first();
+    expect((float) $inv1->physical_quantity)->toEqual(10.0);
+
+    // 2. Segunda importación: ahora enviamos precio de venta, costo, codigo interno y stock_inicial vacio
+    $tempPath2 = tempnam(sys_get_temp_dir(), 'test_part2_').'.xlsx';
+    $writer2 = SimpleExcelWriter::create($tempPath2)->addHeader([
+        'referencia_original', 'nombre_repuesto', 'codigo_interno', 'costo_compra', 'precio_venta', 'stock_inicial',
+    ]);
+    $writer2->addRow([
+        'referencia_original' => 'CORONA-88',
+        'nombre_repuesto' => 'CORONA CON PRECIO DEFINIDO',
+        'codigo_interno' => 'COR-088',
+        'costo_compra' => 'S/ 45.50',
+        'precio_venta' => 'S/ 75.00',
+        'stock_inicial' => '', // vacío: no debe alterar el stock existente
+    ]);
+    $writer2->close();
+
+    $storeResponse2 = $this->actingAs($this->user)->postJson(route('catalog.import.store'), [
+        'file' => new UploadedFile($tempPath2, 'part2.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true),
+        'branch_id' => $this->branch->id,
+        'duplicate_strategy' => 'UPDATE_AND_ADD_STOCK',
+    ]);
+
+    $storeResponse2->assertOk()
+        ->assertJson([
+            'success' => true,
+            'result' => [
+                'total' => 1,
+                'created' => 0,
+                'updated' => 1,
+            ],
+        ]);
+
+    $product->refresh();
+    expect($product->name)->toBe('CORONA CON PRECIO DEFINIDO');
+    expect($product->internal_code)->toBe('COR-088');
+
+    // Verificar que ahora sí tiene precio
+    $price = ProductPrice::where('product_id', $product->id)->where('price_type', 'PUBLIC')->first();
+    expect($price)->not->toBeNull();
+    expect((float) $price->amount)->toEqual(75.00);
+
+    // Verificar que el stock se mantiene en 10 intacto porque stock_inicial vino vacío
+    $inv2 = Inventory::where('product_id', $product->id)->where('branch_id', $this->branch->id)->first();
+    expect((float) $inv2->physical_quantity)->toEqual(10.0);
+    expect((float) $inv2->average_cost)->toEqual(45.50);
+
+    @unlink($tempPath1);
+    @unlink($tempPath2);
+});

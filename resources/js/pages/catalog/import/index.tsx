@@ -80,10 +80,10 @@ interface SampleRow {
     marca?: string;
     categoria?: string;
     unidad_medida?: string;
-    costo_compra: number;
-    precio_venta: number;
-    stock_inicial: number;
-    stock_minimo: number;
+    costo_compra: number | null;
+    precio_venta: number | null;
+    stock_inicial: number | null;
+    stock_minimo: number | null;
     status: 'NEW' | 'EXISTS' | 'INVALID';
     error_message?: string | null;
 }
@@ -788,13 +788,13 @@ export default function ImportIndex({ branches = [], defaultBranchId, recentBatc
                                                                 {row.marca || '-'} / {row.categoria || '-'}
                                                             </TableCell>
                                                             <TableCell className="text-right text-xs font-mono">
-                                                                S/ {row.costo_compra.toFixed(2)}
+                                                                {row.costo_compra !== null ? `S/ ${row.costo_compra.toFixed(2)}` : '-'}
                                                             </TableCell>
                                                             <TableCell className="text-right text-xs font-mono font-semibold text-emerald-700 dark:text-emerald-400">
-                                                                S/ {row.precio_venta.toFixed(2)}
+                                                                {row.precio_venta !== null ? `S/ ${row.precio_venta.toFixed(2)}` : '-'}
                                                             </TableCell>
                                                             <TableCell className="text-right text-xs font-mono font-semibold">
-                                                                {row.stock_inicial} {row.unidad_medida || 'UND'}
+                                                                {row.stock_inicial !== null ? `${row.stock_inicial} ${row.unidad_medida || 'UND'}` : '-'}
                                                             </TableCell>
                                                             <TableCell className="text-xs text-muted-foreground">
                                                                 {row.error_message ? (
