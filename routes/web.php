@@ -10,6 +10,7 @@ use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\ConflictController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\CustomerReturnController;
+use App\Http\Controllers\CustomerReturnPrintController;
 use App\Http\Controllers\DailyClosingController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\InventoryAdjustmentController;
@@ -26,6 +27,7 @@ use App\Http\Controllers\ReportController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SaleController;
 use App\Http\Controllers\SalePrintController;
+use App\Http\Controllers\Settings\CompanySettingsController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\TransferController;
 use App\Http\Controllers\TransferPrintController;
@@ -80,8 +82,10 @@ Route::middleware(['auth'])->group(function () {
     // Configuración forzada en primer login
     Route::post('/user/setup-profile', [UserSetupController::class, 'store'])->name('user.setup-profile');
 
-    // Branch Management
+    // Branch & Company Management
     Route::middleware(['role_or_permission:Super Admin|view_branches'])->group(function () {
+        Route::get('company', [CompanySettingsController::class, 'edit'])->name('company.edit');
+        Route::match(['put', 'post'], 'company', [CompanySettingsController::class, 'update'])->name('company.update');
         Route::resource('branches', BranchController::class)->except(['create', 'show', 'edit']);
 
     });
@@ -127,8 +131,10 @@ Route::middleware(['auth'])->group(function () {
         Route::get('sales/{sale}/print/a4', [SalePrintController::class, 'a4'])->name('sales.print.a4');
         Route::resource('sales', SaleController::class);
 
+        Route::get('customer-returns/{customer_return}/print', [CustomerReturnPrintController::class, 'show'])->name('customer-returns.print');
         Route::post('customer-returns/{customer_return}/confirm', [CustomerReturnController::class, 'confirm'])->name('customer-returns.confirm');
-        Route::resource('customer-returns', CustomerReturnController::class);
+        Route::post('customer-returns/{customer_return}/cancel', [CustomerReturnController::class, 'cancel'])->name('customer-returns.cancel');
+        Route::resource('customer-returns', CustomerReturnController::class)->except(['destroy', 'edit', 'update']);
 
         Route::get('receivables', [ReceivableController::class, 'index'])->name('receivables.index');
         Route::get('receivables/{receivable}', [ReceivableController::class, 'show'])->name('receivables.show');

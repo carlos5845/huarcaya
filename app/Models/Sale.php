@@ -82,4 +82,69 @@ class Sale extends Model
     {
         return $this->hasMany(CustomerReturn::class);
     }
+
+    /**
+     * Devuelve la serie estándar SUNAT de 4 caracteres según el tipo de comprobante y la sucursal emisora.
+     */
+    public static function defaultSunatSeries(?string $saleType, ?Branch $branch = null): string
+    {
+        return match (strtoupper((string) $saleType)) {
+            'FACTURA' => strtoupper($branch?->invoice_series ?: 'F001'),
+            'BOLETA' => strtoupper($branch?->boleta_series ?: 'B001'),
+            default => strtoupper($branch?->ticket_series ?: 'NV01'),
+        };
+    }
+
+    /**
+     * Genera el siguiente correlativo secuencial de 8 dígitos para la sucursal y serie.
+     */
+    public static function nextCorrelativeForSeries(int $branchId, string $series): string
+    {
+        $count = self::where('branch_id', $branchId)
+            ->where('external_document_series', $series)
+            ->count();
+
+        return str_pad((string) ($count + 1), 8, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Devuelve la numeración fiscal normalizada [Serie 4 chars]-[Correlativo 8 dígitos] (ej. B001-00000123).
+     */
+    public function formattedFiscalNumber(): string
+    {
+        $branch = $this->relationLoaded('branch') ? $this->branch : null;
+
+        $series = ! empty($this->external_document_series)
+            ? strtoupper($this->external_document_series)
+            : self::defaultSunatSeries($this->external_document_type ?: $this->sale_type, $branch);
+
+        $rawNumber = $this->external_document_number;
+        if (! empty($rawNumber) && ctype_digit((string) $rawNumber)) {
+            $number = str_pad((string) $rawNumber, 8, '0', STR_PAD_LEFT);
+        } elseif (! empty($rawNumber)) {
+            $number = $rawNumber;
+        } else {
+            $number = str_pad((string) ($this->id ?: 1), 8, '0', STR_PAD_LEFT);
+        }
+
+        return "{$series}-{$number}";
+    }
+
+    /**
+     * Normaliza el código de unidad de medida según el Catálogo 03 de SUNAT (UBL 2.1).
+     */
+    public static function sunatUnitCode(?string $code): string
+    {
+        $normalized = strtoupper(trim((string) $code));
+
+        if ($normalized === '' || in_array($normalized, ['UND', 'UNI', 'UNID', 'UNIDAD', 'UNIDADES', 'PZA', 'PIEZA'], true)) {
+            return 'NIU';
+        }
+
+        if (in_array($normalized, ['SRV', 'SERV', 'SERVICIO', 'SERVICIOS'], true)) {
+            return 'ZZ';
+        }
+
+        return $normalized;
+    }
 }

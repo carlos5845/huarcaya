@@ -14,7 +14,11 @@ class Customer extends Model
     protected $fillable = [
         'uuid', 'company_id', 'document_type', 'document_number',
         'legal_name', 'trade_name', 'phone', 'email', 'address',
-        'status', 'created_by',
+        'status', 'store_credit_balance', 'created_by',
+    ];
+
+    protected $casts = [
+        'store_credit_balance' => 'decimal:6',
     ];
 
     public function company(): BelongsTo

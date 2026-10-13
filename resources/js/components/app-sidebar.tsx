@@ -160,6 +160,13 @@ export function AppSidebar() {
 
     // 5. Administración
     const adminItems: NavItem[] = [];
+    if (isSuperAdmin) {
+        adminItems.push({
+            title: 'Datos de Empresa',
+            href: '/company',
+            icon: Landmark,
+        });
+    }
     if (hasPerm('view_users')) {
         adminItems.push({
             title: 'Usuarios',

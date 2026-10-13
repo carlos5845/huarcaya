@@ -9,6 +9,7 @@ use App\Models\DailyClosingVersion;
 use App\Models\PaymentMethod;
 use App\Models\PaymentMethodLine;
 use App\Models\Purchase;
+use App\Models\RefundMethodLine;
 use App\Models\Sale;
 use App\Models\SyncOperation;
 use App\Models\Transfer;
@@ -65,7 +66,7 @@ class DailyClosingService
             ],
         ];
 
-        // 2. Payments by payment method
+        // 2. Payments & Refunds by payment method
         $activeMethods = PaymentMethod::where('is_active', true)->orderBy('id')->get();
 
         $paymentsByMethod = PaymentMethodLine::whereHas('payment', function ($q) use ($branchId, $date) {
@@ -77,8 +78,18 @@ class DailyClosingService
             ->groupBy('payment_method_id')
             ->pluck('total', 'payment_method_id');
 
+        $refundsByMethod = RefundMethodLine::whereHas('refund', function ($q) use ($branchId, $date) {
+            $q->where('branch_id', $branchId)
+                ->whereDate('operation_date', $date)
+                ->where('status', '!=', 'CANCELLED');
+        })
+            ->selectRaw('payment_method_id, SUM(amount) as total')
+            ->groupBy('payment_method_id')
+            ->pluck('total', 'payment_method_id');
+
         $paymentMethodsData = [];
         $totalExpectedCash = 0.0;
+        $totalRefundsAmount = 0.0;
 
         foreach ($activeMethods as $method) {
             $collectedFromPayments = (float) ($paymentsByMethod[$method->id] ?? 0);
@@ -93,17 +104,22 @@ class DailyClosingService
                 ->sum('total_amount');
 
             // Avoid double count: if payments exist, use payments; otherwise fallback
-            $expected = $collectedFromPayments > 0 ? $collectedFromPayments : $directSalesWithoutPayment;
+            $grossExpected = $collectedFromPayments > 0 ? $collectedFromPayments : $directSalesWithoutPayment;
+            $refundedForMethod = (float) ($refundsByMethod[$method->id] ?? 0);
+            $expected = max(0.0, $grossExpected - $refundedForMethod);
 
             $paymentMethodsData[] = [
                 'id' => $method->id,
                 'name' => $method->name,
                 'code' => $method->code,
                 'is_cash' => (bool) $method->is_cash,
+                'gross_amount' => round($grossExpected, 2),
+                'refunded_amount' => round($refundedForMethod, 2),
                 'expected_amount' => round($expected, 2),
             ];
 
             $totalExpectedCash += $expected;
+            $totalRefundsAmount += $refundedForMethod;
         }
 
         // 3. Purchases on date
@@ -130,12 +146,12 @@ class DailyClosingService
             return $conflict->branch?->id === $branchId;
         })->count();
 
-        $pendingSyncs = SyncOperation::whereIn('status', ['PENDING', 'FAILED'])
+        $pendingSyncs = SyncOperation::where('status', 'PENDING')
             ->get()
             ->filter(function ($op) use ($branchId) {
                 $opBranchId = $op->payload['branch_id'] ?? $op->device?->branch_id;
 
-                return $opBranchId === $branchId;
+                return (int) $opBranchId === (int) $branchId;
             })->count();
 
         $blockingReasons = [];
@@ -163,6 +179,7 @@ class DailyClosingService
             ],
             'payment_methods' => $paymentMethodsData,
             'total_expected_cash' => round($totalExpectedCash, 2),
+            'total_refunds_amount' => round($totalRefundsAmount, 2),
             'purchases' => [
                 'count' => $purchasesCount,
                 'total_amount' => round($purchasesTotal, 2),

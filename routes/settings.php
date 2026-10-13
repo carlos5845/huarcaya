@@ -28,9 +28,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('security.sessions.destroy');
 
     Route::redirect('settings/appearance', '/settings/profile')->name('appearance.edit');
-
-    Route::get('settings/company', [CompanySettingsController::class, 'edit'])->name('company.edit');
-    Route::put('settings/company', [CompanySettingsController::class, 'update'])->name('company.update');
+    Route::redirect('settings/company', '/company');
+    Route::match(['put', 'post'], 'settings/company', [CompanySettingsController::class, 'update']);
 });
 
 Route::get('.well-known/passkey-endpoints', function () {

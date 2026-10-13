@@ -13,7 +13,7 @@ class Inventory extends Model
 
     protected $fillable = [
         'uuid', 'branch_id', 'product_id',
-        'physical_quantity', 'available_quantity', 'average_cost',
+        'physical_quantity', 'available_quantity', 'damaged_quantity', 'average_cost',
         'status', 'last_counted_at',
     ];
 
@@ -22,6 +22,7 @@ class Inventory extends Model
         return [
             'physical_quantity' => 'decimal:6',
             'available_quantity' => 'decimal:6',
+            'damaged_quantity' => 'decimal:6',
             'average_cost' => 'decimal:6',
             'last_counted_at' => 'datetime',
         ];

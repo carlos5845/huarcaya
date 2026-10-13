@@ -185,20 +185,6 @@
 </head>
 <body>
 
-    <div class="no-print-bar">
-        <div>
-            <strong>Hoja de Picking / Armado de Carga</strong> &bull; {{ $transfer->transfer_number }}
-        </div>
-        <div style="display: flex; gap: 8px;">
-            <a href="javascript:window.print()" class="btn btn-primary">
-                🖨️ Imprimir Hoja de Picking
-            </a>
-            <button type="button" onclick="if(window.parent !== window){ window.parent.postMessage('close-preview', '*'); } else { window.close(); }" class="btn btn-secondary">
-                ✕ Cerrar
-            </button>
-        </div>
-    </div>
-
     <div class="page">
         <div class="header-box">
             <div style="display: flex; align-items: center; gap: 14px;">

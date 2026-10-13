@@ -35,6 +35,8 @@ class CustomerController extends Controller
             'status' => ['required', 'in:ACTIVE,INACTIVE'],
         ]);
 
+        $this->validateDocumentFormat($validated['document_type'], $validated['document_number']);
+
         $companyId = Auth::user()->company_id;
 
         if ($validated['document_type'] && $validated['document_number']) {
@@ -51,9 +53,9 @@ class CustomerController extends Controller
         Customer::create([
             'uuid' => (string) Str::uuid(),
             'company_id' => $companyId,
-            'document_type' => $validated['document_type'] ?? null,
-            'document_number' => $validated['document_number'] ?? null,
-            'legal_name' => $validated['legal_name'],
+            'document_type' => strtoupper(trim($validated['document_type'])),
+            'document_number' => trim($validated['document_number']),
+            'legal_name' => trim($validated['legal_name']),
             'trade_name' => $validated['trade_name'] ?? null,
             'phone' => $validated['phone'] ?? null,
             'email' => $validated['email'] ?? null,
@@ -77,6 +79,8 @@ class CustomerController extends Controller
             'address' => ['nullable', 'string'],
             'status' => ['required', 'in:ACTIVE,INACTIVE'],
         ]);
+
+        $this->validateDocumentFormat($validated['document_type'], $validated['document_number']);
 
         if ($validated['document_type'] && $validated['document_number']) {
             if (Customer::where('company_id', $customer->company_id)
@@ -111,5 +115,26 @@ class CustomerController extends Controller
         ]);
 
         return back()->with('success', 'Estado del cliente modificado exitosamente.');
+    }
+
+    /**
+     * Valida la estructura del número de documento según el Catálogo 06 de SUNAT.
+     */
+    private function validateDocumentFormat(string $documentType, string $documentNumber): void
+    {
+        $type = strtoupper(trim($documentType));
+        $number = trim($documentNumber);
+
+        if ($type === 'RUC' && ! preg_match('/^\d{11}$/', $number)) {
+            throw ValidationException::withMessages([
+                'document_number' => 'El RUC debe contener exactamente 11 dígitos numéricos (ej. RUC 10 o RUC 20).',
+            ]);
+        }
+
+        if ($type === 'DNI' && $number !== '00000000' && ! preg_match('/^\d{8}$/', $number)) {
+            throw ValidationException::withMessages([
+                'document_number' => 'El DNI debe contener exactamente 8 dígitos numéricos.',
+            ]);
+        }
     }
 }

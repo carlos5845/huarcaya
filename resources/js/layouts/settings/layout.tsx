@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { useCurrentUrl } from '@/hooks/use-current-url';
 import { cn, toUrl } from '@/lib/utils';
-import { edit as editCompany } from '@/routes/company';
 import { edit } from '@/routes/profile';
 import { edit as editSecurity } from '@/routes/security';
 import type { NavItem } from '@/types';
@@ -19,11 +18,6 @@ const sidebarNavItems: NavItem[] = [
     {
         title: 'Seguridad',
         href: editSecurity(),
-        icon: null,
-    },
-    {
-        title: 'Empresa',
-        href: editCompany(),
         icon: null,
     },
 ];
@@ -67,8 +61,8 @@ export default function SettingsLayout({ children }: PropsWithChildren) {
 
                 <Separator className="my-6 lg:hidden" />
 
-                <div className="flex-1 md:max-w-2xl">
-                    <section className="max-w-xl space-y-12">
+                <div className="flex-1 md:max-w-4xl">
+                    <section className="max-w-3xl space-y-10">
                         {children}
                     </section>
                 </div>

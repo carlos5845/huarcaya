@@ -179,20 +179,6 @@
 </head>
 <body>
 
-    <div class="no-print-bar">
-        <div>
-            <strong>{{ $report['title'] ?? 'Reporte' }}</strong> &bull; Inversiones Huarcaya
-        </div>
-        <div style="display: flex; gap: 8px;">
-            <a href="javascript:window.print()" class="btn btn-primary">
-                🖨️ Imprimir / Guardar PDF
-            </a>
-            <button type="button" onclick="if(window.parent !== window){ window.parent.postMessage('close-preview', '*'); } else { window.close(); }" class="btn btn-secondary">
-                ✕ Cerrar
-            </button>
-        </div>
-    </div>
-
     <div class="page">
         <!-- Encabezado con Logotipo -->
         <table class="header-table">

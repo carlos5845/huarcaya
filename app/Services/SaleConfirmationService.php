@@ -55,6 +55,7 @@ class SaleConfirmationService
                 foreach ($activeKitVersion->components as $component) {
                     $componentQty = (float) $line->quantity * (float) $component->quantity;
                     $itemsToDeduct[] = [
+                        'sale_line_id' => $line->id,
                         'product_id' => $component->product_id,
                         'quantity' => $componentQty,
                     ];
@@ -62,6 +63,7 @@ class SaleConfirmationService
                 }
             } else {
                 $itemsToDeduct[] = [
+                    'sale_line_id' => $line->id,
                     'product_id' => $line->product_id,
                     'quantity' => (float) $line->quantity,
                 ];
@@ -107,6 +109,7 @@ class SaleConfirmationService
                 'uuid' => (string) Str::uuid(),
                 'inventory_movement_id' => $movement->id,
                 'product_id' => $item['product_id'],
+                'sale_line_id' => $item['sale_line_id'] ?? null,
                 'direction' => 'OUT',
                 'quantity' => $item['quantity'],
                 'unit_cost' => $unitCost,
@@ -132,6 +135,7 @@ class SaleConfirmationService
 
             $lots = Lot::where('branch_id', $sale->branch_id)
                 ->where('product_id', $item['product_id'])
+                ->where('status', 'ACTIVE')
                 ->where('current_quantity', '>', 0)
                 ->orderBy('created_at', 'asc')
                 ->lockForUpdate()

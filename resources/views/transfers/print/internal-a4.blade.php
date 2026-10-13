@@ -282,20 +282,6 @@
 </head>
 <body>
 
-    <div class="no-print-bar">
-        <div>
-            <strong>Nota de Traslado Interno / Guía de Transferencia</strong> &bull; {{ $transfer->transfer_number }}
-        </div>
-        <div style="display: flex; gap: 8px;">
-            <a href="javascript:window.print()" class="btn btn-primary">
-                🖨️ Imprimir / Guardar PDF
-            </a>
-            <button type="button" onclick="if(window.parent !== window){ window.parent.postMessage('close-preview', '*'); } else { window.close(); }" class="btn btn-secondary">
-                ✕ Cerrar
-            </button>
-        </div>
-    </div>
-
     <div class="page">
         <!-- Encabezado -->
         <table class="header-table">

@@ -114,11 +114,23 @@ export default function CustomerReturnsIndex({
                     )}
                 </Button>
             ),
-            cell: ({ row }) => (
-                <span className="font-mono text-xs font-semibold text-foreground">
-                    {row.original.return_number}
-                </span>
-            ),
+            cell: ({ row }) => {
+                const isFiscal = Boolean(row.original.is_electronic_invoiced);
+                const fiscalCode = row.original.credit_note_series && row.original.credit_note_number
+                    ? `${row.original.credit_note_series}-${row.original.credit_note_number}`
+                    : null;
+
+                return (
+                    <div className="flex flex-col">
+                        <span className="font-mono text-xs font-semibold text-foreground">
+                            {fiscalCode || row.original.return_number}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground font-mono">
+                            {fiscalCode ? `Op: ${row.original.return_number}` : (isFiscal ? 'NC Electrónica (Pend.)' : 'Vale Interno')}
+                        </span>
+                    </div>
+                );
+            },
         },
         {
             id: 'customer',
@@ -228,6 +240,8 @@ export default function CustomerReturnsIndex({
                 <div className="flex justify-center">
                     {row.original.status === 'DRAFT' ? (
                         <Badge variant="outline" className="text-[11px] bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30">Borrador</Badge>
+                    ) : row.original.status === 'CANCELLED' ? (
+                        <Badge variant="outline" className="text-[11px] bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30">Anulado</Badge>
                     ) : (
                         <Badge variant="outline" className="text-[11px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 gap-1">
                             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />

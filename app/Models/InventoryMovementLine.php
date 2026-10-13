@@ -12,7 +12,7 @@ class InventoryMovementLine extends Model
     use HasFactory;
 
     protected $fillable = [
-        'uuid', 'inventory_movement_id', 'product_id',
+        'uuid', 'inventory_movement_id', 'product_id', 'sale_line_id',
         'direction', 'quantity', 'unit_cost', 'total_cost',
     ];
 
@@ -33,6 +33,11 @@ class InventoryMovementLine extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function saleLine(): BelongsTo
+    {
+        return $this->belongsTo(SaleLine::class);
     }
 
     public function lotAllocations(): HasMany

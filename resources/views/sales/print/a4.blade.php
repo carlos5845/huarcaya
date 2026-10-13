@@ -4,20 +4,42 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     @php
-        $docType = $sale->external_document_type ?: $sale->sale_type;
-        if (str_contains(strtoupper($docType), 'FACTURA')) {
+        $docType = strtoupper($sale->external_document_type ?: $sale->sale_type);
+        $isFactura = str_contains($docType, 'FACTURA');
+        $isBoleta = str_contains($docType, 'BOLETA');
+        $isFiscalDoc = $isFactura || $isBoleta;
+
+        if ($isFactura) {
             $docTitle = 'FACTURA ELECTRÓNICA';
-        } elseif (str_contains(strtoupper($docType), 'BOLETA')) {
+        } elseif ($isBoleta) {
             $docTitle = 'BOLETA DE VENTA ELECTRÓNICA';
-        } elseif (str_contains(strtoupper($docType), 'NOTA')) {
-            $docTitle = 'NOTA DE VENTA ELECTRÓNICA';
+        } elseif (str_contains($docType, 'NOTA')) {
+            $docTitle = 'NOTA DE VENTA';
         } else {
             $docTitle = 'COMPROBANTE DE PAGO';
         }
 
-        $fullDocNumber = $sale->external_document_series 
-            ? "{$sale->external_document_series}-{$sale->external_document_number}" 
-            : $sale->sale_number;
+        $fullDocNumber = $sale->formattedFiscalNumber();
+
+        $rawCustomerDoc = trim((string) ($sale->customer_document_snapshot ?? ($sale->customer->document_number ?? '')));
+        $isGenericCustomerDoc = $rawCustomerDoc === '' || $rawCustomerDoc === '00000000' || $rawCustomerDoc === '-';
+
+        if ($isFactura) {
+            $customerDocLabel = 'R.U.C.';
+            $customerDocValue = $isGenericCustomerDoc ? '-' : $rawCustomerDoc;
+        } elseif ($isGenericCustomerDoc) {
+            $customerDocLabel = 'DOC. IDENTIDAD';
+            $customerDocValue = '- (SIN DOCUMENTO)';
+        } else {
+            $customerDocLabel = $sale->customer->document_type ?? (strlen($rawCustomerDoc) === 11 ? 'R.U.C.' : 'D.N.I.');
+            $customerDocValue = $rawCustomerDoc;
+        }
+
+        $emissionDateFormatted = \Carbon\Carbon::parse($sale->operation_date ?? $sale->issue_date)->format('d/m/Y');
+        $emissionTimeFormatted = ($sale->created_at ?? now())->format('H:i:s');
+        $dueDateFormatted = ($sale->payment_type === 'CREDIT' && $sale->due_date)
+            ? \Carbon\Carbon::parse($sale->due_date)->format('d/m/Y')
+            : $emissionDateFormatted;
 
         $currSymbol = $sale->currency_code === 'USD' ? '$' : 'S/';
         $currencyName = $sale->currency_code === 'USD' ? 'DÓLARES AMERICANOS (USD)' : 'SOLES (PEN)';
@@ -480,42 +502,37 @@
 </head>
 <body>
 
-    <!-- Barra de Control (no imprimible) -->
-    <div class="no-print-bar">
-        <div style="font-size: 11px; font-weight: 600; display: flex; items-center; gap: 8px;">
-            <span>📄 {{ $docTitle }} &bull; {{ $fullDocNumber }}</span>
-        </div>
-        <div style="display: flex; gap: 8px;">
-            <a href="javascript:window.print()" class="btn btn-primary">
-                🖨️ Imprimir Comprobante (A4)
-            </a>
-            <button type="button" onclick="if(window.parent !== window){ window.parent.postMessage('close-preview', '*'); } else { window.close(); }" class="btn btn-secondary">
-                ✕ Cerrar
-            </button>
-        </div>
-    </div>
-
     <div class="page">
         <div>
             <!-- CABECERA -->
             <table class="header-table">
                 <tr>
                     <td class="company-col">
-                        <img src="{{ asset('logo-text.png') }}" alt="{{ $company->business_name ?? 'Inversiones Huarcaya' }}" class="company-logo" onerror="this.style.display='none'" />
-                        <div class="company-name">{{ $company->business_name ?? 'INVERSIONES HUARCAYA S.A.C.' }}</div>
-                        <div class="company-activity">Venta de Repuestos Automotrices & Maquinaria Pesada</div>
+                        <img src="{{ $company ? $company->logoUrl() : asset('logo-text.png') }}" alt="{{ $company?->business_name ?: ($company?->name ?? 'Inversiones Huarcaya') }}" class="company-logo" onerror="this.style.display='none'" />
+                        <div class="company-name">{{ $company?->business_name ?: ($company?->name ?? 'INVERSIONES HUARCAYA S.A.C.') }}</div>
+                        <div class="company-activity">{{ $company?->economic_activity ?: 'Venta de Repuestos Automotrices & Maquinaria Pesada' }}</div>
                         <div class="company-info">
-                            <div><strong>Sede Emisora:</strong> {{ $sale->branch->name ?? 'Sede Principal' }}</div>
-                            <div><strong>Dirección:</strong> {{ $sale->branch->address ?? ($company->address ?? 'Jr. Los Negocios 123, Lima - Perú') }}</div>
                             <div>
-                                @if(!empty($company->phone)) <strong>Tel:</strong> {{ $company->phone }} &bull; @endif
-                                @if(!empty($company->email)) <strong>Email:</strong> {{ $company->email }} @endif
+                                <strong>Sede Emisora:</strong> {{ $sale->branch?->name ?? 'Sede Principal' }}
+                                <span style="font-family: monospace; font-size: 8px; color: #64748b;">(Anexo SUNAT: {{ $sale->branch?->sunat_establishment_code ?: '0000' }})</span>
+                            </div>
+                            <div>
+                                <strong>Dirección:</strong> {{ $sale->branch?->address ?: ($company?->address ?? 'Jr. Los Negocios 123') }}
+                                &mdash; {{ $sale->branch?->ubigeoLocationText() ?? 'LIMA - PERÚ' }}
+                            </div>
+                            @if(!empty($company?->address) && !empty($sale->branch?->address) && $company->address !== $sale->branch->address)
+                                <div><strong>Domicilio Fiscal:</strong> {{ $company->address }}</div>
+                            @endif
+                            <div>
+                                @php $contactPhone = $sale->branch?->phone ?: $company?->phone; @endphp
+                                @if(!empty($contactPhone)) <strong>Tel:</strong> {{ $contactPhone }} &bull; @endif
+                                @if(!empty($company?->email)) <strong>Email:</strong> {{ $company->email }} @endif
                             </div>
                         </div>
                     </td>
                     <td class="sunat-col">
                         <div class="sunat-box">
-                            <div class="sunat-ruc">R.U.C. {{ $company->document_number ?? '20600000000' }}</div>
+                            <div class="sunat-ruc">R.U.C. {{ $company?->document_number ?? '20600000000' }}</div>
                             <div class="sunat-doc-title">{{ $docTitle }}</div>
                             <div class="sunat-number">{{ $fullDocNumber }}</div>
                         </div>
@@ -527,23 +544,23 @@
             <div class="info-card">
                 <table class="info-table">
                     <tr>
-                        <td class="label">Señor(es):</td>
+                        <td class="label">{{ $isFactura ? 'Razón Social:' : 'Señor(es):' }}</td>
                         <td class="val" style="width: 48%; text-transform: uppercase;">
-                            {{ $sale->customer_name_snapshot ?? ($sale->customer->legal_name ?? 'PÚBLICO GENERAL') }}
+                            {{ $sale->customer_name_snapshot ?? ($sale->customer->legal_name ?? 'CLIENTES VARIOS') }}
                         </td>
                         <td class="label" style="width: 14%;">Fecha Emisión:</td>
-                        <td class="val" style="width: 20%;">
-                            {{ \Carbon\Carbon::parse($sale->operation_date ?? $sale->issue_date)->format('d/m/Y') }}
+                        <td class="val font-mono" style="width: 20%;">
+                            {{ $emissionDateFormatted }} {{ $emissionTimeFormatted }}
                         </td>
                     </tr>
                     <tr>
-                        <td class="label">{{ $sale->customer->document_type ?? 'RUC / DNI' }}:</td>
+                        <td class="label">{{ $customerDocLabel }}:</td>
                         <td class="val font-mono">
-                            {{ $sale->customer_document_snapshot ?? ($sale->customer->document_number ?? '00000000') }}
+                            {{ $customerDocValue }}
                         </td>
                         <td class="label">Fecha Vence:</td>
-                        <td class="val">
-                            {{ $sale->due_date ? \Carbon\Carbon::parse($sale->due_date)->format('d/m/Y') : \Carbon\Carbon::parse($sale->operation_date ?? $sale->issue_date)->format('d/m/Y') }}
+                        <td class="val font-mono">
+                            {{ $dueDateFormatted }}
                         </td>
                     </tr>
                     <tr>
@@ -551,9 +568,14 @@
                         <td class="val" style="text-transform: uppercase;">
                             {{ $sale->customer_address_snapshot ?? ($sale->customer->address ?? '-') }}
                         </td>
-                        <td class="label">Condición:</td>
+                        <td class="label">Forma de Pago:</td>
                         <td class="val" style="color: {{ $sale->payment_type === 'CREDIT' ? '#dc2626' : '#16a34a' }}; font-weight: 700;">
                             {{ $sale->payment_type === 'CASH' ? 'AL CONTADO' : 'AL CRÉDITO' }}
+                            @if($sale->payment_type === 'CREDIT')
+                                <div style="font-size: 8px; color: #475569; font-weight: 600; margin-top: 1px;">
+                                    Cuota 001 (Vence {{ $dueDateFormatted }}): {{ $currSymbol }} {{ number_format($pendingAmount > 0 ? $pendingAmount : $total, 2) }}
+                                </div>
+                            @endif
                         </td>
                     </tr>
                     <tr>
@@ -575,10 +597,10 @@
                     <tr>
                         <th class="text-center" style="width: 4%;">#</th>
                         <th class="text-center" style="width: 12%;">Código / Ref</th>
-                        <th class="text-center" style="width: 8%;">Cant.</th>
-                        <th class="text-center" style="width: 8%;">Unidad</th>
-                        <th class="text-left" style="width: 44%;">Descripción del Repuesto / Producto</th>
-                        <th class="text-right" style="width: 12%;">Precio Unit.</th>
+                        <th class="text-center" style="width: 7%;">Cant.</th>
+                        <th class="text-center" style="width: 8%;">U.M.</th>
+                        <th class="text-left" style="width: 41%;">Descripción del Repuesto / Producto</th>
+                        <th class="text-right" style="width: 16%;">{{ $tax > 0 ? 'P. Unit. (Inc. IGV)' : 'Valor Unit.' }}</th>
                         <th class="text-right" style="width: 12%;">Importe</th>
                     </tr>
                 </thead>
@@ -593,7 +615,7 @@
                                 {{ number_format($line->quantity, $line->quantity == intval($line->quantity) ? 0 : 2) }}
                             </td>
                             <td class="text-center font-mono" style="font-size: 8.5px; text-transform: uppercase;">
-                                {{ $line->product->unit->code ?? 'NIU' }}
+                                {{ \App\Models\Sale::sunatUnitCode($line->product->unit->code ?? null) }}
                             </td>
                             <td>
                                 <div style="font-weight: 700; color: #0f172a;">
@@ -630,54 +652,18 @@
                 {{ $totalInWords }}
             </div>
 
-            <!-- SECCIÓN INFERIOR: CONDICIONES Y TOTALES -->
+            <!-- SECCIÓN INFERIOR: QR Y TOTALES -->
             <table class="bottom-table">
                 <tr>
                     <td class="bottom-left-col">
-                        <!-- Detalles de Pago & Observaciones -->
-                        <div class="payment-summary-box">
-                            <div class="box-title">Forma de Pago & Amortización</div>
-                            <table style="width: 100%; font-size: 9px; line-height: 1.4;">
-                                <tr>
-                                    <td style="width: 35%; color: #64748b;">Condición:</td>
-                                    <td><strong>{{ $sale->payment_type === 'CASH' ? 'Contado Inmediato' : 'Crédito Comercial' }}</strong></td>
-                                </tr>
-                                @if($sale->payment_type === 'CREDIT')
-                                    <tr>
-                                        <td style="color: #64748b;">Adelanto Pagado:</td>
-                                        <td class="font-mono text-success" style="color: #16a34a; font-weight: 700;">
-                                            {{ $currSymbol }} {{ number_format($paidAmount, 2) }}
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td style="color: #64748b;">Saldo Pendiente:</td>
-                                        <td class="font-mono" style="color: {{ $pendingAmount > 0 ? '#dc2626' : '#16a34a' }}; font-weight: 700;">
-                                            {{ $currSymbol }} {{ number_format($pendingAmount, 2) }}
-                                        </td>
-                                    </tr>
-                                @else
-                                    @if($sale->paymentMethod)
-                                        <tr>
-                                            <td style="color: #64748b;">Medio de Pago:</td>
-                                            <td><strong>{{ $sale->paymentMethod->name }}</strong></td>
-                                        </tr>
-                                    @endif
-                                @endif
-                                <tr>
-                                    <td style="color: #64748b;">Vendedor:</td>
-                                    <td>{{ $sale->creator->name ?? 'Administración' }}</td>
-                                </tr>
-                                @if(!empty($sale->notes))
-                                    <tr>
-                                        <td style="color: #64748b; vertical-align: top;">Observaciones:</td>
-                                        <td class="notes-text">{{ $sale->notes }}</td>
-                                    </tr>
-                                @endif
-                            </table>
-                        </div>
+                        @if(!empty($sale->notes))
+                            <div class="payment-summary-box" style="margin-bottom: 6px;">
+                                <div class="notes-text"><strong>Observaciones:</strong> {{ $sale->notes }}</div>
+                            </div>
+                        @endif
 
                         <!-- Bloque QR & Representación Impresa -->
-                        <div class="qr-section">
+                        <div class="qr-section" style="margin-top: 0;">
                             <div class="qr-canvas">
                                 <!-- SVG QR representativo con datos reales SUNAT -->
                                 <svg viewBox="0 0 100 100" width="56" height="56" fill="#0f172a">
@@ -688,36 +674,45 @@
                                 <div><strong>Representación impresa de la {{ $docTitle }}</strong></div>
                                 <div>Autorizado mediante Resolución de Superintendencia N° 034-005-0005315</div>
                                 <div>Consulte la validez de este comprobante en nuestro portal institucional.</div>
-                                <div style="font-family: monospace; font-size: 7.5px; margin-top: 2px; color: #94a3b8;">
+                                <div style="font-family: monospace; font-size: 7.5px; margin-top: 2px; color: #64748b;">
                                     HASH: {{ strtoupper(substr(md5($sale->id . $sale->created_at . $sale->total_amount), 0, 24)) }}
+                                    &bull; OP. INTERNA: {{ $sale->sale_number }}
                                 </div>
                             </div>
                         </div>
                     </td>
 
                     <td class="bottom-right-col">
-                        <!-- Cuadro de Totales -->
+                        <!-- Cuadro de Totales Normalizado SUNAT -->
                         <div class="totals-box">
                             <table class="totals-table">
-                                <tr>
-                                    <td class="total-label">Op. Gravada:</td>
-                                    <td class="total-val">{{ $currSymbol }} {{ number_format($subtotal, 2) }}</td>
-                                </tr>
-                                <tr>
-                                    <td class="total-label">Op. Inafecta:</td>
-                                    <td class="total-val">{{ $currSymbol }} 0.00</td>
-                                </tr>
-                                <tr>
-                                    <td class="total-label">Op. Exonerada:</td>
-                                    <td class="total-val">{{ $currSymbol }} 0.00</td>
-                                </tr>
-                                <tr>
-                                    <td class="total-label">I.G.V. (18%):</td>
-                                    <td class="total-val">{{ $currSymbol }} {{ number_format($tax, 2) }}</td>
-                                </tr>
+                                @if($tax > 0)
+                                    <tr>
+                                        <td class="total-label">Op. Gravada:</td>
+                                        <td class="total-val">{{ $currSymbol }} {{ number_format($subtotal, 2) }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="total-label">I.G.V. (18%):</td>
+                                        <td class="total-val">{{ $currSymbol }} {{ number_format($tax, 2) }}</td>
+                                    </tr>
+                                @elseif($isFiscalDoc)
+                                    <tr>
+                                        <td class="total-label">Op. Exonerada:</td>
+                                        <td class="total-val">{{ $currSymbol }} {{ number_format($subtotal, 2) }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="total-label">I.G.V. (18%):</td>
+                                        <td class="total-val">{{ $currSymbol }} 0.00</td>
+                                    </tr>
+                                @else
+                                    <tr>
+                                        <td class="total-label">Subtotal:</td>
+                                        <td class="total-val">{{ $currSymbol }} {{ number_format($subtotal, 2) }}</td>
+                                    </tr>
+                                @endif
                                 @if(!empty($sale->discount_amount) && $sale->discount_amount > 0)
                                     <tr>
-                                        <td class="total-label">Total Descuento:</td>
+                                        <td class="total-label">Descuento:</td>
                                         <td class="total-val" style="color: #dc2626;">- {{ $currSymbol }} {{ number_format($sale->discount_amount, 2) }}</td>
                                     </tr>
                                 @endif
@@ -730,30 +725,12 @@
                     </td>
                 </tr>
             </table>
-
-            <!-- FIRMAS DE CONFORMIDAD -->
-            <table class="footer-signatures">
-                <tr>
-                    <td class="signature-col">
-                        <div class="signature-line">
-                            Entregado por: {{ $sale->creator->name ?? 'Despacho' }}<br>
-                            <span style="font-size: 7.5px; color: #94a3b8; font-weight: normal;">Firma y Sello Emisor</span>
-                        </div>
-                    </td>
-                    <td class="signature-col">
-                        <div class="signature-line">
-                            Recibí Conforme / Cliente<br>
-                            <span style="font-size: 7.5px; color: #94a3b8; font-weight: normal;">DNI / RUC y Firma Receptor</span>
-                        </div>
-                    </td>
-                </tr>
-            </table>
         </div>
 
         <!-- PIE DE PÁGINA -->
         <div class="page-footer">
             <div>
-                SIMAQ &bull; Sistema Integrado de Maquinaria y Repuestos | {{ $company->business_name ?? 'Inversiones Huarcaya S.A.C.' }}
+                {{ $company?->trade_name ?: 'SIMAQ' }} &bull; {{ $company?->business_name ?: ($company?->name ?? 'Inversiones Huarcaya S.A.C.') }}
             </div>
             <div>
                 Impreso el {{ date('d/m/Y H:i:s') }} por {{ Auth::user()->name ?? 'Usuario' }}

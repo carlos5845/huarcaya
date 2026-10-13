@@ -53,6 +53,7 @@ type Branch = {
     company_id: number;
     name: string;
     code: string | null;
+    sunat_establishment_code?: string | null;
     department?: string | null;
     province?: string | null;
     district?: string | null;
@@ -60,6 +61,11 @@ type Branch = {
     phone: string | null;
     type: string;
     status: string;
+    invoice_series?: string | null;
+    boleta_series?: string | null;
+    ticket_series?: string | null;
+    credit_note_factura_series?: string | null;
+    credit_note_boleta_series?: string | null;
     created_at: string;
 };
 
@@ -71,9 +77,10 @@ type Props = {
 };
 
 const columnLabels: Record<string, string> = {
-    code: 'Código',
+    code: 'Código / Anexo SUNAT',
     name: 'Nombre Sucursal',
     type: 'Tipo',
+    series: 'Series Asignadas',
     status: 'Estado',
     ubigeo: 'Ubicación (Ubigeo)',
     contact: 'Contacto / Dirección',
@@ -105,6 +112,7 @@ export default function BranchesIndex({ branches, flash }: Props) {
         name: '',
         code_prefix: 'SUC',
         code: '',
+        sunat_establishment_code: '0000',
         address: '',
         phone: '',
         type: 'STORE',
@@ -112,11 +120,17 @@ export default function BranchesIndex({ branches, flash }: Props) {
         department: '',
         province: '',
         district: '',
+        invoice_series: 'F001',
+        boleta_series: 'B001',
+        ticket_series: 'NV01',
+        credit_note_factura_series: 'FC01',
+        credit_note_boleta_series: 'BC01',
     });
 
     const { data: editData, setData: setEditData, put: editPut, processing: editProcessing, errors: editErrors, reset: editReset } = useForm({
         name: '',
         code: '',
+        sunat_establishment_code: '0000',
         address: '',
         phone: '',
         type: 'STORE',
@@ -124,6 +138,11 @@ export default function BranchesIndex({ branches, flash }: Props) {
         department: '',
         province: '',
         district: '',
+        invoice_series: 'F001',
+        boleta_series: 'B001',
+        ticket_series: 'NV01',
+        credit_note_factura_series: 'FC01',
+        credit_note_boleta_series: 'BC01',
     });
 
     const handleCreate = (e: React.FormEvent) => {
@@ -185,6 +204,7 @@ export default function BranchesIndex({ branches, flash }: Props) {
         setEditData({
             name: branch.name,
             code: branch.code || '',
+            sunat_establishment_code: branch.sunat_establishment_code || '0000',
             address: branch.address || '',
             phone: branch.phone || '',
             type: branch.type,
@@ -192,6 +212,11 @@ export default function BranchesIndex({ branches, flash }: Props) {
             department: branch.department || '',
             province: branch.province || '',
             district: branch.district || '',
+            invoice_series: branch.invoice_series || 'F001',
+            boleta_series: branch.boleta_series || 'B001',
+            ticket_series: branch.ticket_series || 'NV01',
+            credit_note_factura_series: branch.credit_note_factura_series || 'FC01',
+            credit_note_boleta_series: branch.credit_note_boleta_series || 'BC01',
         });
         setIsEditOpen(true);
     };
@@ -211,12 +236,15 @@ export default function BranchesIndex({ branches, flash }: Props) {
         type: string;
         code_prefix?: string;
         code?: string;
+        sunat_establishment_code?: string;
         department?: string;
         province?: string;
         district?: string;
         address?: string;
         phone?: string;
         status?: string;
+        invoice_series?: string;
+        boleta_series?: string;
     }, isEdit: boolean = false) => {
         const isStore = data.type === 'STORE';
         const depName = data.department ? depDict[data.department] : '';
@@ -240,12 +268,14 @@ export default function BranchesIndex({ branches, flash }: Props) {
                             <div className="text-xs font-bold text-foreground">
                                 {data.name || 'Nombre de la Sucursal'}
                             </div>
-                            <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                            <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 mt-0.5 flex-wrap">
                                 <span className="font-mono font-semibold text-foreground">
-                                    {isEdit ? (data.code || 'S/N') : `${data.code_prefix || 'SUC'}-XXX (Correlativo)`}
+                                    {isEdit ? (data.code || 'S/N') : `${data.code_prefix || 'SUC'}-XXX`}
                                 </span>
                                 <span>&bull;</span>
-                                <span>{isStore ? 'Tienda Comercial' : 'Almacén / Depósito'}</span>
+                                <span className="font-mono text-[10px]">Anexo SUNAT: {data.sunat_establishment_code || '0000'}</span>
+                                <span>&bull;</span>
+                                <span className="font-mono text-[10px]">Series: {data.invoice_series || 'F001'} / {data.boleta_series || 'B001'}</span>
                             </div>
                         </div>
                     </div>
@@ -288,7 +318,7 @@ export default function BranchesIndex({ branches, flash }: Props) {
                     onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
                     className="-ml-3 h-8 text-xs font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground"
                 >
-                    <span>Código</span>
+                    <span>Código / Anexo</span>
                     {column.getIsSorted() === "desc" ? (
                         <ArrowDown className="ml-1.5 h-3.5 w-3.5 text-primary" />
                     ) : column.getIsSorted() === "asc" ? (
@@ -299,9 +329,14 @@ export default function BranchesIndex({ branches, flash }: Props) {
                 </Button>
             ),
             cell: ({ row }) => (
-                <span className="font-mono text-xs font-semibold text-foreground">
-                    {row.original.code || 'S/N'}
-                </span>
+                <div className="flex flex-col gap-0.5">
+                    <span className="font-mono text-xs font-semibold text-foreground">
+                        {row.original.code || 'S/N'}
+                    </span>
+                    <span className="font-mono text-[10px] text-muted-foreground">
+                        Anexo SUNAT: {row.original.sunat_establishment_code || '0000'}
+                    </span>
+                </div>
             ),
         },
         {
@@ -357,6 +392,28 @@ export default function BranchesIndex({ branches, flash }: Props) {
                 ) : (
                     <Badge variant="outline" className="text-[11px] bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30">Almacén</Badge>
                 )
+            ),
+        },
+        {
+            id: 'series',
+            accessorFn: row => `${row.invoice_series || 'F001'} ${row.boleta_series || 'B001'}`,
+            header: () => (
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    Series SUNAT
+                </span>
+            ),
+            cell: ({ row }) => (
+                <div className="flex flex-wrap items-center gap-1">
+                    <Badge variant="outline" className="font-mono text-[10px] px-1.5 py-0">
+                        {row.original.invoice_series || 'F001'}
+                    </Badge>
+                    <Badge variant="outline" className="font-mono text-[10px] px-1.5 py-0">
+                        {row.original.boleta_series || 'B001'}
+                    </Badge>
+                    <Badge variant="outline" className="font-mono text-[10px] px-1.5 py-0 text-muted-foreground">
+                        {row.original.credit_note_factura_series || 'FC01'} / {row.original.credit_note_boleta_series || 'BC01'}
+                    </Badge>
+                </div>
             ),
         },
         {
@@ -781,11 +838,102 @@ export default function BranchesIndex({ branches, flash }: Props) {
                             </div>
                         </div>
 
-                        {/* 3. Contacto y Previsualización */}
+                        {/* 3. Configuración Fiscal SUNAT y Series Asignadas */}
+                        <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+                            <div className="flex items-center gap-2 border-b border-border/60 pb-2">
+                                <Sparkles className="h-4 w-4 text-primary" />
+                                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">3. Configuración Fiscal SUNAT y Series Asignadas</h3>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="create_sunat_code" className="text-xs font-semibold">Cód. Anexo SUNAT (4 díg.)</Label>
+                                    <Input
+                                        id="create_sunat_code"
+                                        className="bg-background border-input font-mono text-xs"
+                                        maxLength={4}
+                                        placeholder="0000"
+                                        value={createData.sunat_establishment_code || ''}
+                                        onChange={(e) => setCreateData('sunat_establishment_code', e.target.value.replace(/\D/g, ''))}
+                                    />
+                                    <p className="text-[10px] text-muted-foreground">0000 = Sede Principal, 0001+ = Anexo</p>
+                                    <InputError message={(createErrors as any).sunat_establishment_code} />
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="create_invoice_series" className="text-xs font-semibold">Serie Factura</Label>
+                                    <Input
+                                        id="create_invoice_series"
+                                        className="bg-background border-input font-mono text-xs uppercase"
+                                        maxLength={4}
+                                        placeholder="F001"
+                                        value={createData.invoice_series || ''}
+                                        onChange={(e) => setCreateData('invoice_series', e.target.value.toUpperCase())}
+                                    />
+                                    <InputError message={(createErrors as any).invoice_series} />
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="create_boleta_series" className="text-xs font-semibold">Serie Boleta</Label>
+                                    <Input
+                                        id="create_boleta_series"
+                                        className="bg-background border-input font-mono text-xs uppercase"
+                                        maxLength={4}
+                                        placeholder="B001"
+                                        value={createData.boleta_series || ''}
+                                        onChange={(e) => setCreateData('boleta_series', e.target.value.toUpperCase())}
+                                    />
+                                    <InputError message={(createErrors as any).boleta_series} />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="create_nc_factura" className="text-xs font-semibold">Serie N.C. (Factura)</Label>
+                                    <Input
+                                        id="create_nc_factura"
+                                        className="bg-background border-input font-mono text-xs uppercase"
+                                        maxLength={4}
+                                        placeholder="FC01"
+                                        value={createData.credit_note_factura_series || ''}
+                                        onChange={(e) => setCreateData('credit_note_factura_series', e.target.value.toUpperCase())}
+                                    />
+                                    <InputError message={(createErrors as any).credit_note_factura_series} />
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="create_nc_boleta" className="text-xs font-semibold">Serie N.C. (Boleta)</Label>
+                                    <Input
+                                        id="create_nc_boleta"
+                                        className="bg-background border-input font-mono text-xs uppercase"
+                                        maxLength={4}
+                                        placeholder="BC01"
+                                        value={createData.credit_note_boleta_series || ''}
+                                        onChange={(e) => setCreateData('credit_note_boleta_series', e.target.value.toUpperCase())}
+                                    />
+                                    <InputError message={(createErrors as any).credit_note_boleta_series} />
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="create_ticket_series" className="text-xs font-semibold">Serie Nota de Venta</Label>
+                                    <Input
+                                        id="create_ticket_series"
+                                        className="bg-background border-input font-mono text-xs uppercase"
+                                        maxLength={4}
+                                        placeholder="NV01"
+                                        value={createData.ticket_series || ''}
+                                        onChange={(e) => setCreateData('ticket_series', e.target.value.toUpperCase())}
+                                    />
+                                    <InputError message={(createErrors as any).ticket_series} />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 4. Contacto y Previsualización */}
                         <div className="rounded-xl border border-border bg-card p-4 space-y-3">
                             <div className="flex items-center gap-2 border-b border-border/60 pb-2">
                                 <Phone className="h-4 w-4 text-primary" />
-                                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">3. Contacto y Previsualización</h3>
+                                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">4. Contacto y Previsualización</h3>
                             </div>
 
                             <div className="space-y-1.5">
@@ -825,7 +973,7 @@ export default function BranchesIndex({ branches, flash }: Props) {
                             <div>
                                 <DialogTitle className="text-lg font-bold text-foreground">Editar Sucursal</DialogTitle>
                                 <DialogDescription className="text-xs text-muted-foreground">
-                                    Actualiza los datos de clasificación, ubicación y contacto de la sede seleccionada.
+                                    Actualiza los datos de clasificación, ubicación, anexo SUNAT y series de la sede seleccionada.
                                 </DialogDescription>
                             </div>
                         </div>
@@ -979,11 +1127,102 @@ export default function BranchesIndex({ branches, flash }: Props) {
                             </div>
                         </div>
 
-                        {/* 3. Contacto y Previsualización */}
+                        {/* 3. Configuración Fiscal SUNAT y Series Asignadas */}
+                        <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+                            <div className="flex items-center gap-2 border-b border-border/60 pb-2">
+                                <Sparkles className="h-4 w-4 text-primary" />
+                                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">3. Configuración Fiscal SUNAT y Series Asignadas</h3>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="edit_sunat_code" className="text-xs font-semibold">Cód. Anexo SUNAT (4 díg.)</Label>
+                                    <Input
+                                        id="edit_sunat_code"
+                                        className="bg-background border-input font-mono text-xs"
+                                        maxLength={4}
+                                        placeholder="0000"
+                                        value={editData.sunat_establishment_code || ''}
+                                        onChange={(e) => setEditData('sunat_establishment_code', e.target.value.replace(/\D/g, ''))}
+                                    />
+                                    <p className="text-[10px] text-muted-foreground">0000 = Sede Principal, 0001+ = Anexo</p>
+                                    <InputError message={(editErrors as any).sunat_establishment_code} />
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="edit_invoice_series" className="text-xs font-semibold">Serie Factura</Label>
+                                    <Input
+                                        id="edit_invoice_series"
+                                        className="bg-background border-input font-mono text-xs uppercase"
+                                        maxLength={4}
+                                        placeholder="F001"
+                                        value={editData.invoice_series || ''}
+                                        onChange={(e) => setEditData('invoice_series', e.target.value.toUpperCase())}
+                                    />
+                                    <InputError message={(editErrors as any).invoice_series} />
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="edit_boleta_series" className="text-xs font-semibold">Serie Boleta</Label>
+                                    <Input
+                                        id="edit_boleta_series"
+                                        className="bg-background border-input font-mono text-xs uppercase"
+                                        maxLength={4}
+                                        placeholder="B001"
+                                        value={editData.boleta_series || ''}
+                                        onChange={(e) => setEditData('boleta_series', e.target.value.toUpperCase())}
+                                    />
+                                    <InputError message={(editErrors as any).boleta_series} />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="edit_nc_factura" className="text-xs font-semibold">Serie N.C. (Factura)</Label>
+                                    <Input
+                                        id="edit_nc_factura"
+                                        className="bg-background border-input font-mono text-xs uppercase"
+                                        maxLength={4}
+                                        placeholder="FC01"
+                                        value={editData.credit_note_factura_series || ''}
+                                        onChange={(e) => setEditData('credit_note_factura_series', e.target.value.toUpperCase())}
+                                    />
+                                    <InputError message={(editErrors as any).credit_note_factura_series} />
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="edit_nc_boleta" className="text-xs font-semibold">Serie N.C. (Boleta)</Label>
+                                    <Input
+                                        id="edit_nc_boleta"
+                                        className="bg-background border-input font-mono text-xs uppercase"
+                                        maxLength={4}
+                                        placeholder="BC01"
+                                        value={editData.credit_note_boleta_series || ''}
+                                        onChange={(e) => setEditData('credit_note_boleta_series', e.target.value.toUpperCase())}
+                                    />
+                                    <InputError message={(editErrors as any).credit_note_boleta_series} />
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="edit_ticket_series" className="text-xs font-semibold">Serie Nota de Venta</Label>
+                                    <Input
+                                        id="edit_ticket_series"
+                                        className="bg-background border-input font-mono text-xs uppercase"
+                                        maxLength={4}
+                                        placeholder="NV01"
+                                        value={editData.ticket_series || ''}
+                                        onChange={(e) => setEditData('ticket_series', e.target.value.toUpperCase())}
+                                    />
+                                    <InputError message={(editErrors as any).ticket_series} />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 4. Contacto y Previsualización */}
                         <div className="rounded-xl border border-border bg-card p-4 space-y-3">
                             <div className="flex items-center gap-2 border-b border-border/60 pb-2">
                                 <Phone className="h-4 w-4 text-primary" />
-                                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">3. Contacto y Previsualización</h3>
+                                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">4. Contacto y Previsualización</h3>
                             </div>
 
                             <div className="space-y-1.5">

@@ -17,6 +17,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class SaleController extends Controller
@@ -173,13 +174,27 @@ class SaleController extends Controller
         ]);
 
         $companyId = Auth::user()->company_id;
-        $branchId = Auth::user()->default_branch_id ?? Branch::where('company_id', $companyId)->first()->id;
+        $branchId = $request->input('branch_id') ?: (Auth::user()->default_branch_id ?? Branch::where('company_id', $companyId)->first()->id);
+        $branch = Branch::find($branchId);
         $action = $request->input('action', 'CONFIRM');
 
         DB::beginTransaction();
         try {
             $prefix = $validated['sale_type'] === 'FACTURA' ? 'F' : ($validated['sale_type'] === 'BOLETA' ? 'B' : 'T');
             $saleNumber = $prefix.date('Ymd').'-'.strtoupper(Str::random(6));
+
+            $series = ! empty($validated['external_document_series'])
+                ? strtoupper(trim($validated['external_document_series']))
+                : Sale::defaultSunatSeries($validated['sale_type'], $branch);
+
+            $rawDocNum = $validated['external_document_number'] ?? null;
+            $docNumber = ! empty($rawDocNum)
+                ? (ctype_digit((string) $rawDocNum) ? str_pad((string) $rawDocNum, 8, '0', STR_PAD_LEFT) : trim((string) $rawDocNum))
+                : Sale::nextCorrelativeForSeries($branchId, $series);
+
+            $effectiveDueDate = $validated['payment_type'] === 'CREDIT'
+                ? ($validated['due_date'] ?? null)
+                : null;
 
             $customer = Customer::find($validated['customer_id']);
 
@@ -192,12 +207,12 @@ class SaleController extends Controller
                 'sale_type' => $validated['sale_type'],
                 'payment_type' => $validated['payment_type'],
                 'payment_method_id' => $validated['payment_method_id'] ?? null,
-                'due_date' => $validated['due_date'] ?? null,
+                'due_date' => $effectiveDueDate,
                 'initial_payment_amount' => $validated['initial_payment_amount'] ?? 0,
                 'payment_status' => $validated['payment_type'] === 'CASH' ? 'PAID' : 'UNPAID',
                 'external_document_type' => $validated['sale_type'],
-                'external_document_series' => $validated['external_document_series'] ?? null,
-                'external_document_number' => $validated['external_document_number'] ?? null,
+                'external_document_series' => $series,
+                'external_document_number' => $docNumber,
                 'operation_date' => $validated['operation_date'],
                 'currency_code' => $validated['currency_code'],
                 'exchange_rate' => $validated['currency_code'] === 'USD' ? $validated['exchange_rate'] : 1.0,
@@ -259,6 +274,9 @@ class SaleController extends Controller
             $subtotal = round($subtotal, 2);
             $taxAmount = round($taxAmount, 2);
             $totalAmount = round($subtotal + $taxAmount, 2);
+            $exchangeRate = $validated['currency_code'] === 'USD' ? (float) $validated['exchange_rate'] : 1.0;
+            $this->validateSunatCustomerRules($customer, $validated['sale_type'], round($totalAmount * $exchangeRate, 2));
+
             $initPay = min(round((float) ($validated['initial_payment_amount'] ?? 0), 2), $totalAmount);
             $isPaid = $validated['payment_type'] === 'CASH' || ($totalAmount - $initPay < 0.01);
 
@@ -292,6 +310,10 @@ class SaleController extends Controller
 
             return redirect()->route('sales.show', $sale->id)
                 ->with('success', 'Venta en borrador creada con éxito.');
+        } catch (ValidationException $e) {
+            DB::rollBack();
+            session()->flash('error', collect($e->errors())->flatten()->first() ?? 'Error de validación SUNAT.');
+            throw $e;
         } catch (\Exception $e) {
             DB::rollBack();
 
@@ -416,22 +438,39 @@ class SaleController extends Controller
 
         $companyId = Auth::user()->company_id;
         $branchId = $sale->branch_id;
+        $branch = Branch::find($branchId);
 
         DB::beginTransaction();
         try {
             $customer = Customer::find($validated['customer_id']);
+
+            $docSeries = ! empty($validated['external_document_series'])
+                ? strtoupper(trim($validated['external_document_series']))
+                : ($sale->external_document_series && $sale->sale_type === $validated['sale_type']
+                    ? $sale->external_document_series
+                    : Sale::defaultSunatSeries($validated['sale_type'], $branch));
+
+            $docNumber = ! empty($validated['external_document_number'])
+                ? str_pad((string) preg_replace('/\D/', '', $validated['external_document_number']), 8, '0', STR_PAD_LEFT)
+                : ($sale->external_document_number && $sale->external_document_series === $docSeries && preg_match('/^\d{1,8}$/', $sale->external_document_number)
+                    ? str_pad($sale->external_document_number, 8, '0', STR_PAD_LEFT)
+                    : Sale::nextCorrelativeForSeries($branchId, $docSeries));
+
+            $dueDate = $validated['payment_type'] === 'CREDIT'
+                ? ($validated['due_date'] ?? $validated['operation_date'])
+                : null;
 
             $sale->update([
                 'customer_id' => $validated['customer_id'],
                 'sale_type' => $validated['sale_type'],
                 'payment_type' => $validated['payment_type'],
                 'payment_method_id' => $validated['payment_method_id'] ?? null,
-                'due_date' => $validated['due_date'] ?? null,
+                'due_date' => $dueDate,
                 'initial_payment_amount' => $validated['initial_payment_amount'] ?? 0,
                 'payment_status' => $validated['payment_type'] === 'CASH' ? 'PAID' : 'UNPAID',
                 'external_document_type' => $validated['sale_type'],
-                'external_document_series' => $validated['external_document_series'] ?? null,
-                'external_document_number' => $validated['external_document_number'] ?? null,
+                'external_document_series' => $docSeries,
+                'external_document_number' => $docNumber,
                 'operation_date' => $validated['operation_date'],
                 'currency_code' => $validated['currency_code'],
                 'exchange_rate' => $validated['currency_code'] === 'USD' ? $validated['exchange_rate'] : 1.0,
@@ -490,6 +529,9 @@ class SaleController extends Controller
             $subtotal = round($subtotal, 2);
             $taxAmount = round($taxAmount, 2);
             $totalAmount = round($subtotal + $taxAmount, 2);
+            $exchangeRate = $validated['currency_code'] === 'USD' ? (float) $validated['exchange_rate'] : 1.0;
+            $this->validateSunatCustomerRules($customer, $validated['sale_type'], round($totalAmount * $exchangeRate, 2));
+
             $initPay = min(round((float) ($validated['initial_payment_amount'] ?? 0), 2), $totalAmount);
             $isPaid = $validated['payment_type'] === 'CASH' || ($totalAmount - $initPay < 0.01);
 
@@ -523,6 +565,10 @@ class SaleController extends Controller
 
             return redirect()->route('sales.show', $sale->id)
                 ->with('success', 'Venta en borrador actualizada con éxito.');
+        } catch (ValidationException $e) {
+            DB::rollBack();
+            session()->flash('error', collect($e->errors())->flatten()->first() ?? 'Error de validación SUNAT.');
+            throw $e;
         } catch (\Exception $e) {
             DB::rollBack();
 
@@ -550,15 +596,64 @@ class SaleController extends Controller
 
         DB::beginTransaction();
         try {
+            $sale->loadMissing('customer');
+            if ($sale->customer) {
+                $exchangeRate = $sale->currency_code === 'USD' ? (float) ($sale->exchange_rate ?: 1.0) : 1.0;
+                $this->validateSunatCustomerRules($sale->customer, $sale->sale_type, round((float) $sale->total_amount * $exchangeRate, 2));
+            }
+
             $this->executeSaleConfirmation($sale, $kardexService);
             DB::commit();
 
             return redirect()->route('sales.show', $sale->id)
                 ->with('success', 'Venta confirmada exitosamente. Stock deducido.');
+        } catch (ValidationException $e) {
+            DB::rollBack();
+
+            return back()->with('error', collect($e->errors())->flatten()->first() ?? 'Error de validación SUNAT.');
         } catch (\Exception $e) {
             DB::rollBack();
 
             return back()->with('error', 'Error al confirmar la venta: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * Valida las reglas tributarias de SUNAT según el tipo de comprobante (Catálogo 01 y Catálogo 06):
+     * - FACTURA (01): Exige exclusivamente RUC de 11 dígitos numéricos y Razón Social.
+     * - BOLETA (03): Permite DNI, CE, Pasaporte o Clientes Varios (solo si el total es menor a S/ 700.00).
+     */
+    private function validateSunatCustomerRules(?Customer $customer, string $saleType, float $totalAmountInPen): void
+    {
+        $normalizedSaleType = strtoupper(trim($saleType));
+
+        if (! $customer) {
+            throw ValidationException::withMessages([
+                'customer_id' => 'Debe seleccionar un cliente válido para la operación.',
+            ]);
+        }
+
+        $docType = strtoupper(trim((string) $customer->document_type));
+        $docNumber = trim((string) $customer->document_number);
+        $legalName = trim((string) $customer->legal_name);
+        $isGenericOrEmptyDoc = $docNumber === '' || $docNumber === '00000000' || $docNumber === '-';
+
+        if ($normalizedSaleType === 'FACTURA') {
+            $hasValidRuc = $docType === 'RUC' && preg_match('/^\d{11}$/', $docNumber) && $docNumber !== '00000000000';
+
+            if (! $hasValidRuc || $legalName === '' || $isGenericOrEmptyDoc) {
+                throw ValidationException::withMessages([
+                    'customer_id' => 'Normativa SUNAT: Para emitir una FACTURA ELECTRÓNICA el cliente debe tener obligatoriamente un RUC válido de 11 dígitos (RUC 10 o RUC 20) y Razón Social. Si el cliente solo cuenta con DNI, emita una Boleta de Venta o registre su RUC 10.',
+                ]);
+            }
+        }
+
+        if ($normalizedSaleType === 'BOLETA') {
+            if ($isGenericOrEmptyDoc && $totalAmountInPen >= 700.00) {
+                throw ValidationException::withMessages([
+                    'customer_id' => 'Normativa SUNAT: En Boletas de Venta por importes iguales o mayores a S/ 700.00 es obligatorio identificar al cliente con su DNI u otro documento de identidad válido (no se permite Clientes Varios / Sin Documento).',
+                ]);
+            }
         }
     }
 

@@ -135,15 +135,6 @@
 </head>
 <body>
 
-    <div class="no-print-bar" style="display: flex; justify-content: center; gap: 8px;">
-        <a href="javascript:window.print()" class="btn">
-            🖨️ Imprimir Ticket (80mm)
-        </a>
-        <button type="button" onclick="if(window.parent !== window){ window.parent.postMessage('close-preview', '*'); } else { window.close(); }" class="btn" style="background: #4a5568;">
-            ✕ Cerrar
-        </button>
-    </div>
-
     <div class="ticket-wrapper">
         <div class="text-center">
             <!-- LOGOTIPO DE LA MARCA -->

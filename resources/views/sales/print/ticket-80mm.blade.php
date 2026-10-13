@@ -149,40 +149,48 @@
 </head>
 <body>
 
-    <div class="no-print-bar" style="display: flex; justify-content: center; gap: 8px;">
-        <a href="javascript:window.print()" class="btn">
-            🖨️ Imprimir Ticket (80mm)
-        </a>
-        <button type="button" onclick="if(window.parent !== window){ window.parent.postMessage('close-preview', '*'); } else { window.close(); }" class="btn" style="background: #4a5568;">
-            ✕ Cerrar
-        </button>
-    </div>
+    @php
+        $fullDocNumber = $sale->formattedFiscalNumber();
+        $rawCustomerDoc = trim((string) ($sale->customer_document_snapshot ?? ($sale->customer->document_number ?? '')));
+        $isGenericCustomerDoc = $rawCustomerDoc === '' || $rawCustomerDoc === '00000000' || $rawCustomerDoc === '-';
+        $isFactura = $sale->sale_type === 'FACTURA' || $sale->external_document_type === 'FACTURA';
+        $customerDocLabel = $isFactura ? 'R.U.C.' : ($isGenericCustomerDoc ? 'DOC' : ($sale->customer->document_type ?? 'D.N.I.'));
+        $customerDocValue = $isGenericCustomerDoc ? '-' : $rawCustomerDoc;
+        $currSymbol = $sale->currency_code === 'USD' ? '$' : 'S/';
+    @endphp
 
     <div class="ticket-wrapper">
         <div class="text-center">
             <!-- LOGOTIPO DE LA MARCA -->
-            <img src="{{ asset('logo-text.png') }}" alt="{{ $company->business_name ?? 'Inversiones Huarcaya' }}" class="ticket-logo" />
-            <div class="header-title">{{ $company->business_name ?? 'INVERSIONES HUARCAYA S.A.C.' }}</div>
-            <div style="font-size: 10px;">RUC: {{ $company->document_number ?? '20600000000' }}</div>
-            <div style="font-size: 9px;">VENTA DE REPUESTOS AUTOMOTRICES</div>
-            <div style="font-size: 9px; margin-top: 1px;">{{ $sale->branch->name ?? 'Sucursal Principal' }}</div>
-            <div style="font-size: 8.5px; color: #333;">{{ $sale->branch->address ?? ($company->address ?? '-') }}</div>
+            <img src="{{ $company ? $company->logoUrl() : asset('logo-text.png') }}" alt="{{ $company?->business_name ?: ($company?->name ?? 'Inversiones Huarcaya') }}" class="ticket-logo" onerror="this.style.display='none'" />
+            <div class="header-title">{{ $company?->business_name ?: ($company?->name ?? 'INVERSIONES HUARCAYA S.A.C.') }}</div>
+            @if(!empty($company?->trade_name))
+                <div style="font-size: 9px; font-weight: bold;">{{ $company->trade_name }}</div>
+            @endif
+            <div style="font-size: 10px;">R.U.C. {{ $company?->document_number ?? '20600000000' }}</div>
+            <div style="font-size: 9px;">{{ $company?->economic_activity ?: 'VENTA DE REPUESTOS AUTOMOTRICES' }}</div>
+            <div style="font-size: 9px; margin-top: 1px;">
+                {{ $sale->branch?->name ?? 'Sucursal Principal' }} (Anexo: {{ $sale->branch?->sunat_establishment_code ?: '0000' }})
+            </div>
+            <div style="font-size: 8.5px; color: #333;">
+                {{ $sale->branch?->address ?: ($company?->address ?? '-') }} &bull; {{ $sale->branch?->ubigeoLocationText() ?? 'LIMA - PERÚ' }}
+            </div>
             <div class="divider"></div>
 
             <div class="doc-title">
-                @if($sale->sale_type === 'FACTURA' || $sale->external_document_type === 'FACTURA')
+                @if($isFactura)
                     FACTURA ELECTRÓNICA
                 @elseif($sale->sale_type === 'BOLETA' || $sale->external_document_type === 'BOLETA')
                     BOLETA DE VENTA ELECTRÓNICA
                 @else
-                    TICKET DE VENTA
+                    NOTA DE VENTA
                 @endif
             </div>
             <div class="doc-number">
-                {{ $sale->external_document_series ? $sale->external_document_series.'-'.$sale->external_document_number : $sale->sale_number }}
+                {{ $fullDocNumber }}
             </div>
             <div style="font-size: 9px; margin-top: 1px;">
-                Fecha: {{ \Carbon\Carbon::parse($sale->operation_date)->format('d/m/Y') }} {{ $sale->created_at->format('H:i:s') }}
+                Fecha: {{ \Carbon\Carbon::parse($sale->operation_date)->format('d/m/Y') }} {{ ($sale->created_at ?? now())->format('H:i:s') }}
             </div>
         </div>
 
@@ -190,12 +198,12 @@
 
         <!-- DATOS DEL CLIENTE -->
         <div class="info-row">
-            <span class="font-bold">CLIENTE:</span>
-            <span style="max-width: 55mm; text-align: right;">{{ $sale->customer_name_snapshot ?? ($sale->customer->legal_name ?? 'PÚBLICO GENERAL') }}</span>
+            <span class="font-bold">{{ $isFactura ? 'RAZÓN SOCIAL:' : 'CLIENTE:' }}</span>
+            <span style="max-width: 55mm; text-align: right;">{{ $sale->customer_name_snapshot ?? ($sale->customer->legal_name ?? 'CLIENTES VARIOS') }}</span>
         </div>
         <div class="info-row">
-            <span class="font-bold">{{ $sale->customer->document_type ?? 'DOC' }}:</span>
-            <span>{{ $sale->customer_document_snapshot ?? ($sale->customer->document_number ?? '00000000') }}</span>
+            <span class="font-bold">{{ $customerDocLabel }}:</span>
+            <span>{{ $customerDocValue }}</span>
         </div>
         <div class="info-row">
             <span class="font-bold">CONDICIÓN:</span>
@@ -203,7 +211,7 @@
         </div>
         @if($sale->payment_type === 'CREDIT' && $sale->due_date)
             <div class="info-row">
-                <span class="font-bold">VENCE:</span>
+                <span class="font-bold">VENCE (CUOTA 001):</span>
                 <span>{{ \Carbon\Carbon::parse($sale->due_date)->format('d/m/Y') }}</span>
             </div>
         @endif
@@ -224,8 +232,8 @@
         <table class="items-table">
             <thead>
                 <tr>
-                    <th class="text-left" style="width: 14%;">CANT</th>
-                    <th class="text-left" style="width: 56%;">DESCRIPCIÓN</th>
+                    <th class="text-left" style="width: 18%;">CANT</th>
+                    <th class="text-left" style="width: 52%;">DESCRIPCIÓN</th>
                     <th class="text-right" style="width: 15%;">P.U.</th>
                     <th class="text-right" style="width: 15%;">TOTAL</th>
                 </tr>
@@ -233,7 +241,10 @@
             <tbody>
                 @foreach($sale->lines as $line)
                     <tr>
-                        <td class="font-bold">{{ number_format($line->quantity, $line->quantity == intval($line->quantity) ? 0 : 2) }}</td>
+                        <td class="font-bold">
+                            {{ number_format($line->quantity, $line->quantity == intval($line->quantity) ? 0 : 2) }}
+                            <span style="font-size: 8.5px; font-weight: normal;">{{ \App\Models\Sale::sunatUnitCode($line->product->unit->code ?? null) }}</span>
+                        </td>
                         <td>
                             <span class="item-name">{{ $line->product_name_snapshot ?? ($line->product->name ?? 'Repuesto') }}</span>
                             @if(!empty($line->product_reference_snapshot) && $line->product_reference_snapshot !== 'N/A')
@@ -250,20 +261,19 @@
         <div class="double-divider"></div>
 
         <!-- TOTALES -->
-        @php
-            $currSymbol = $sale->currency_code === 'USD' ? '$' : 'S/';
-        @endphp
         <table class="totals-table">
-            <tr>
-                <td class="text-left">OP. GRAVADA:</td>
-                <td class="text-right font-mono">{{ $currSymbol }} {{ number_format($sale->subtotal_amount, 2) }}</td>
-            </tr>
-            <tr>
-                <td class="text-left">I.G.V. (18%):</td>
-                <td class="text-right font-mono">{{ $currSymbol }} {{ number_format($sale->tax_amount, 2) }}</td>
-            </tr>
+            @if((float) $sale->tax_amount > 0)
+                <tr>
+                    <td class="text-left">OP. GRAVADA:</td>
+                    <td class="text-right font-mono">{{ $currSymbol }} {{ number_format($sale->subtotal_amount, 2) }}</td>
+                </tr>
+                <tr>
+                    <td class="text-left">I.G.V. (18%):</td>
+                    <td class="text-right font-mono">{{ $currSymbol }} {{ number_format($sale->tax_amount, 2) }}</td>
+                </tr>
+            @endif
             <tr class="total-big">
-                <td class="text-left">TOTAL:</td>
+                <td class="text-left">IMPORTE TOTAL:</td>
                 <td class="text-right font-mono">{{ $currSymbol }} {{ number_format($sale->total_amount, 2) }}</td>
             </tr>
         </table>
@@ -288,6 +298,7 @@
             <div class="qr-placeholder">
                 ================================<br>
                 REPRESENTACIÓN IMPRESA DE VENTA<br>
+                OP. INTERNA: {{ $sale->sale_number }}<br>
                 SIMAQ &bull; Inversiones Huarcaya
             </div>
         </div>

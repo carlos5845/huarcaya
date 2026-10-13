@@ -57,6 +57,25 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
     const [customerList, setCustomerList] = useState<any[]>(customers || []);
     const [openCustomerCombobox, setOpenCustomerCombobox] = useState(false);
     const [openCustomerDialog, setOpenCustomerDialog] = useState(false);
+    const [lastCreatedDocNumber, setLastCreatedDocNumber] = useState<string | null>(null);
+
+    // Sync server customers when Inertia reloads props after creating a customer
+    useEffect(() => {
+        if (customers && customers.length > 0) {
+            setCustomerList((prev) => {
+                const offlineOnly = prev.filter((c) => c.is_offline);
+                return [...offlineOnly, ...customers];
+            });
+
+            if (lastCreatedDocNumber) {
+                const created = customers.find((c) => c.document_number === lastCreatedDocNumber);
+                if (created) {
+                    setData('customer_id', created.id.toString());
+                    setLastCreatedDocNumber(null);
+                }
+            }
+        }
+    }, [customers]);
 
     // Merge locally cached or offline-registered customers from IndexedDB
     useEffect(() => {
@@ -87,11 +106,52 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
         status: 'ACTIVE',
     });
 
+    const openNewCustomerModal = () => {
+        customerForm.clearErrors();
+        if (data.sale_type === 'FACTURA') {
+            customerForm.setData({
+                document_type: 'RUC',
+                document_number: '',
+                legal_name: '',
+                status: 'ACTIVE',
+            });
+        } else {
+            customerForm.setData({
+                document_type: 'DNI',
+                document_number: '',
+                legal_name: '',
+                status: 'ACTIVE',
+            });
+        }
+        setOpenCustomerCombobox(false);
+        setOpenCustomerDialog(true);
+    };
+
     const submitCustomer = async (e: React.FormEvent) => {
         e.preventDefault();
+        customerForm.clearErrors();
 
-        if (!customerForm.data.legal_name.trim()) {
-            customerForm.setError('legal_name', 'El nombre o razón social es obligatorio');
+        const docType = customerForm.data.document_type.toUpperCase();
+        const docNum = customerForm.data.document_number.trim();
+        const legalName = customerForm.data.legal_name.trim();
+
+        if (data.sale_type === 'FACTURA' && docType !== 'RUC') {
+            customerForm.setError('document_number', 'Para emitir Factura, el tipo de documento debe ser obligatoriamente RUC.');
+            return;
+        }
+
+        if (docType === 'RUC' && !/^\d{11}$/.test(docNum)) {
+            customerForm.setError('document_number', 'El RUC debe tener exactamente 11 dígitos numéricos (ej. RUC 10 o RUC 20).');
+            return;
+        }
+
+        if (docType === 'DNI' && !/^\d{8}$/.test(docNum)) {
+            customerForm.setError('document_number', 'El DNI debe tener exactamente 8 dígitos numéricos.');
+            return;
+        }
+
+        if (!legalName) {
+            customerForm.setError('legal_name', docType === 'RUC' ? 'La Razón Social es obligatoria.' : 'El nombre completo es obligatorio.');
             return;
         }
 
@@ -102,9 +162,9 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
             const newCustomerItem = {
                 id: tempId,
                 uuid: offlineUuid,
-                document_type: customerForm.data.document_type,
-                document_number: customerForm.data.document_number.trim(),
-                legal_name: customerForm.data.legal_name.trim(),
+                document_type: docType,
+                document_number: docNum,
+                legal_name: legalName,
                 phone: null,
                 email: null,
                 is_offline: true,
@@ -144,6 +204,7 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
             return;
         }
 
+        setLastCreatedDocNumber(docNum);
         customerForm.post('/customers', {
             preserveScroll: true,
             onSuccess: () => {
@@ -152,6 +213,7 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
                 toast.success('Cliente registrado exitosamente');
             },
             onError: () => {
+                setLastCreatedDocNumber(null);
                 toast.error('No se pudo registrar el cliente. Verifica los datos.');
             },
         });
@@ -355,6 +417,15 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
 
     const selectedCustomer = customerList.find((s) => s.id.toString() === data.customer_id);
     const isGenericCustomer = data.customer_id === generic_customer_id.toString();
+    const customerDocType = (selectedCustomer?.document_type || '').toUpperCase();
+    const customerDocNumber = (selectedCustomer?.document_number || '').trim();
+    const isGenericOrEmptyDoc = isGenericCustomer || customerDocNumber === '' || customerDocNumber === '00000000' || customerDocNumber === '-';
+    const hasValidRuc = customerDocType === 'RUC' && /^\d{11}$/.test(customerDocNumber) && customerDocNumber !== '00000000000' && !isGenericOrEmptyDoc;
+
+    const totalInPen = data.currency_code === 'USD' ? finalTotal * (Number(data.exchange_rate) || 1) : finalTotal;
+    const isInvalidFacturaCustomer = data.sale_type === 'FACTURA' && !hasValidRuc;
+    const isInvalidBoletaOver700 = data.sale_type === 'BOLETA' && isGenericOrEmptyDoc && totalInPen >= 700;
+
     const changeAmount = Math.max(0, (parseFloat(data.amount_received) || 0) - finalTotal);
     const initialPay = parseFloat(data.initial_payment_amount || '0');
     const debtAmount = Math.max(0, finalTotal - initialPay);
@@ -363,6 +434,16 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
     const handleFormSubmit = async (chosenAction: 'CONFIRM' | 'DRAFT') => {
         if (data.lines.length === 0) {
             toast.error('Debe agregar al menos un producto a la venta.');
+            return;
+        }
+
+        if (isInvalidFacturaCustomer) {
+            toast.error('Normativa SUNAT: Para emitir una FACTURA ELECTRÓNICA el cliente debe tener obligatoriamente un RUC válido de 11 dígitos (RUC 10 o RUC 20) y Razón Social. Si solo cuenta con DNI, cambia a Boleta de Venta o registra su RUC.');
+            return;
+        }
+
+        if (isInvalidBoletaOver700) {
+            toast.error('Normativa SUNAT: En Boletas de Venta por montos iguales o mayores a S/ 700.00 es obligatorio identificar al cliente con su DNI (no se permite Clientes Varios).');
             return;
         }
 
@@ -509,7 +590,7 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
                                 type="button" 
                                 size="sm" 
                                 onClick={() => handleFormSubmit('CONFIRM')}
-                                disabled={processing || data.lines.length === 0 || (data.payment_type === 'CREDIT' && isGenericCustomer)}
+                                disabled={processing || data.lines.length === 0 || (data.payment_type === 'CREDIT' && isGenericCustomer) || isInvalidFacturaCustomer || isInvalidBoletaOver700}
                                 className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
                             >
                                 <CheckCircle className="h-3.5 w-3.5" /> Emitir y Confirmar
@@ -1006,57 +1087,87 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
                                                     variant="outline"
                                                     role="combobox"
                                                     aria-expanded={openCustomerCombobox}
-                                                    className="w-full justify-between h-10 font-normal"
+                                                    className={cn(
+                                                        "w-full justify-between h-10 font-normal",
+                                                        (isInvalidFacturaCustomer || isInvalidBoletaOver700) && "border-rose-500 ring-1 ring-rose-500/30"
+                                                    )}
                                                 >
                                                     <span className="truncate">
                                                         {data.customer_id
                                                             ? customerList.find((s) => s.id.toString() === data.customer_id)?.legal_name || 'Cliente desconocido'
-                                                            : "Buscar cliente..."}
+                                                            : "Seleccionar cliente..."}
                                                     </span>
                                                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                                 </Button>
                                             </PopoverTrigger>
                                             <PopoverContent className="w-[380px] p-0" align="start">
                                                 <Command filter={(value, search) => value.includes(normalizeSearch(search)) ? 1 : 0}>
-                                                    <CommandInput placeholder="Buscar por nombre o documento..." />
+                                                    <CommandInput placeholder={data.sale_type === 'FACTURA' ? "Buscar empresa o persona con RUC..." : "Buscar por nombre o documento..."} />
                                                     <CommandList>
                                                         <CommandEmpty>No se encontraron clientes.</CommandEmpty>
                                                         <CommandGroup>
-                                                            {customerList.map((s) => (
-                                                                <CommandItem
-                                                                    key={s.id}
-                                                                    value={`${normalizeSearch(s.legal_name)} ${s.document_number || ''}`}
-                                                                    onSelect={() => {
-                                                                        setData('customer_id', s.id.toString());
-                                                                        setOpenCustomerCombobox(false);
-                                                                    }}
-                                                                >
-                                                                    <Check
-                                                                        className={cn(
-                                                                            "mr-2 h-4 w-4",
-                                                                            data.customer_id === s.id.toString() ? "opacity-100" : "opacity-0"
-                                                                        )}
-                                                                    />
-                                                                    <div className="flex-1 min-w-0">
-                                                                        <div className="truncate font-medium flex items-center gap-1.5">
-                                                                            <span>{s.legal_name}</span>
-                                                                            {s.is_offline && (
-                                                                                <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 px-1 py-0.2 rounded font-medium">
-                                                                                    Offline
-                                                                                </span>
+                                                            {customerList.map((s) => {
+                                                                const itemDocType = (s.document_type || '').toUpperCase();
+                                                                const itemDocNum = (s.document_number || '').trim();
+                                                                const itemHasRuc = itemDocType === 'RUC' && /^\d{11}$/.test(itemDocNum) && itemDocNum !== '00000000000';
+                                                                const isBlockedForFactura = data.sale_type === 'FACTURA' && !itemHasRuc;
+
+                                                                return (
+                                                                    <CommandItem
+                                                                        key={s.id}
+                                                                        value={`${normalizeSearch(s.legal_name)} ${s.document_number || ''}`}
+                                                                        onSelect={() => {
+                                                                            if (isBlockedForFactura) {
+                                                                                toast.error(
+                                                                                    `No se puede seleccionar a "${s.legal_name}" para una FACTURA porque no tiene RUC de 11 dígitos (${itemDocType || 'DOC'}: ${itemDocNum || 'S/N'}). Cambia a Boleta de Venta o registra su RUC 10.`
+                                                                                );
+                                                                                return;
+                                                                            }
+                                                                            setData('customer_id', s.id.toString());
+                                                                            setOpenCustomerCombobox(false);
+                                                                        }}
+                                                                        className={cn(isBlockedForFactura && "opacity-55")}
+                                                                    >
+                                                                        <Check
+                                                                            className={cn(
+                                                                                "mr-2 h-4 w-4",
+                                                                                data.customer_id === s.id.toString() ? "opacity-100" : "opacity-0"
                                                                             )}
+                                                                        />
+                                                                        <div className="flex-1 min-w-0">
+                                                                            <div className="truncate font-medium flex items-center gap-1.5">
+                                                                                <span className="truncate">{s.legal_name}</span>
+                                                                                {s.is_offline && (
+                                                                                    <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 px-1 py-0.2 rounded font-medium">
+                                                                                        Offline
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
+                                                                            <div className="text-xs text-muted-foreground flex items-center gap-2">
+                                                                                <span>{itemDocType || 'DOC'}: {itemDocNum || '-'}</span>
+                                                                                {isBlockedForFactura && (
+                                                                                    <span className="text-[10px] text-rose-600 dark:text-rose-400 font-semibold">
+                                                                                        (Solo Boleta)
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
                                                                         </div>
-                                                                        <div className="text-xs text-muted-foreground">{s.document_number ? `(${s.document_number})` : ''}</div>
-                                                                    </div>
-                                                                </CommandItem>
-                                                            ))}
+                                                                    </CommandItem>
+                                                                );
+                                                            })}
                                                         </CommandGroup>
                                                     </CommandList>
                                                     <div className="p-2 border-t flex gap-2">
                                                         <Button 
+                                                            type="button"
                                                             variant="ghost" 
-                                                            className="w-full justify-start text-xs text-blue-600 dark:text-blue-400" 
+                                                            disabled={data.sale_type === 'FACTURA'}
+                                                            className="w-full justify-start text-xs text-blue-600 dark:text-blue-400 disabled:opacity-40" 
                                                             onClick={() => {
+                                                                if (data.sale_type === 'FACTURA') {
+                                                                    toast.error('Factura Electrónica requiere un cliente con RUC de 11 dígitos.');
+                                                                    return;
+                                                                }
                                                                 setData('customer_id', generic_customer_id.toString());
                                                                 setOpenCustomerCombobox(false);
                                                             }}
@@ -1065,15 +1176,13 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
                                                             Cliente Genérico
                                                         </Button>
                                                         <Button 
+                                                            type="button"
                                                             variant="ghost" 
                                                             className="w-full justify-start text-xs text-emerald-600 dark:text-emerald-400" 
-                                                            onClick={() => {
-                                                                setOpenCustomerCombobox(false);
-                                                                setOpenCustomerDialog(true);
-                                                            }}
+                                                            onClick={openNewCustomerModal}
                                                         >
                                                             <Plus className="mr-2 h-3.5 w-3.5" />
-                                                            Nuevo Cliente
+                                                            {data.sale_type === 'FACTURA' ? 'Nuevo RUC' : 'Nuevo Cliente'}
                                                         </Button>
                                                     </div>
                                                 </Command>
@@ -1082,6 +1191,63 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
                                     </div>
                                     <InputError message={errors.customer_id} />
                                 </div>
+
+                                {/* SUNAT Factura Validation Alert */}
+                                {isInvalidFacturaCustomer && (
+                                    <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-lg text-xs text-rose-800 dark:text-rose-300 space-y-2">
+                                        <div className="flex items-start gap-2">
+                                            <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
+                                            <div>
+                                                <p className="font-semibold">Factura exige RUC de 11 dígitos (Normativa SUNAT)</p>
+                                                <p className="mt-0.5 text-[11px] leading-relaxed">
+                                                    El cliente seleccionado tiene <strong>{customerDocType || 'DNI'}: {customerDocNumber || '00000000'}</strong>. Para emitir Factura Electrónica debes seleccionar un cliente con <strong>RUC (10 o 20)</strong>, o cambiar el comprobante a <strong>Boleta</strong>.
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-2 pt-1">
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="outline"
+                                                className="h-7 text-xs flex-1 border-rose-300 dark:border-rose-700"
+                                                onClick={() => setData('sale_type', 'BOLETA')}
+                                            >
+                                                Cambiar a Boleta
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                className="h-7 text-xs flex-1 bg-rose-600 hover:bg-rose-700 text-white"
+                                                onClick={openNewCustomerModal}
+                                            >
+                                                + Registrar RUC
+                                            </Button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* SUNAT Boleta >= S/ 700 Alert */}
+                                {isInvalidBoletaOver700 && (
+                                    <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-lg text-xs text-rose-800 dark:text-rose-300 space-y-2">
+                                        <div className="flex items-start gap-2">
+                                            <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
+                                            <div>
+                                                <p className="font-semibold">Identificación obligatoria (Boleta &ge; S/ 700.00)</p>
+                                                <p className="mt-0.5 text-[11px] leading-relaxed">
+                                                    Por normativa SUNAT, toda Boleta de Venta igual o mayor a <strong>S/ 700.00</strong> requiere identificar al cliente con su <strong>DNI</strong> u otro documento oficial.
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            className="h-7 text-xs w-full bg-rose-600 hover:bg-rose-700 text-white"
+                                            onClick={openNewCustomerModal}
+                                        >
+                                            + Registrar Cliente con DNI
+                                        </Button>
+                                    </div>
+                                )}
 
                                 {/* Pending Debt Alert */}
                                 {selectedCustomer && selectedCustomer.total_debt && parseFloat(selectedCustomer.total_debt) > 0 && (
@@ -1094,9 +1260,9 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
                                 )}
 
                                 {/* Generic Customer Warning */}
-                                {isGenericCustomer && (
+                                {isGenericCustomer && !isInvalidFacturaCustomer && !isInvalidBoletaOver700 && (
                                     <div className="p-2.5 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 rounded-lg text-xs text-blue-700 dark:text-blue-300">
-                                        Público en General: solo se permite comprar al contado.
+                                        Público en General: válido para Boletas menores a S/ 700.00 al contado.
                                     </div>
                                 )}
 
@@ -1107,7 +1273,9 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
                                             <User className="h-4 w-4" />
                                         </div>
                                         <div className="min-w-0 flex-1">
-                                            <div className="text-xs text-muted-foreground font-medium">Nombre o Razón Social</div>
+                                            <div className="text-xs text-muted-foreground font-medium">
+                                                {data.sale_type === 'FACTURA' ? 'Razón Social (Obligatorio)' : 'Nombre o Razón Social'}
+                                            </div>
                                             <div className="font-semibold text-sm text-foreground truncate">
                                                 {selectedCustomer?.legal_name || 'Clientes Varios / Público en General'}
                                             </div>
@@ -1119,9 +1287,11 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
                                             <FileText className="h-4 w-4" />
                                         </div>
                                         <div className="min-w-0 flex-1">
-                                            <div className="text-xs text-muted-foreground font-medium">Documento de Identidad</div>
-                                            <div className="font-semibold text-sm text-foreground">
-                                                {selectedCustomer?.document_type || 'DOC'}: {selectedCustomer?.document_number || '00000000'}
+                                            <div className="text-xs text-muted-foreground font-medium">Documento Tributario / Identidad</div>
+                                            <div className={cn("font-semibold text-sm", isInvalidFacturaCustomer ? "text-rose-600 dark:text-rose-400" : "text-foreground")}>
+                                                {isGenericOrEmptyDoc
+                                                    ? 'SIN DOCUMENTO (-)'
+                                                    : `${selectedCustomer?.document_type || 'DOC'}: ${selectedCustomer?.document_number}`}
                                             </div>
                                         </div>
                                     </div>
@@ -1202,15 +1372,23 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
                                         type="button" 
                                         onClick={() => handleFormSubmit('CONFIRM')}
                                         className={`w-full gap-2 font-semibold shadow-xs h-11 transition-colors ${
-                                            hasStockDeficit 
+                                            hasStockDeficit || isInvalidFacturaCustomer || isInvalidBoletaOver700
                                                 ? 'bg-rose-600 hover:bg-rose-700 text-white' 
                                                 : 'bg-emerald-600 hover:bg-emerald-700 text-white'
                                         }`} 
-                                        disabled={processing || data.lines.length === 0 || (data.payment_type === 'CREDIT' && isGenericCustomer)}
+                                        disabled={processing || data.lines.length === 0 || (data.payment_type === 'CREDIT' && isGenericCustomer) || isInvalidFacturaCustomer || isInvalidBoletaOver700}
                                     >
                                         {hasStockDeficit ? (
                                             <>
                                                 <Ban className="h-4 w-4" /> Stock Insuficiente en Líneas
+                                            </>
+                                        ) : isInvalidFacturaCustomer ? (
+                                            <>
+                                                <Ban className="h-4 w-4" /> Factura Requiere Cliente con RUC
+                                            </>
+                                        ) : isInvalidBoletaOver700 ? (
+                                            <>
+                                                <Ban className="h-4 w-4" /> Boleta &ge; S/ 700 Exige DNI
                                             </>
                                         ) : (
                                             <>
@@ -1229,7 +1407,7 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
                                         variant="outline"
                                         onClick={() => handleFormSubmit('DRAFT')}
                                         className="w-full gap-2 font-medium h-9" 
-                                        disabled={processing || data.lines.length === 0 || (data.payment_type === 'CREDIT' && isGenericCustomer)}
+                                        disabled={processing || data.lines.length === 0 || (data.payment_type === 'CREDIT' && isGenericCustomer) || isInvalidFacturaCustomer || isInvalidBoletaOver700}
                                     >
                                         <FileText className="h-3.5 w-3.5" /> Guardar como Borrador
                                     </Button>
@@ -1252,9 +1430,13 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
             <Dialog open={openCustomerDialog} onOpenChange={setOpenCustomerDialog}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Agregar Nuevo Cliente</DialogTitle>
+                        <DialogTitle>
+                            {data.sale_type === 'FACTURA' ? 'Registrar Cliente con RUC (Factura)' : 'Agregar Nuevo Cliente'}
+                        </DialogTitle>
                         <DialogDescription>
-                            Registra rápidamente un cliente. Para agregar más detalles como teléfono o dirección, ve a la pestaña de Clientes.
+                            {data.sale_type === 'FACTURA'
+                                ? 'Por normativa SUNAT, para emitir una Factura Electrónica el cliente debe registrarse exclusivamente con RUC de 11 dígitos (RUC 20 o RUC 10 con negocio) y su Razón Social.'
+                                : 'Registra rápidamente un cliente con DNI, RUC u otro documento oficial.'}
                         </DialogDescription>
                     </DialogHeader>
                     <form onSubmit={submitCustomer} className="space-y-4">
@@ -1272,21 +1454,40 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label htmlFor="c_doc_type">Tipo de Documento</Label>
-                                <Select value={customerForm.data.document_type} onValueChange={(v) => { customerForm.setData('document_type', v); customerForm.setData('document_number', ''); }}>
+                                <Select
+                                    value={data.sale_type === 'FACTURA' ? 'RUC' : customerForm.data.document_type}
+                                    disabled={data.sale_type === 'FACTURA'}
+                                    onValueChange={(v) => {
+                                        customerForm.setData('document_type', v);
+                                        customerForm.setData('document_number', '');
+                                    }}
+                                >
                                     <SelectTrigger id="c_doc_type"><SelectValue /></SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="DNI">DNI</SelectItem>
-                                        <SelectItem value="RUC">RUC</SelectItem>
-                                        <SelectItem value="CE">CE</SelectItem>
-                                        <SelectItem value="PASAPORTE">Pasaporte</SelectItem>
-                                        <SelectItem value="OTRO">Otro</SelectItem>
+                                        {data.sale_type !== 'FACTURA' && <SelectItem value="DNI">DNI (8 dígitos)</SelectItem>}
+                                        <SelectItem value="RUC">RUC (11 dígitos)</SelectItem>
+                                        {data.sale_type !== 'FACTURA' && (
+                                            <>
+                                                <SelectItem value="CE">Carné de Extranjería</SelectItem>
+                                                <SelectItem value="PASAPORTE">Pasaporte</SelectItem>
+                                                <SelectItem value="OTRO">Otro</SelectItem>
+                                            </>
+                                        )}
                                     </SelectContent>
                                 </Select>
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="c_doc_num">Número</Label>
+                                <Label htmlFor="c_doc_num">
+                                    {customerForm.data.document_type === 'RUC' || data.sale_type === 'FACTURA'
+                                        ? 'Número de RUC (11 dígitos)'
+                                        : customerForm.data.document_type === 'DNI'
+                                            ? 'Número de DNI (8 dígitos)'
+                                            : 'Número de Documento'} <span className="text-red-500">*</span>
+                                </Label>
                                 <Input 
                                     id="c_doc_num" 
+                                    required
+                                    placeholder={customerForm.data.document_type === 'RUC' || data.sale_type === 'FACTURA' ? '20XXXXXXXXX / 10XXXXXXXXX' : '8 dígitos'}
                                     maxLength={customerForm.data.document_type === 'DNI' ? 8 : customerForm.data.document_type === 'RUC' ? 11 : customerForm.data.document_type === 'CE' ? 9 : 15}
                                     value={customerForm.data.document_number} 
                                     onChange={(e) => {
@@ -1299,18 +1500,29 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
                                             customerForm.setData('document_number', val);
                                         }
                                     }} 
+                                    className="font-mono"
                                 />
                                 <InputError message={customerForm.errors.document_number} />
                             </div>
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="c_legal_name">Nombre Completo o Razón Social <span className="text-red-500">*</span></Label>
-                            <Input id="c_legal_name" required value={customerForm.data.legal_name} onChange={(e) => customerForm.setData('legal_name', e.target.value)} />
+                            <Label htmlFor="c_legal_name">
+                                {customerForm.data.document_type === 'RUC' || data.sale_type === 'FACTURA'
+                                    ? 'Razón Social / Persona Natural con Negocio'
+                                    : 'Nombre Completo o Razón Social'} <span className="text-red-500">*</span>
+                            </Label>
+                            <Input
+                                id="c_legal_name"
+                                required
+                                placeholder={customerForm.data.document_type === 'RUC' || data.sale_type === 'FACTURA' ? 'Ej. INVERSIONES LOS ANDES S.A.C.' : 'Ej. Juan Pérez'}
+                                value={customerForm.data.legal_name}
+                                onChange={(e) => customerForm.setData('legal_name', e.target.value)}
+                            />
                             <InputError message={customerForm.errors.legal_name} />
                         </div>
                         <DialogFooter>
                             <Button type="button" variant="outline" onClick={() => setOpenCustomerDialog(false)}>Cancelar</Button>
-                            <Button type="submit" disabled={customerForm.processing}>Guardar</Button>
+                            <Button type="submit" disabled={customerForm.processing}>Guardar Cliente</Button>
                         </DialogFooter>
                     </form>
                 </DialogContent>

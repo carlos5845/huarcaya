@@ -9,6 +9,7 @@ use App\Models\Payment;
 use App\Models\PaymentMethod;
 use App\Models\PaymentMethodLine;
 use App\Models\Sale;
+use App\Models\SyncOperation;
 use App\Models\User;
 use App\Services\DailyClosingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -415,4 +416,40 @@ test('non-admin user cannot view or print closing of another branch', function (
     // Attempt to print closing from branch 2
     $printResponse = $this->actingAs($cajero)->get(route('closings.print', $closingBranch2->id));
     $printResponse->assertForbidden();
+});
+
+test('daily closing is not blocked by rejected conflicts whose sync operation is marked FAILED', function () {
+    $today = now()->toDateString();
+
+    $syncOp = SyncOperation::create([
+        'uuid' => (string) Str::uuid(),
+        'user_id' => $this->user->id,
+        'entity_type' => 'Sale',
+        'entity_uuid' => (string) Str::uuid(),
+        'operation_type' => 'CREATE',
+        'payload' => ['branch_id' => $this->branch->id],
+        'status' => 'FAILED',
+        'error_message' => 'Operación rechazada administrativamente: stock agotado',
+        'client_timestamp' => now(),
+    ]);
+
+    Conflict::create([
+        'uuid' => (string) Str::uuid(),
+        'sync_operation_id' => $syncOp->id,
+        'entity_type' => 'Sale',
+        'entity_uuid' => $syncOp->entity_uuid,
+        'conflict_type' => 'INSUFFICIENT_STOCK',
+        'client_state' => ['branch_id' => $this->branch->id],
+        'server_state' => ['error' => 'Stock insuficiente'],
+        'status' => 'REJECTED',
+        'resolved_by' => $this->user->id,
+        'resolved_at' => now(),
+    ]);
+
+    $service = app(DailyClosingService::class);
+    $expected = $service->getDailyMetrics($this->branch->id, $today);
+
+    expect($expected['pending_syncs'])->toBe(0)
+        ->and($expected['pending_conflicts'])->toBe(0)
+        ->and($expected['can_close'])->toBeTrue();
 });
