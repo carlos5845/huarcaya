@@ -49,23 +49,44 @@ Route::inertia('/', 'welcome')->name('home');
 Route::middleware(['auth'])->group(function () {
     Route::get('/init', function (Request $request) {
         $user = $request->user();
-        if ($user->hasRole('Super Admin') || $user->hasPermissionTo('view_dashboard')) {
+        if ($user->hasRole('Super Admin') || $user->can('view_dashboard')) {
             return redirect('/dashboard');
         }
-        if ($user->hasPermissionTo('view_inventory') || $user->hasPermissionTo('view_inventory_general')) {
+        if ($user->can('view_inventory') || $user->can('view_inventory_general')) {
             return redirect('/inventory');
         }
-        if ($user->hasPermissionTo('view_sales')) {
+        if ($user->can('view_sales')) {
             return redirect('/sales');
         }
-        if ($user->hasPermissionTo('view_transfers')) {
+        if ($user->can('view_receivables')) {
+            return redirect('/receivables');
+        }
+        if ($user->can('view_returns')) {
+            return redirect('/customer-returns');
+        }
+        if ($user->can('view_transfers')) {
             return redirect('/transfers');
         }
-        if ($user->hasPermissionTo('view_purchases')) {
+        if ($user->can('view_purchases')) {
             return redirect('/purchases');
         }
-        if ($user->hasPermissionTo('view_products')) {
+        if ($user->can('view_closings')) {
+            return redirect('/closings');
+        }
+        if ($user->can('view_products')) {
             return redirect('/products');
+        }
+        if ($user->can('view_reports')) {
+            return redirect('/reports');
+        }
+        if ($user->can('view_alerts')) {
+            return redirect('/alerts');
+        }
+        if ($user->can('view_conflicts')) {
+            return redirect('/conflicts');
+        }
+        if ($user->can('view_company')) {
+            return redirect('/company');
         }
 
         return redirect('/user/profile');
@@ -82,12 +103,15 @@ Route::middleware(['auth'])->group(function () {
     // Configuración forzada en primer login
     Route::post('/user/setup-profile', [UserSetupController::class, 'store'])->name('user.setup-profile');
 
-    // Branch & Company Management
-    Route::middleware(['role_or_permission:Super Admin|view_branches'])->group(function () {
+    // Company Management (Datos de Empresa)
+    Route::middleware(['role_or_permission:Super Admin|view_company|view_branches'])->group(function () {
         Route::get('company', [CompanySettingsController::class, 'edit'])->name('company.edit');
         Route::match(['put', 'post'], 'company', [CompanySettingsController::class, 'update'])->name('company.update');
-        Route::resource('branches', BranchController::class)->except(['create', 'show', 'edit']);
+    });
 
+    // Branch Management
+    Route::middleware(['role_or_permission:Super Admin|view_branches'])->group(function () {
+        Route::resource('branches', BranchController::class)->except(['create', 'show', 'edit']);
     });
 
     // User & Role Management
@@ -130,17 +154,21 @@ Route::middleware(['auth'])->group(function () {
         Route::get('sales/{sale}/print/ticket', [SalePrintController::class, 'ticket'])->name('sales.print.ticket');
         Route::get('sales/{sale}/print/a4', [SalePrintController::class, 'a4'])->name('sales.print.a4');
         Route::resource('sales', SaleController::class);
+    });
 
+    Route::middleware(['role_or_permission:Super Admin|view_returns|view_sales'])->group(function () {
         Route::get('customer-returns/{customer_return}/print', [CustomerReturnPrintController::class, 'show'])->name('customer-returns.print');
         Route::post('customer-returns/{customer_return}/confirm', [CustomerReturnController::class, 'confirm'])->name('customer-returns.confirm');
         Route::post('customer-returns/{customer_return}/cancel', [CustomerReturnController::class, 'cancel'])->name('customer-returns.cancel');
         Route::resource('customer-returns', CustomerReturnController::class)->except(['destroy', 'edit', 'update']);
+    });
 
+    Route::middleware(['role_or_permission:Super Admin|view_receivables|view_sales'])->group(function () {
         Route::get('receivables', [ReceivableController::class, 'index'])->name('receivables.index');
+        Route::get('receivables/reports/print', [ReceivableController::class, 'printReport'])->name('receivables.reports.print');
         Route::get('receivables/{receivable}', [ReceivableController::class, 'show'])->name('receivables.show');
         Route::post('receivables/{receivable}/payments', [ReceivableController::class, 'storePayment'])->name('receivables.payments.store');
         Route::post('receivables/{receivable}/payments/{payment}/cancel', [ReceivableController::class, 'cancelPayment'])->name('receivables.payments.cancel');
-
     });
 
     Route::middleware(['role_or_permission:Super Admin|view_transfers'])->group(function () {

@@ -17,23 +17,26 @@ class RolesAndPermissionsSeeder extends Seeder
         // 1. Define all permissions
         $permissions = [
             'view_dashboard',
-            'view_users',
-            'view_branches',
+            'view_reports',
+            'view_alerts',
+            'view_sales',
+            'view_receivables',
+            'view_returns',
             'view_customers',
+            'view_purchases',
             'view_suppliers',
+            'view_transfers',
+            'view_closings',
             'view_products',
             'view_inventory',
             'view_inventory_general',
-            'view_purchases',
-            'view_sales',
-            'view_transfers',
             'view_adjustments',
             'view_kardex',
             'view_import',
+            'view_company',
+            'view_branches',
+            'view_users',
             'view_conflicts',
-            'view_closings',
-            'view_alerts',
-            'view_reports',
         ];
 
         foreach ($permissions as $permission) {
@@ -46,21 +49,21 @@ class RolesAndPermissionsSeeder extends Seeder
         $superAdmin = Role::firstOrCreate(['name' => 'Super Admin', 'guard_name' => 'web']);
         $superAdmin->syncPermissions(Permission::all());
 
-        // Administrador de Tienda gets all EXCEPT users and branches
+        // Administrador de Tienda gets all EXCEPT users, branches and company
         $storeAdmin = Role::firstOrCreate(['name' => 'Administrador de Tienda', 'guard_name' => 'web']);
-        $storeAdminPermissions = Permission::whereNotIn('name', ['view_users', 'view_branches'])->get();
+        $storeAdminPermissions = Permission::whereNotIn('name', ['view_users', 'view_branches', 'view_company'])->get();
         $storeAdmin->syncPermissions($storeAdminPermissions);
 
-        // Gerente gets all EXCEPT users and branches (same as store admin)
+        // Gerente gets all EXCEPT users, branches and company (same as store admin)
         $gerente = Role::firstOrCreate(['name' => 'Gerente', 'guard_name' => 'web']);
         $gerente->syncPermissions($storeAdminPermissions);
 
         $contador = Role::firstOrCreate(['name' => 'Contador', 'guard_name' => 'web']);
-        $contador->syncPermissions([]); // No permissions selected
+        $contador->syncPermissions(Permission::whereIn('name', ['view_dashboard', 'view_reports', 'view_sales', 'view_receivables', 'view_returns', 'view_purchases', 'view_closings', 'view_kardex'])->get());
 
         // Other existing roles (kept for consistency)
         $cajero = Role::firstOrCreate(['name' => 'Cajero', 'guard_name' => 'web']);
-        $cajero->syncPermissions(Permission::whereIn('name', ['view_dashboard', 'view_sales', 'view_customers', 'view_inventory', 'view_closings', 'view_reports'])->get());
+        $cajero->syncPermissions(Permission::whereIn('name', ['view_dashboard', 'view_sales', 'view_receivables', 'view_returns', 'view_customers', 'view_inventory', 'view_closings', 'view_reports'])->get());
 
         $almacenero = Role::firstOrCreate(['name' => 'Almacenero', 'guard_name' => 'web']);
         $almacenero->syncPermissions(Permission::whereIn('name', ['view_dashboard', 'view_inventory', 'view_transfers', 'view_adjustments', 'view_kardex', 'view_products', 'view_alerts', 'view_reports'])->get());

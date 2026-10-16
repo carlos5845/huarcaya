@@ -32,6 +32,8 @@ import { toast } from 'sonner';
 import InputError from '@/components/input-error';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import ConfirmDialog from '@/components/confirm-dialog';
+import { useConfirmDialog } from '@/hooks/use-confirm';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -186,6 +188,8 @@ export default function BranchesIndex({ branches, flash }: Props) {
         });
     };
 
+    const { confirm, dialogProps } = useConfirmDialog();
+
     const toggleStatus = (branch: Branch) => {
         if (!isOnline) {
             toast.warning('Modo sin conexión', {
@@ -194,9 +198,16 @@ export default function BranchesIndex({ branches, flash }: Props) {
             return;
         }
 
-        if (confirm(`¿Estás seguro de que deseas ${branch.status === 'ACTIVE' ? 'desactivar' : 'reactivar'} esta sucursal?`)) {
-            router.delete(`/branches/${branch.id}`);
-        }
+        const isDeactivating = branch.status === 'ACTIVE';
+        confirm({
+            title: isDeactivating ? '¿Desactivar esta sucursal?' : '¿Reactivar esta sucursal?',
+            description: isDeactivating
+                ? `La sucursal "${branch.name}" dejará de estar disponible para emitir comprobantes o recibir mercadería.`
+                : `La sucursal "${branch.name}" volverá a estar habilitada para operaciones comerciales e inventario.`,
+            variant: isDeactivating ? 'warning' : 'info',
+            confirmLabel: isDeactivating ? 'Sí, desactivar' : 'Sí, reactivar',
+            onConfirm: () => router.delete(`/branches/${branch.id}`),
+        });
     };
 
     const openEdit = (branch: Branch) => {
@@ -1249,6 +1260,9 @@ export default function BranchesIndex({ branches, flash }: Props) {
                     </form>
                 </DialogContent>
             </Dialog>
+
+            {/* Modal de confirmación estilizado */}
+            <ConfirmDialog {...dialogProps} />
         </>
     );
 }

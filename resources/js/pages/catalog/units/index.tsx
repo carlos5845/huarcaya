@@ -5,6 +5,8 @@ import InputError from '@/components/input-error';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import ConfirmDialog from '@/components/confirm-dialog';
+import { useConfirmDialog } from '@/hooks/use-confirm';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
@@ -23,6 +25,7 @@ type Props = {
 };
 
 export default function UnitsIndex({ units, flash }: Props) {
+    const { confirm, dialogProps } = useConfirmDialog();
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [editingUnit, setEditingUnit] = useState<Unit | null>(null);
@@ -65,9 +68,16 @@ return;
     };
 
     const toggleStatus = (unit: Unit) => {
-        if (confirm(`¿Estás seguro de que deseas ${unit.status === 'ACTIVE' ? 'desactivar' : 'reactivar'} esta unidad?`)) {
-            router.delete(`/units/${unit.id}`);
-        }
+        const isActivating = unit.status !== 'ACTIVE';
+        confirm({
+            title: isActivating ? '¿Reactivar unidad?' : '¿Desactivar unidad?',
+            description: `¿Estás seguro de que deseas ${isActivating ? 'reactivar' : 'desactivar'} la unidad "${unit.name}"?`,
+            confirmText: isActivating ? 'Reactivar' : 'Desactivar',
+            variant: isActivating ? 'info' : 'warning',
+            onConfirm: () => {
+                router.delete(`/units/${unit.id}`);
+            },
+        });
     };
 
     const openEdit = (unit: Unit) => {
@@ -211,6 +221,8 @@ return;
                     </form>
                 </DialogContent>
             </Dialog>
+
+            <ConfirmDialog {...dialogProps} />
         </>
     );
 }

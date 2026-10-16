@@ -113,7 +113,7 @@ class CustomerReturnController extends Controller
                 'max_days' => $maxReturnDays,
                 'days_elapsed' => $daysElapsed,
                 'is_expired' => $isExpired,
-                'can_override' => $isSuperAdmin || $user->hasPermissionTo('manage_users') || $user->hasPermissionTo('view_reports'),
+                'can_override' => $isSuperAdmin || $user->can('view_users') || $user->can('view_reports'),
             ];
 
             // Fase 2: Estado financiero de la venta

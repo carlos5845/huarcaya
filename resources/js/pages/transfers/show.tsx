@@ -33,6 +33,8 @@ import {
     ChevronDown
 } from 'lucide-react';
 import { DocumentPreviewModal } from '@/components/document-preview-modal';
+import ConfirmDialog from '@/components/confirm-dialog';
+import { useConfirmDialog } from '@/hooks/use-confirm';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -91,16 +93,26 @@ export default function TransfersShow({
         return () => clearInterval(interval);
     }, [transfer.id]);
 
+    const { confirm, dialogProps } = useConfirmDialog();
+
     const cancelTransfer = () => {
-        if (confirm('¿Estás seguro de cancelar esta transferencia? Si estaba en tránsito, el stock retornará al origen.')) {
-            router.post(`/transfers/${transfer.id}/cancel`);
-        }
+        confirm({
+            title: '¿Cancelar esta transferencia?',
+            description: 'Si la mercadería estaba en tránsito, el stock retornará a la sucursal de origen. Esta acción no se puede deshacer.',
+            variant: 'danger',
+            confirmLabel: 'Sí, cancelar transferencia',
+            onConfirm: () => router.post(`/transfers/${transfer.id}/cancel`),
+        });
     };
 
     const dispatchTransfer = () => {
-        if (confirm('¿Estás seguro de despachar esta mercadería? Se descontará del inventario de origen inmediatamente.')) {
-            router.post(`/transfers/${transfer.id}/shipments`);
-        }
+        confirm({
+            title: '¿Despachar esta mercadería?',
+            description: 'Se descontará del inventario de origen inmediatamente y pasará a estado En Tránsito hacia el destino.',
+            variant: 'warning',
+            confirmLabel: 'Sí, despachar mercadería',
+            onConfirm: () => router.post(`/transfers/${transfer.id}/shipments`),
+        });
     };
 
     // Totales calculados
@@ -895,6 +907,9 @@ export default function TransfersShow({
                 title={previewTitle}
                 subtitle={previewSubtitle}
             />
+
+            {/* Modal de confirmación estilizado */}
+            <ConfirmDialog {...dialogProps} />
         </>
     );
 }

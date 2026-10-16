@@ -1,4 +1,5 @@
 import { Head, Link, useForm, router } from '@inertiajs/react';
+import { toast } from 'sonner';
 import { 
     ArrowLeft, 
     Save, 
@@ -294,12 +295,16 @@ export default function CustomerReturnCreate({
         const filteredLines = data.lines.filter((l: any) => l.quantity > 0);
         
         if (filteredLines.length === 0) {
-            alert('Debes ingresar una cantidad mayor a 0 en al menos un producto para registrar la devolución.');
+            toast.warning('Ingresa al menos un producto', {
+                description: 'Debes ingresar una cantidad mayor a 0 en al menos un producto para registrar la devolución.',
+            });
             return;
         }
 
         if (isBlockedByDeadline) {
-            alert('Esta venta supera el plazo máximo de devolución permitido. Debes activar la autorización de excepción e indicar el motivo justificado.');
+            toast.warning('Plazo de devolución vencido', {
+                description: 'Esta venta supera el plazo máximo de devolución permitido. Activa la autorización de excepción e indica el motivo justificado.',
+            });
             return;
         }
 

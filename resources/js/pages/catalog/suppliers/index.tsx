@@ -34,6 +34,8 @@ import {
     WifiOff
 } from 'lucide-react';
 import { useNetworkStatus } from '@/hooks/use-network-status';
+import ConfirmDialog from '@/components/confirm-dialog';
+import { useConfirmDialog } from '@/hooks/use-confirm';
 import { toast } from 'sonner';
 import { normalizeSearch, cn } from '@/lib/utils';
 import InputError from '@/components/input-error';
@@ -204,6 +206,8 @@ export default function SuppliersIndex({ suppliers }: { suppliers: any[] }) {
         }
     };
 
+    const { confirm, dialogProps } = useConfirmDialog();
+
     const toggleStatus = (id: number) => {
         if (!isOnline) {
             toast.warning('Modo sin conexión', {
@@ -212,9 +216,13 @@ export default function SuppliersIndex({ suppliers }: { suppliers: any[] }) {
             return;
         }
 
-        if (confirm('¿Estás seguro de cambiar el estado de este proveedor?')) {
-            router.delete(`/suppliers/${id}`);
-        }
+        confirm({
+            title: '¿Cambiar estado del proveedor?',
+            description: 'Esta acción activará o desactivará al proveedor para nuevas órdenes de compra en el sistema.',
+            variant: 'warning',
+            confirmLabel: 'Sí, cambiar estado',
+            onConfirm: () => router.delete(`/suppliers/${id}`),
+        });
     };
 
     // Contributor type detector
@@ -942,6 +950,9 @@ export default function SuppliersIndex({ suppliers }: { suppliers: any[] }) {
                     </DialogContent>
                 </Dialog>
             </div>
+
+            {/* Modal de confirmación estilizado */}
+            <ConfirmDialog {...dialogProps} />
         </>
     );
 }

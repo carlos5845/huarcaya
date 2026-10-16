@@ -25,6 +25,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DocumentPreviewModal } from '@/components/document-preview-modal';
+import ConfirmDialog from '@/components/confirm-dialog';
+import { useConfirmDialog } from '@/hooks/use-confirm';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -43,13 +45,20 @@ export default function CustomerReturnShow({ customerReturn }: { customerReturn:
     const [cancellationReason, setCancellationReason] = useState('');
     const [cancelError, setCancelError] = useState('');
 
+    const { confirm, dialogProps } = useConfirmDialog();
+
     const handleConfirm = () => {
-        if (!confirm('¿Estás seguro de confirmar esta devolución? El inventario será restaurado y se procesará el cuadre financiero.')) {
-            return;
-        }
-        setProcessing(true);
-        router.post(`/customer-returns/${customerReturn.id}/confirm`, {}, {
-            onFinish: () => setProcessing(false),
+        confirm({
+            title: '¿Confirmar esta devolución?',
+            description: 'El inventario de los productos devueltos será restaurado inmediatamente en la sucursal y se procesará el cuadre financiero correspondiente.',
+            variant: 'warning',
+            confirmLabel: 'Sí, confirmar devolución',
+            onConfirm: () => {
+                setProcessing(true);
+                router.post(`/customer-returns/${customerReturn.id}/confirm`, {}, {
+                    onFinish: () => setProcessing(false),
+                });
+            },
         });
     };
 
@@ -634,6 +643,9 @@ export default function CustomerReturnShow({ customerReturn }: { customerReturn:
                 }
                 subtitle={customerReturn.customer?.legal_name || 'Cliente Varios'}
             />
+
+            {/* Modal de confirmación estilizado */}
+            <ConfirmDialog {...dialogProps} />
         </>
     );
 }

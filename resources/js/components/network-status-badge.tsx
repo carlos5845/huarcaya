@@ -7,8 +7,11 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from '@/components/ui/popover';
+import ConfirmDialog from '@/components/confirm-dialog';
+import { useConfirmDialog } from '@/hooks/use-confirm';
 
 export function NetworkStatusBadge({ branchId }: { branchId?: number }) {
+    const { confirm, dialogProps } = useConfirmDialog();
     const {
         isOnline,
         pendingCount,
@@ -42,7 +45,8 @@ export function NetworkStatusBadge({ branchId }: { branchId?: number }) {
     };
 
     return (
-        <Popover>
+        <>
+            <Popover>
             <PopoverTrigger asChild>
                 <button
                     type="button"
@@ -181,9 +185,13 @@ export function NetworkStatusBadge({ branchId }: { branchId?: number }) {
                                                 <button
                                                     type="button"
                                                     onClick={() => {
-                                                        if (confirm(`¿Descartar ${op.entity_type === 'SALE' ? 'la venta' : 'la operación'} ${op.doc_number}? Se eliminará del registro local de contingencia.`)) {
-                                                            discardSingle(op.id);
-                                                        }
+                                                        confirm({
+                                                            title: '¿Descartar operación de contingencia?',
+                                                            description: `¿Estás seguro de descartar ${op.entity_type === 'SALE' ? 'la venta' : 'la operación'} ${op.doc_number}? Se eliminará permanentemente del almacenamiento local.`,
+                                                            confirmText: 'Descartar',
+                                                            variant: 'danger',
+                                                            onConfirm: () => discardSingle(op.id),
+                                                        });
                                                     }}
                                                     disabled={isSyncing}
                                                     title="Descartar del almacenamiento local"
@@ -246,5 +254,7 @@ export function NetworkStatusBadge({ branchId }: { branchId?: number }) {
                 </div>
             </PopoverContent>
         </Popover>
+        <ConfirmDialog {...dialogProps} />
+        </>
     );
 }

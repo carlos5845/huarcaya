@@ -3,17 +3,24 @@ import { ClipboardList, ArrowLeft, ArrowDownRight, ArrowUpRight, CheckCircle, Fi
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import ConfirmDialog from '@/components/confirm-dialog';
+import { useConfirmDialog } from '@/hooks/use-confirm';
 import AppLayout from '@/layouts/app-layout';
 
 export default function AdjustmentsShow({ adjustment }: { adjustment: any }) {
+    const { confirm, dialogProps } = useConfirmDialog();
     
     const handleConfirm = () => {
-        if (!confirm('¿Estás seguro de confirmar este ajuste? Esto afectará el Kardex y no se puede deshacer.')) {
-return;
-}
-        
-        router.post(`/inventory/adjustments/${adjustment.id}/confirm`, {}, {
-            preserveScroll: true,
+        confirm({
+            title: '¿Confirmar ajuste de inventario?',
+            description: 'Esto afectará de forma definitiva el Kardex y stock en el almacén. Esta acción no se puede deshacer.',
+            confirmText: 'Confirmar ajuste',
+            variant: 'warning',
+            onConfirm: () => {
+                router.post(`/inventory/adjustments/${adjustment.id}/confirm`, {}, {
+                    preserveScroll: true,
+                });
+            },
         });
     };
 
@@ -152,6 +159,8 @@ return;
                     </div>
                 </div>
             </div>
+
+            <ConfirmDialog {...dialogProps} />
         </>
     );
 }

@@ -181,7 +181,13 @@ export default function ReportsIndex({
 
     const handleExportExcel = () => {
         const qs = getQueryString();
-        window.location.href = `/reports/export/${selectedType}?${qs}`;
+        const url = `/reports/export/${selectedType}?${qs}`;
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', '');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     };
 
     const handleOpenPrintModal = () => {

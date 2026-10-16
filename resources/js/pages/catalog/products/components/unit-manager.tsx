@@ -10,6 +10,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import ConfirmDialog from '@/components/confirm-dialog';
+import { useConfirmDialog } from '@/hooks/use-confirm';
 import { cn } from '@/lib/utils';
 
 type Unit = { id: number; name: string; code: string; status: string };
@@ -24,6 +26,7 @@ type Props = {
 };
 
 export function UnitManager({ units, value, onChange, error, label, required }: Props) {
+    const { confirm, dialogProps } = useConfirmDialog();
     const [openCombo, setOpenCombo] = useState(false);
     const [openCreate, setOpenCreate] = useState(false);
     const [openManage, setOpenManage] = useState(false);
@@ -95,11 +98,18 @@ export function UnitManager({ units, value, onChange, error, label, required }: 
     };
 
     const deleteUnit = (unit: Unit) => {
-        if (confirm(`¿Estás seguro de cambiar el estado de la unidad "${unit.name}"?`)) {
-            router.delete(`/units/${unit.id}`, {
-                preserveScroll: true,
-            });
-        }
+        const isActivating = unit.status !== 'ACTIVE';
+        confirm({
+            title: isActivating ? '¿Reactivar unidad?' : '¿Desactivar unidad?',
+            description: `¿Estás seguro de que deseas ${isActivating ? 'reactivar' : 'desactivar'} la unidad "${unit.name}"?`,
+            confirmText: isActivating ? 'Reactivar' : 'Desactivar',
+            variant: isActivating ? 'info' : 'warning',
+            onConfirm: () => {
+                router.delete(`/units/${unit.id}`, {
+                    preserveScroll: true,
+                });
+            },
+        });
     };
 
     const selectedUnit = units.find((u) => u.id.toString() === value);
@@ -407,6 +417,8 @@ export function UnitManager({ units, value, onChange, error, label, required }: 
                     </div>
                 </DialogContent>
             </Dialog>
+
+            <ConfirmDialog {...dialogProps} />
         </div>
     );
 }

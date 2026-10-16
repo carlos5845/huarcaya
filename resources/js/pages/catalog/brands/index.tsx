@@ -5,6 +5,8 @@ import InputError from '@/components/input-error';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import ConfirmDialog from '@/components/confirm-dialog';
+import { useConfirmDialog } from '@/hooks/use-confirm';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
@@ -24,6 +26,7 @@ type Props = {
 };
 
 export default function BrandsIndex({ brands, flash }: Props) {
+    const { confirm, dialogProps } = useConfirmDialog();
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [editingBrand, setEditingBrand] = useState<Brand | null>(null);
@@ -66,9 +69,16 @@ return;
     };
 
     const toggleStatus = (brand: Brand) => {
-        if (confirm(`¿Estás seguro de que deseas ${brand.status === 'ACTIVE' ? 'desactivar' : 'reactivar'} esta marca?`)) {
-            router.delete(`/brands/${brand.id}`);
-        }
+        const isActivating = brand.status !== 'ACTIVE';
+        confirm({
+            title: isActivating ? '¿Reactivar marca?' : '¿Desactivar marca?',
+            description: `¿Estás seguro de que deseas ${isActivating ? 'reactivar' : 'desactivar'} la marca "${brand.name}"?`,
+            confirmText: isActivating ? 'Reactivar' : 'Desactivar',
+            variant: isActivating ? 'info' : 'warning',
+            onConfirm: () => {
+                router.delete(`/brands/${brand.id}`);
+            },
+        });
     };
 
     const openEdit = (brand: Brand) => {
@@ -217,6 +227,8 @@ return;
                     </form>
                 </DialogContent>
             </Dialog>
+
+            <ConfirmDialog {...dialogProps} />
         </>
     );
 }

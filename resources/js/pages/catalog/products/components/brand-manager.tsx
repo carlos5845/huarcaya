@@ -10,6 +10,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import ConfirmDialog from '@/components/confirm-dialog';
+import { useConfirmDialog } from '@/hooks/use-confirm';
 import { cn } from '@/lib/utils';
 
 type Brand = { id: number; name: string; code?: string | null; status: string };
@@ -24,6 +26,7 @@ type Props = {
 };
 
 export function BrandManager({ brands, value, onChange, error, label, required }: Props) {
+    const { confirm, dialogProps } = useConfirmDialog();
     const [openCombo, setOpenCombo] = useState(false);
     const [openCreate, setOpenCreate] = useState(false);
     const [openManage, setOpenManage] = useState(false);
@@ -91,11 +94,18 @@ export function BrandManager({ brands, value, onChange, error, label, required }
     };
 
     const deleteBrand = (brand: Brand) => {
-        if (confirm(`¿Estás seguro de cambiar el estado de la marca "${brand.name}"?`)) {
-            router.delete(`/brands/${brand.id}`, {
-                preserveScroll: true,
-            });
-        }
+        const isActivating = brand.status !== 'ACTIVE';
+        confirm({
+            title: isActivating ? '¿Reactivar marca?' : '¿Desactivar marca?',
+            description: `¿Estás seguro de que deseas ${isActivating ? 'reactivar' : 'desactivar'} la marca "${brand.name}"?`,
+            confirmText: isActivating ? 'Reactivar' : 'Desactivar',
+            variant: isActivating ? 'info' : 'warning',
+            onConfirm: () => {
+                router.delete(`/brands/${brand.id}`, {
+                    preserveScroll: true,
+                });
+            },
+        });
     };
 
     const selectedBrand = brands.find((b) => b.id.toString() === value);
@@ -405,6 +415,8 @@ export function BrandManager({ brands, value, onChange, error, label, required }
                     </div>
                 </DialogContent>
             </Dialog>
+
+            <ConfirmDialog {...dialogProps} />
         </div>
     );
 }

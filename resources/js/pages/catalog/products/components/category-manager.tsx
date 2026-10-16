@@ -10,6 +10,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import ConfirmDialog from '@/components/confirm-dialog';
+import { useConfirmDialog } from '@/hooks/use-confirm';
 import { cn } from '@/lib/utils';
 
 type Category = { id: number; name: string; code?: string | null; parent_id?: number | null; status: string };
@@ -24,6 +26,7 @@ type Props = {
 };
 
 export function CategoryManager({ categories, value, onChange, error, label, required }: Props) {
+    const { confirm, dialogProps } = useConfirmDialog();
     const [openCombo, setOpenCombo] = useState(false);
     const [openCreate, setOpenCreate] = useState(false);
     const [openManage, setOpenManage] = useState(false);
@@ -99,11 +102,18 @@ export function CategoryManager({ categories, value, onChange, error, label, req
     };
 
     const deleteCategory = (category: Category) => {
-        if (confirm(`¿Estás seguro de cambiar el estado de la categoría "${category.name}"?`)) {
-            router.delete(`/categories/${category.id}`, {
-                preserveScroll: true,
-            });
-        }
+        const isActivating = category.status !== 'ACTIVE';
+        confirm({
+            title: isActivating ? '¿Reactivar categoría?' : '¿Desactivar categoría?',
+            description: `¿Estás seguro de que deseas ${isActivating ? 'reactivar' : 'desactivar'} la categoría "${category.name}"?`,
+            confirmText: isActivating ? 'Reactivar' : 'Desactivar',
+            variant: isActivating ? 'info' : 'warning',
+            onConfirm: () => {
+                router.delete(`/categories/${category.id}`, {
+                    preserveScroll: true,
+                });
+            },
+        });
     };
 
     const selectedCategory = categories.find((c) => c.id.toString() === value);
@@ -439,6 +449,8 @@ export function CategoryManager({ categories, value, onChange, error, label, req
                     </div>
                 </DialogContent>
             </Dialog>
+
+            <ConfirmDialog {...dialogProps} />
         </div>
     );
 }

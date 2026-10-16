@@ -42,6 +42,8 @@ import InputError from '@/components/input-error';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import ConfirmDialog from '@/components/confirm-dialog';
+import { useConfirmDialog } from '@/hooks/use-confirm';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -85,19 +87,26 @@ type Props = {
 
 const permissionLabels: Record<string, string> = {
     view_dashboard: 'Dashboard',
-    view_sales: 'Ventas y Cobranzas',
-    view_transfers: 'Transferencias',
+    view_reports: 'Reportes',
+    view_alerts: 'Centro de Alertas',
+    view_sales: 'Ventas',
+    view_receivables: 'Cuentas por Cobrar',
+    view_returns: 'Devoluciones',
+    view_customers: 'Clientes',
     view_purchases: 'Compras',
+    view_suppliers: 'Proveedores',
+    view_transfers: 'Transferencias',
+    view_closings: 'Cierre Diario',
+    view_products: 'Catálogo de Repuestos',
     view_inventory: 'Inventario Sucursal',
     view_inventory_general: 'Inventario General',
-    view_products: 'Catálogo de Repuestos',
     view_adjustments: 'Ajustes de Stock',
     view_kardex: 'Kardex',
-    view_users: 'Usuarios y Roles',
+    view_import: 'Importación Masiva',
+    view_company: 'Datos de Empresa',
     view_branches: 'Sucursales',
-    view_customers: 'Clientes',
-    view_suppliers: 'Proveedores',
-    view_import: 'Importación Masiva'
+    view_users: 'Usuarios y Roles',
+    view_conflicts: 'Conflictos Offline',
 };
 
 const PERMISSION_CATEGORIES = [
@@ -106,10 +115,12 @@ const PERMISSION_CATEGORIES = [
         title: 'Comercial & Ventas',
         icon: ShoppingCart,
         badgeColor: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20',
-        description: 'Ventas de mostrador, cotizaciones y clientes',
+        description: 'Punto de venta, cuentas por cobrar, devoluciones y cartera de clientes',
         permissions: [
-            { key: 'view_sales', label: 'Ventas y Cobranzas', description: 'Cotizaciones, punto de venta y registro de cobranzas' },
-            { key: 'view_customers', label: 'Gestión de Clientes', description: 'Directorio y registro de clientes compradores' },
+            { key: 'view_sales', label: 'Ventas / Punto de Venta', description: 'Cotizaciones, punto de venta y emisión de comprobantes' },
+            { key: 'view_receivables', label: 'Cuentas por Cobrar', description: 'Control de créditos otorgados, saldos y registro de cobranzas' },
+            { key: 'view_returns', label: 'Devoluciones y Garantías', description: 'Notas de crédito electrónicas, vales de devolución y reingresos' },
+            { key: 'view_customers', label: 'Gestión de Clientes', description: 'Directorio fiscal (RUC/DNI) y registro de clientes compradores' },
         ],
     },
     {
@@ -117,11 +128,12 @@ const PERMISSION_CATEGORIES = [
         title: 'Operaciones & Logística',
         icon: Truck,
         badgeColor: 'text-blue-500 bg-blue-500/10 border-blue-500/20',
-        description: 'Abastecimiento de mercadería y traslados entre sedes',
+        description: 'Abastecimiento de mercadería, traslados entre sedes y arqueo de caja',
         permissions: [
             { key: 'view_purchases', label: 'Compras a Proveedores', description: 'Órdenes de compra, facturación y recepción de insumos' },
-            { key: 'view_transfers', label: 'Transferencias de Stock', description: 'Envíos y recepción de mercadería entre sucursales' },
             { key: 'view_suppliers', label: 'Gestión de Proveedores', description: 'Directorio, marcas y contactos de proveedores' },
+            { key: 'view_transfers', label: 'Transferencias de Stock', description: 'Envíos, guías de traslado y recepción entre sucursales' },
+            { key: 'view_closings', label: 'Arqueo y Cierre Diario', description: 'Conciliación de caja chica, medios de pago y cierre de turno' },
         ],
     },
     {
@@ -135,7 +147,7 @@ const PERMISSION_CATEGORIES = [
             { key: 'view_inventory', label: 'Inventario por Sucursal', description: 'Control de stock físico y valorizado en la sede' },
             { key: 'view_inventory_general', label: 'Inventario General', description: 'Visión consolidada de existencias en todas las sedes' },
             { key: 'view_adjustments', label: 'Ajustes de Inventario', description: 'Ingresos y salidas extraordinarias de mercadería' },
-            { key: 'view_kardex', label: 'Kardex de Movimientos', description: 'Historial físico y valorizado por repuesto' },
+            { key: 'view_kardex', label: 'Kardex de Movimientos', description: 'Historial físico y valorizado SUNAT por repuesto' },
             { key: 'view_import', label: 'Importación Masiva', description: 'Carga masiva de repuestos mediante plantilla Excel' },
         ],
     },
@@ -144,31 +156,44 @@ const PERMISSION_CATEGORIES = [
         title: 'Administración & Control',
         icon: ShieldCheck,
         badgeColor: 'text-purple-500 bg-purple-500/10 border-purple-500/20',
-        description: 'Métricas analíticas, configuración de sedes y personal',
+        description: 'Métricas analíticas, reportes, alertas, empresa, sedes y personal',
         permissions: [
             { key: 'view_dashboard', label: 'Panel Principal (Dashboard)', description: 'Indicadores clave, gráficos y resúmenes del negocio' },
-            { key: 'view_branches', label: 'Gestión de Sucursales', description: 'Administración y alta de sedes operativas' },
-            { key: 'view_users', label: 'Usuarios y Permisos', description: 'Cuentas de acceso, perfiles y auditoría de seguridad' },
+            { key: 'view_reports', label: 'Centro de Reportes', description: 'Reportes corporativos A4 y exportación gerencial a Excel' },
+            { key: 'view_alerts', label: 'Centro de Alertas', description: 'Monitoreo de stock crítico, vencimientos y anomalías' },
+            { key: 'view_company', label: 'Datos de la Empresa', description: 'Identidad tributaria matriz (RUC, Razón Social, Logo) y tipo de cambio' },
+            { key: 'view_branches', label: 'Gestión de Sucursales', description: 'Administración de sedes operativas, anexos y series SUNAT' },
+            { key: 'view_users', label: 'Usuarios y Permisos', description: 'Cuentas de acceso, perfiles, roles y auditoría de seguridad' },
+            { key: 'view_conflicts', label: 'Conflictos de Sincronización', description: 'Resolución de operaciones offline con discrepancias de stock' },
         ],
     },
 ];
 
 const initialPermissions: Record<string, boolean> = {
     view_dashboard: true,
+    view_reports: false,
+    view_alerts: false,
     view_sales: false,
-    view_transfers: false,
+    view_receivables: false,
+    view_returns: false,
+    view_customers: false,
     view_purchases: false,
+    view_suppliers: false,
+    view_transfers: false,
+    view_closings: false,
+    view_products: false,
     view_inventory: false,
     view_inventory_general: false,
-    view_products: false,
     view_adjustments: false,
     view_kardex: false,
-    view_users: false,
-    view_branches: false,
-    view_customers: false,
-    view_suppliers: false,
     view_import: false,
+    view_company: false,
+    view_branches: false,
+    view_users: false,
+    view_conflicts: false,
 };
+
+const TOTAL_PERMISSIONS_COUNT = Object.keys(initialPermissions).length;
 
 const columnLabels: Record<string, string> = {
     name: 'Empleado / Usuario',
@@ -181,6 +206,7 @@ const columnLabels: Record<string, string> = {
 };
 
 export default function UsersIndex({ users, roles, branches, flash }: Props) {
+    const { confirm, dialogProps } = useConfirmDialog();
     const { isOnline } = useNetworkStatus();
     usePoll(5000, { only: ['users'] });
     const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -250,22 +276,10 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
         setIsEditingRole(true);
         setEditingRoleId(role.id);
         
-        const permObj: Record<string, boolean> = {
-            view_dashboard: false,
-            view_sales: false,
-            view_transfers: false,
-            view_purchases: false,
-            view_inventory: false,
-            view_inventory_general: false,
-            view_products: false,
-            view_adjustments: false,
-            view_kardex: false,
-            view_users: false,
-            view_branches: false,
-            view_customers: false,
-            view_suppliers: false,
-            view_import: false,
-        };
+        const permObj: Record<string, boolean> = Object.keys(initialPermissions).reduce((acc, key) => {
+            acc[key] = false;
+            return acc;
+        }, {} as Record<string, boolean>);
         role.permissions.forEach(p => {
             if (p in permObj) permObj[p] = true;
         });
@@ -289,7 +303,7 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
         }
 
         const isSuperAdmin = role.name === 'Super Admin';
-        const totalPossible = 14;
+        const totalPossible = TOTAL_PERMISSIONS_COUNT;
         const grantedCount = isSuperAdmin ? totalPossible : (role.permissions || []).length;
 
         return (
@@ -415,9 +429,16 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
             return;
         }
 
-        if (confirm(`¿Estás seguro de que deseas ${user.status === 'ACTIVE' ? 'desactivar' : 'reactivar'} este usuario?`)) {
-            router.delete(`/users/${user.id}`);
-        }
+        const isActivating = user.status !== 'ACTIVE';
+        confirm({
+            title: isActivating ? '¿Reactivar usuario?' : '¿Desactivar usuario?',
+            description: `¿Estás seguro de que deseas ${isActivating ? 'reactivar' : 'desactivar'} el usuario "${user.name}"?`,
+            confirmText: isActivating ? 'Reactivar' : 'Desactivar',
+            variant: isActivating ? 'info' : 'warning',
+            onConfirm: () => {
+                router.delete(`/users/${user.id}`);
+            },
+        });
     };
 
     const openEdit = (user: User) => {
@@ -782,7 +803,7 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
 
             {/* Modal Crear Usuario */}
             <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-card text-card-foreground border-border p-6">
+                <DialogContent className="sm:max-w-2xl max-w-2xl max-h-[90vh] overflow-y-auto bg-card text-card-foreground border-border p-6">
                     <DialogHeader>
                         <div className="flex items-center gap-2.5 mb-1">
                             <div className="p-2 rounded-lg bg-primary/10 text-primary">
@@ -1009,7 +1030,7 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
 
             {/* Modal Editar Usuario */}
             <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-card text-card-foreground border-border p-6">
+                <DialogContent className="sm:max-w-2xl max-w-2xl max-h-[90vh] overflow-y-auto bg-card text-card-foreground border-border p-6">
                     <DialogHeader>
                         <div className="flex items-center gap-2.5 mb-1">
                             <div className="p-2 rounded-lg bg-primary/10 text-primary">
@@ -1223,7 +1244,7 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
 
             {/* Modal Crear / Editar Rol con Bloques de Permisos Categorizados */}
             <Dialog open={isRoleModalOpen} onOpenChange={setIsRoleModalOpen}>
-                <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto bg-card text-card-foreground border-border p-6">
+                <DialogContent className="w-[95vw] sm:max-w-4xl lg:max-w-5xl max-h-[90vh] overflow-y-auto bg-card text-card-foreground border-border p-6">
                     <DialogHeader>
                         <div className="flex items-center gap-2.5 mb-1">
                             <div className="p-2 rounded-lg bg-primary/10 text-primary">
@@ -1275,7 +1296,7 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
                             <div className="flex items-center gap-2">
                                 <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Módulos del Sistema</span>
                                 <Badge variant="outline" className="text-[11px] bg-primary/10 text-primary border-primary/20 font-semibold">
-                                    {activePermCount} / 14 activos
+                                    {activePermCount} / {TOTAL_PERMISSIONS_COUNT} activos
                                 </Badge>
                             </div>
                             <div className="flex items-center gap-1.5">
@@ -1335,14 +1356,14 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
                                             </Button>
                                         </div>
 
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
                                             {cat.permissions.map((perm) => {
                                                 const isChecked = Boolean(roleData.permissions[perm.key as keyof typeof roleData.permissions]);
                                                 return (
                                                     <div 
                                                         key={perm.key}
                                                         onClick={() => setRoleData('permissions', { ...roleData.permissions, [perm.key]: !isChecked })}
-                                                        className={`flex items-start gap-2.5 p-2.5 rounded-lg border transition-all cursor-pointer select-none ${
+                                                        className={`flex items-start gap-2.5 p-3 rounded-lg border transition-all cursor-pointer select-none ${
                                                             isChecked
                                                                 ? 'bg-primary/5 border-primary/40 text-foreground'
                                                                 : 'bg-background border-border hover:bg-muted/30 text-muted-foreground'
@@ -1355,13 +1376,13 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
                                                             className="mt-0.5 pointer-events-none"
                                                         />
                                                         <div className="flex-1 min-w-0">
-                                                            <div className="text-xs font-semibold text-foreground flex items-center justify-between gap-1">
-                                                                <span className="truncate">{perm.label}</span>
+                                                            <div className="text-xs font-semibold text-foreground flex items-center justify-between gap-1.5">
+                                                                <span className="leading-snug">{perm.label}</span>
                                                                 {isChecked && (
                                                                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
                                                                 )}
                                                             </div>
-                                                            <p className="text-[10px] text-muted-foreground leading-tight mt-0.5 line-clamp-2">
+                                                            <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">
                                                                 {perm.description}
                                                             </p>
                                                         </div>
@@ -1381,7 +1402,12 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
                                     variant="destructive" 
                                     size="sm"
                                     onClick={() => {
-                                        if (confirm(`¿Estás seguro de que deseas eliminar el rol "${roleData.name}"?`)) {
+                                    confirm({
+                                        title: '¿Eliminar rol?',
+                                        description: `¿Estás seguro de que deseas eliminar el rol "${roleData.name}"? Esta acción no se puede deshacer.`,
+                                        confirmText: 'Eliminar rol',
+                                        variant: 'danger',
+                                        onConfirm: () => {
                                             deleteRole(`/roles/${editingRoleId}`, {
                                                 preserveState: true,
                                                 onSuccess: () => {
@@ -1391,8 +1417,9 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
                                                     resetRole();
                                                 }
                                             });
-                                        }
-                                    }}
+                                        },
+                                    });
+                                }}
                                 >
                                     <Trash2 className="h-4 w-4 mr-1.5" /> Eliminar Rol
                                 </Button>
@@ -1408,6 +1435,8 @@ export default function UsersIndex({ users, roles, branches, flash }: Props) {
                     </form>
                 </DialogContent>
             </Dialog>
+
+            <ConfirmDialog {...dialogProps} />
         </>
     );
 }

@@ -77,11 +77,15 @@ export function AppSidebar() {
             href: '/sales',
             icon: Receipt,
         });
+    }
+    if (hasPerm('view_receivables') || hasPerm('view_sales')) {
         salesItems.push({
             title: 'Cuentas por Cobrar',
             href: '/receivables',
             icon: Landmark,
         });
+    }
+    if (hasPerm('view_returns') || hasPerm('view_sales')) {
         salesItems.push({
             title: 'Devoluciones',
             href: '/customer-returns',
@@ -160,7 +164,7 @@ export function AppSidebar() {
 
     // 5. Administración
     const adminItems: NavItem[] = [];
-    if (isSuperAdmin) {
+    if (hasPerm('view_company')) {
         adminItems.push({
             title: 'Datos de Empresa',
             href: '/company',

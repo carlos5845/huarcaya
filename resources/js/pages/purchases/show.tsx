@@ -4,7 +4,6 @@ import {
     ArrowLeft, 
     CheckCircle2, 
     Pencil, 
-    Printer, 
     Building2, 
     FileText, 
     Phone, 
@@ -29,6 +28,8 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 import { DocumentPreviewModal } from '@/components/document-preview-modal';
+import ConfirmDialog from '@/components/confirm-dialog';
+import { useConfirmDialog } from '@/hooks/use-confirm';
 import { formatAppDate } from '@/lib/utils';
 import type { BreadcrumbItem } from '@/types';
 
@@ -51,10 +52,16 @@ export default function PurchaseShow({ purchase }: { purchase: any }) {
         title: '',
     });
 
+    const { confirm, dialogProps } = useConfirmDialog();
+
     const confirmPurchase = () => {
-        if (confirm('¿Estás seguro de confirmar esta compra? Esto ingresará los productos al inventario (Kardex) y creará los lotes correspondientes.')) {
-            router.post(`/purchases/${purchase.id}/confirm`);
-        }
+        confirm({
+            title: '¿Confirmar esta compra?',
+            description: 'Esto ingresará los productos al inventario (Kardex) y creará los lotes correspondientes en la sucursal.',
+            variant: 'warning',
+            confirmLabel: 'Sí, confirmar compra',
+            onConfirm: () => router.post(`/purchases/${purchase.id}/confirm`),
+        });
     };
 
     const currencySymbol = purchase.currency_code === 'USD' ? '$' : 'S/';
@@ -149,15 +156,6 @@ export default function PurchaseShow({ purchase }: { purchase: any }) {
                                     </Button>
                                 </>
                             )}
-
-                            <Button 
-                                variant="outline" 
-                                size="sm" 
-                                onClick={() => window.print()} 
-                                className="gap-1.5"
-                            >
-                                <Printer className="h-3.5 w-3.5" /> Imprimir
-                            </Button>
                         </div>
                     </div>
                 </div>
@@ -636,6 +634,9 @@ export default function PurchaseShow({ purchase }: { purchase: any }) {
                 subtitle={previewDoc.subtitle}
                 fileName={previewDoc.fileName}
             />
+
+            {/* Modal de confirmación estilizado */}
+            <ConfirmDialog {...dialogProps} />
         </>
     );
 }

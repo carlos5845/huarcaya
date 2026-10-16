@@ -30,15 +30,36 @@ export default function Welcome() {
     } else if (hasPerm('view_sales')) {
         mainRoute = '/sales';
         mainLabel = 'Ir a ventas';
+    } else if (hasPerm('view_receivables')) {
+        mainRoute = '/receivables';
+        mainLabel = 'Ir a cuentas por cobrar';
+    } else if (hasPerm('view_returns')) {
+        mainRoute = '/customer-returns';
+        mainLabel = 'Ir a devoluciones';
     } else if (hasPerm('view_transfers')) {
         mainRoute = '/transfers';
         mainLabel = 'Ir a transferencias';
     } else if (hasPerm('view_purchases')) {
         mainRoute = '/purchases';
         mainLabel = 'Ir a compras';
+    } else if (hasPerm('view_closings')) {
+        mainRoute = '/closings';
+        mainLabel = 'Ir a cierre diario';
     } else if (hasPerm('view_products')) {
         mainRoute = '/products';
         mainLabel = 'Ir al catálogo';
+    } else if (hasPerm('view_reports')) {
+        mainRoute = '/reports';
+        mainLabel = 'Ir a reportes';
+    } else if (hasPerm('view_alerts')) {
+        mainRoute = '/alerts';
+        mainLabel = 'Ir a alertas';
+    } else if (hasPerm('view_conflicts')) {
+        mainRoute = '/conflicts';
+        mainLabel = 'Ir a conflictos';
+    } else if (hasPerm('view_company')) {
+        mainRoute = '/company';
+        mainLabel = 'Ir a datos de empresa';
     }
 
     return (

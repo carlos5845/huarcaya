@@ -33,6 +33,8 @@ import {
     WifiOff
 } from 'lucide-react';
 import { useNetworkStatus } from '@/hooks/use-network-status';
+import ConfirmDialog from '@/components/confirm-dialog';
+import { useConfirmDialog } from '@/hooks/use-confirm';
 import { useMergedCustomers } from '@/hooks/use-merged-customers';
 import { toast } from 'sonner';
 import { normalizeSearch, cn } from '@/lib/utils';
@@ -198,6 +200,8 @@ export default function CustomersIndex({ customers }: { customers: any[] }) {
         }
     };
 
+    const { confirm, dialogProps } = useConfirmDialog();
+
     const toggleStatus = (id: number) => {
         if (!isOnline) {
             toast.warning('Modo sin conexión', {
@@ -206,9 +210,13 @@ export default function CustomersIndex({ customers }: { customers: any[] }) {
             return;
         }
 
-        if (confirm('¿Estás seguro de cambiar el estado de este cliente?')) {
-            router.delete(`/customers/${id}`);
-        }
+        confirm({
+            title: '¿Cambiar estado del cliente?',
+            description: 'Esta acción activará o desactivará al cliente para nuevas transacciones en el sistema.',
+            variant: 'warning',
+            confirmLabel: 'Sí, cambiar estado',
+            onConfirm: () => router.delete(`/customers/${id}`),
+        });
     };
 
     // Customer contributor type detector
@@ -917,6 +925,9 @@ export default function CustomersIndex({ customers }: { customers: any[] }) {
                     </DialogContent>
                 </Dialog>
             </div>
+
+            {/* Modal de confirmación estilizado */}
+            <ConfirmDialog {...dialogProps} />
         </>
     );
 }

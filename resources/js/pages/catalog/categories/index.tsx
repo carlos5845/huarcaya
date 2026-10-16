@@ -5,6 +5,8 @@ import InputError from '@/components/input-error';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import ConfirmDialog from '@/components/confirm-dialog';
+import { useConfirmDialog } from '@/hooks/use-confirm';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -26,6 +28,7 @@ type Props = {
 };
 
 export default function CategoriesIndex({ categories, flash }: Props) {
+    const { confirm, dialogProps } = useConfirmDialog();
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [editingCategory, setEditingCategory] = useState<Category | null>(null);
@@ -78,9 +81,16 @@ return;
     };
 
     const toggleStatus = (category: Category) => {
-        if (confirm(`¿Estás seguro de que deseas ${category.status === 'ACTIVE' ? 'desactivar' : 'reactivar'} esta categoría?`)) {
-            router.delete(`/categories/${category.id}`);
-        }
+        const isActivating = category.status !== 'ACTIVE';
+        confirm({
+            title: isActivating ? '¿Reactivar categoría?' : '¿Desactivar categoría?',
+            description: `¿Estás seguro de que deseas ${isActivating ? 'reactivar' : 'desactivar'} la categoría "${category.name}"?`,
+            confirmText: isActivating ? 'Reactivar' : 'Desactivar',
+            variant: isActivating ? 'info' : 'warning',
+            onConfirm: () => {
+                router.delete(`/categories/${category.id}`);
+            },
+        });
     };
 
     const openEdit = (category: Category) => {
@@ -281,6 +291,8 @@ return null;
                     </form>
                 </DialogContent>
             </Dialog>
+
+            <ConfirmDialog {...dialogProps} />
         </>
     );
 }

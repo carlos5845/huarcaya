@@ -19,7 +19,7 @@ use Carbon\Carbon;
 use DateTimeInterface;
 use Illuminate\Support\Facades\DB;
 use Spatie\SimpleExcel\SimpleExcelWriter;
-use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class ReportService
 {
@@ -56,9 +56,9 @@ class ReportService
     }
 
     /**
-     * Exporta el reporte solicitado a un archivo Excel (.xlsx) transmitido vía streaming.
+     * Exporta el reporte solicitado a un archivo Excel (.xlsx) físico temporal y lo entrega como descarga limpia.
      */
-    public function exportExcel(string $reportType, array $allowedBranchIds, array $filters): StreamedResponse
+    public function exportExcel(string $reportType, array $allowedBranchIds, array $filters): BinaryFileResponse
     {
         $branchId = ! empty($filters['branch_id']) && $filters['branch_id'] !== 'ALL'
             ? (int) $filters['branch_id']
@@ -70,30 +70,33 @@ class ReportService
         $search = $filters['search'] ?? null;
 
         $fileName = 'Reporte_'.$reportType.'_'.now()->format('Ymd_His').'.xlsx';
+        $tempPath = tempnam(sys_get_temp_dir(), 'rep_').'.xlsx';
 
-        return response()->streamDownload(function () use ($reportType, $targetBranchIds, $dateFrom, $dateTo, $search) {
-            $writer = SimpleExcelWriter::create('php://output', 'xlsx');
+        $writer = SimpleExcelWriter::create($tempPath);
 
-            match ($reportType) {
-                'branch_inventory' => $this->exportBranchInventoryRows($writer, $targetBranchIds, $search),
-                'consolidated_inventory' => $this->exportConsolidatedInventoryRows($writer, $targetBranchIds, $search),
-                'kardex' => $this->exportKardexRows($writer, $targetBranchIds, $dateFrom, $dateTo, $search),
-                'inventory_exits' => $this->exportInventoryExitsRows($writer, $targetBranchIds, $dateFrom, $dateTo, $search),
-                'sales' => $this->exportSalesRows($writer, $targetBranchIds, $dateFrom, $dateTo, $search),
-                'purchases' => $this->exportPurchasesRows($writer, $targetBranchIds, $dateFrom, $dateTo, $search),
-                'payments' => $this->exportPaymentsRows($writer, $targetBranchIds, $dateFrom, $dateTo, $search),
-                'receivables' => $this->exportReceivablesRows($writer, $targetBranchIds, $dateFrom, $dateTo, $search),
-                'transfers' => $this->exportTransfersRows($writer, $targetBranchIds, $dateFrom, $dateTo, $search),
-                'daily_closings' => $this->exportDailyClosingsRows($writer, $targetBranchIds, $dateFrom, $dateTo, $search),
-                'offline_operations' => $this->exportOfflineOperationsRows($writer, $targetBranchIds, $dateFrom, $dateTo, $search),
-                'conflicts' => $this->exportConflictsRows($writer, $targetBranchIds, $dateFrom, $dateTo, $search),
-                default => $this->exportSalesRows($writer, $targetBranchIds, $dateFrom, $dateTo, $search),
-            };
+        match ($reportType) {
+            'branch_inventory' => $this->exportBranchInventoryRows($writer, $targetBranchIds, $search),
+            'consolidated_inventory' => $this->exportConsolidatedInventoryRows($writer, $targetBranchIds, $search),
+            'kardex' => $this->exportKardexRows($writer, $targetBranchIds, $dateFrom, $dateTo, $search),
+            'inventory_exits' => $this->exportInventoryExitsRows($writer, $targetBranchIds, $dateFrom, $dateTo, $search),
+            'sales' => $this->exportSalesRows($writer, $targetBranchIds, $dateFrom, $dateTo, $search),
+            'purchases' => $this->exportPurchasesRows($writer, $targetBranchIds, $dateFrom, $dateTo, $search),
+            'payments' => $this->exportPaymentsRows($writer, $targetBranchIds, $dateFrom, $dateTo, $search),
+            'receivables' => $this->exportReceivablesRows($writer, $targetBranchIds, $dateFrom, $dateTo, $search),
+            'transfers' => $this->exportTransfersRows($writer, $targetBranchIds, $dateFrom, $dateTo, $search),
+            'daily_closings' => $this->exportDailyClosingsRows($writer, $targetBranchIds, $dateFrom, $dateTo, $search),
+            'offline_operations' => $this->exportOfflineOperationsRows($writer, $targetBranchIds, $dateFrom, $dateTo, $search),
+            'conflicts' => $this->exportConflictsRows($writer, $targetBranchIds, $dateFrom, $dateTo, $search),
+            default => $this->exportSalesRows($writer, $targetBranchIds, $dateFrom, $dateTo, $search),
+        };
 
-            $writer->close();
-        }, $fileName, [
+        $writer->close();
+
+        return response()->download($tempPath, $fileName, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        ]);
+            'Content-Disposition' => 'attachment; filename="'.$fileName.'"',
+            'X-Content-Type-Options' => 'nosniff',
+        ])->deleteFileAfterSend(true);
     }
 
     // ==========================================

@@ -36,6 +36,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from '@/components/ui/command';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import QuickSupplierDialog from '@/components/quick-supplier-dialog';
 import AppLayout from '@/layouts/app-layout';
 import { DocumentPreviewModal } from '@/components/document-preview-modal';
 import { cn, normalizeSearch, getLocalDateString } from '@/lib/utils';
@@ -126,33 +127,18 @@ export default function PurchaseEdit({
     // Quick create supplier modal
     const [supplierOpen, setSupplierOpen] = useState(false);
     const [isCreateSupplierOpen, setIsCreateSupplierOpen] = useState(false);
-    
-    const { 
-        data: createSupplierData, 
-        setData: setCreateSupplierData, 
-        post: postSupplier, 
-        processing: processingSupplier, 
-        errors: errorsSupplier, 
-        reset: resetSupplier 
-    } = useForm({
-        document_type: 'RUC',
-        document_number: '',
-        legal_name: '',
-        trade_name: '',
-        phone: '',
-        address: '',
-        status: 'ACTIVE',
-    });
+    const [lastCreatedSupplierDoc, setLastCreatedSupplierDoc] = useState<string | null>(null);
 
-    const handleCreateSupplier = (e: React.FormEvent) => {
-        e.preventDefault();
-        postSupplier('/suppliers', {
-            onSuccess: () => {
-                setIsCreateSupplierOpen(false);
-                resetSupplier();
+    // Auto-select newly created supplier when props reload
+    useEffect(() => {
+        if (lastCreatedSupplierDoc && suppliers && suppliers.length > 0) {
+            const created = suppliers.find((s: any) => s.document_number === lastCreatedSupplierDoc);
+            if (created) {
+                setData('supplier_id', created.id.toString());
+                setLastCreatedSupplierDoc(null);
             }
-        });
-    };
+        }
+    }, [suppliers, lastCreatedSupplierDoc]);
 
     // Product search with debounce
     useEffect(() => {
@@ -954,85 +940,15 @@ export default function PurchaseEdit({
             </div>
 
             {/* Modal Crear Proveedor Rápido */}
-            <Dialog open={isCreateSupplierOpen} onOpenChange={setIsCreateSupplierOpen}>
-                <DialogContent className="sm:max-w-md bg-card text-card-foreground border-border">
-                    <DialogHeader>
-                        <DialogTitle className="text-lg font-bold">Registrar Nuevo Proveedor</DialogTitle>
-                        <DialogDescription className="text-xs text-muted-foreground">
-                            Ingresa los datos fiscales para asociarlo inmediatamente a esta compra.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <form onSubmit={handleCreateSupplier} className="space-y-4 py-2">
-                        <div className="grid grid-cols-3 gap-3">
-                            <div className="space-y-1.5 col-span-1">
-                                <Label htmlFor="sup_doc_type" className="text-xs">Tipo Doc.</Label>
-                                <Select value={createSupplierData.document_type} onValueChange={(v) => setCreateSupplierData('document_type', v)}>
-                                    <SelectTrigger id="sup_doc_type" className="bg-background border-input"><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="RUC">RUC</SelectItem>
-                                        <SelectItem value="DNI">DNI</SelectItem>
-                                        <SelectItem value="CE">CE</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-1.5 col-span-2">
-                                <Label htmlFor="sup_doc_num" className="text-xs">Número Doc. <span className="text-rose-500">*</span></Label>
-                                <Input 
-                                    id="sup_doc_num" 
-                                    value={createSupplierData.document_number} 
-                                    onChange={e => setCreateSupplierData('document_number', e.target.value)} 
-                                    required 
-                                    className="bg-background border-input font-mono"
-                                />
-                                <InputError message={errorsSupplier.document_number} />
-                            </div>
-                        </div>
-
-                        <div className="space-y-1.5">
-                            <Label htmlFor="sup_name" className="text-xs">Razón Social / Nombre <span className="text-rose-500">*</span></Label>
-                            <Input 
-                                id="sup_name" 
-                                value={createSupplierData.legal_name} 
-                                onChange={e => setCreateSupplierData('legal_name', e.target.value)} 
-                                required 
-                                className="bg-background border-input"
-                            />
-                            <InputError message={errorsSupplier.legal_name} />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1.5">
-                                <Label htmlFor="sup_phone" className="text-xs">Teléfono</Label>
-                                <Input 
-                                    id="sup_phone" 
-                                    value={createSupplierData.phone} 
-                                    onChange={e => setCreateSupplierData('phone', e.target.value)} 
-                                    className="bg-background border-input"
-                                />
-                            </div>
-                            <div className="space-y-1.5">
-                                <Label htmlFor="sup_address" className="text-xs">Dirección</Label>
-                                <Input 
-                                    id="sup_address" 
-                                    value={createSupplierData.address} 
-                                    onChange={e => setCreateSupplierData('address', e.target.value)} 
-                                    className="bg-background border-input"
-                                />
-                            </div>
-                        </div>
-
-                        <DialogFooter className="pt-2">
-                            <Button type="button" variant="outline" onClick={() => setIsCreateSupplierOpen(false)}>
-                                Cancelar
-                            </Button>
-                            <Button type="submit" disabled={processingSupplier} className="bg-primary text-primary-foreground font-semibold">
-                                {processingSupplier ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
-                                Guardar Proveedor
-                            </Button>
-                        </DialogFooter>
-                    </form>
-                </DialogContent>
-            </Dialog>
+            <QuickSupplierDialog
+                open={isCreateSupplierOpen}
+                onOpenChange={setIsCreateSupplierOpen}
+                existingSuppliers={suppliers}
+                onSupplierCreated={(docNum) => setLastCreatedSupplierDoc(docNum)}
+                onSelectExistingSupplier={(supplier) => setData('supplier_id', supplier.id.toString())}
+                isOnline={true}
+                purchaseDocumentType={data.supplier_document_type}
+            />
 
             <DocumentPreviewModal
                 open={previewDoc.open}

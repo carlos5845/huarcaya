@@ -27,6 +27,7 @@ import {
     Lock, 
     AlertTriangle, 
     CheckCircle2, 
+    XCircle,
     ShieldAlert, 
     History, 
     Clock, 
@@ -44,6 +45,8 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
+import ConfirmDialog from '@/components/confirm-dialog';
+import { useConfirmDialog } from '@/hooks/use-confirm';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 
@@ -115,6 +118,7 @@ export default function ProductSettings({
     isSuperAdmin = false
 }: Props) {
     useFlashToast();
+    const { confirm, dialogProps } = useConfirmDialog();
 
     const prices = product.prices || [];
     const minPrices = product.min_prices || product.minPrices || [];
@@ -347,24 +351,30 @@ export default function ProductSettings({
             'min-stock': 'umbral de alerta de stock'
         };
         const label = labels[type] || 'registro';
-        if (confirm(`¿Estás seguro de eliminar este ${label}?`)) {
-            const url = type === 'price' 
-                ? `/products/${product.id}/prices/${id}` 
-                : type === 'min-price' 
-                    ? `/products/${product.id}/min-prices/${id}` 
-                    : `/products/${product.id}/min-stocks/${id}`;
+        confirm({
+            title: `¿Eliminar este ${label}?`,
+            description: `Se removerá la configuración de este ${label} para la sucursal seleccionada.`,
+            variant: 'danger',
+            confirmLabel: 'Sí, eliminar',
+            onConfirm: () => {
+                const url = type === 'price' 
+                    ? `/products/${product.id}/prices/${id}` 
+                    : type === 'min-price' 
+                        ? `/products/${product.id}/min-prices/${id}` 
+                        : `/products/${product.id}/min-stocks/${id}`;
 
-            router.delete(url, {
-                preserveScroll: true,
-                onSuccess: () => {
-                    toast.success(`Se eliminó el ${label} correctamente`);
-                },
-                onError: (err) => {
-                    const msg = Object.values(err)[0] || `No se pudo eliminar el ${label}`;
-                    toast.error(String(msg));
-                }
-            });
-        }
+                router.delete(url, {
+                    preserveScroll: true,
+                    onSuccess: () => {
+                        toast.success(`Se eliminó el ${label} correctamente`);
+                    },
+                    onError: (err) => {
+                        const msg = Object.values(err)[0] || `No se pudo eliminar el ${label}`;
+                        toast.error(String(msg));
+                    }
+                });
+            }
+        });
     };
 
     // Calculate simulated stock for adjustment modal
@@ -586,20 +596,23 @@ export default function ProductSettings({
                                                 const canAdjust = isSuperAdmin || isCurrentBranch;
 
                                                 let statusBadge = (
-                                                    <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 text-xs">
-                                                        🟢 Óptimo
+                                                    <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 text-xs gap-1.5 py-0.5 font-medium inline-flex items-center">
+                                                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                                                        <span>Óptimo</span>
                                                     </Badge>
                                                 );
                                                 if (availQty <= 0) {
                                                     statusBadge = (
-                                                        <Badge variant="destructive" className="text-xs">
-                                                            🔴 Sin Stock
+                                                        <Badge variant="destructive" className="text-xs gap-1.5 py-0.5 font-medium inline-flex items-center">
+                                                            <XCircle className="h-3.5 w-3.5 shrink-0" />
+                                                            <span>Sin Stock</span>
                                                         </Badge>
                                                     );
                                                 } else if (minQty > 0 && availQty <= minQty) {
                                                     statusBadge = (
-                                                        <Badge variant="outline" className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 text-xs">
-                                                            🟡 Alerta Mínima (≤ {minQty})
+                                                        <Badge variant="outline" className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 text-xs gap-1.5 py-0.5 font-medium inline-flex items-center">
+                                                            <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                                                            <span>Alerta Mínima (≤ {minQty})</span>
                                                         </Badge>
                                                     );
                                                 }
@@ -1468,12 +1481,15 @@ export default function ProductSettings({
                                     <Input 
                                         id="adjust_qty"
                                         type="number" 
-                                        step="any" 
-                                        min="0.01" 
-                                        placeholder="0.00" 
+                                        step="1" 
+                                        min="1" 
+                                        placeholder="1" 
                                         className="font-mono text-base"
                                         value={adjustData.quantity} 
-                                        onChange={e => setAdjustData('quantity', e.target.value)} 
+                                        onChange={e => {
+                                            const val = e.target.value.replace(/[^0-9]/g, '');
+                                            setAdjustData('quantity', val);
+                                        }} 
                                         required 
                                     />
                                     <InputError message={adjustErrors.quantity} />
@@ -1570,6 +1586,9 @@ export default function ProductSettings({
                 </Dialog>
 
             </div>
+
+            {/* Modal de confirmación estilizado */}
+            <ConfirmDialog {...dialogProps} />
         </>
     );
 }

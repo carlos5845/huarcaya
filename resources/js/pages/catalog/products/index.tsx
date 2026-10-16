@@ -26,6 +26,8 @@ import {
 } from 'lucide-react';
 import React, { useState, useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
+import ConfirmDialog from '@/components/confirm-dialog';
+import { useConfirmDialog } from '@/hooks/use-confirm';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -91,10 +93,19 @@ export default function ProductsIndex({ products, filters, flash }: Props) {
         router.get('/products', { search: searchTerm }, { preserveState: true });
     };
 
+    const { confirm, dialogProps } = useConfirmDialog();
+
     const toggleStatus = (product: Product) => {
-        if (confirm(`¿Estás seguro de que deseas ${product.status === 'ACTIVE' ? 'desactivar' : 'reactivar'} este producto?`)) {
-            router.delete(`/products/${product.id}`);
-        }
+        const isDeactivating = product.status === 'ACTIVE';
+        confirm({
+            title: isDeactivating ? '¿Desactivar este repuesto?' : '¿Reactivar este repuesto?',
+            description: isDeactivating
+                ? `El repuesto "${product.name}" no se podrá agregar a nuevas cotizaciones ni ventas.`
+                : `El repuesto "${product.name}" volverá a estar disponible para cotizar y vender.`,
+            variant: isDeactivating ? 'warning' : 'info',
+            confirmLabel: isDeactivating ? 'Sí, desactivar' : 'Sí, reactivar',
+            onConfirm: () => router.delete(`/products/${product.id}`),
+        });
     };
 
     const renderTypeBadge = (type: string) => {
@@ -419,6 +430,9 @@ export default function ProductsIndex({ products, filters, flash }: Props) {
                     )}
                 </div>
             </div>
+
+            {/* Modal de confirmación estilizado */}
+            <ConfirmDialog {...dialogProps} />
         </>
     );
 }

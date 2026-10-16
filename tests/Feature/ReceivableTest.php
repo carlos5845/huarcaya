@@ -218,3 +218,21 @@ test('receivables index returns report data for daily, weekly and monthly period
         ->where('report_data.total_collected_pen', 300)
     );
 });
+
+test('receivables report print route renders official a4 print view', function () {
+    $this->actingAs($this->user);
+
+    $this->post(route('receivables.payments.store', $this->receivable), [
+        'amount' => 450,
+        'payment_method_id' => $this->paymentMethod->id,
+        'operation_date' => now()->toDateString(),
+    ]);
+
+    $response = $this->get(route('receivables.reports.print', ['report_period' => 'daily']));
+    $response->assertOk();
+    $response->assertViewIs('receivables.print.report-a4');
+    $response->assertViewHas('report');
+    $response->assertViewHas('company');
+    $response->assertSee('Liquidación y Cuadre de Cobranzas');
+    $response->assertSee('450.00');
+});

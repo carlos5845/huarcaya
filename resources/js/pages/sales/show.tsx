@@ -20,6 +20,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DocumentPreviewModal } from '@/components/document-preview-modal';
+import ConfirmDialog from '@/components/confirm-dialog';
+import { useConfirmDialog } from '@/hooks/use-confirm';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -42,10 +44,16 @@ export default function SaleShow({ sale }: { sale: any }) {
     const [previewTitle, setPreviewTitle] = useState('Vista Previa de Comprobante');
     const [previewSubtitle, setPreviewSubtitle] = useState('');
 
+    const { confirm, dialogProps } = useConfirmDialog();
+
     const confirmSale = () => {
-        if (confirm('¿Estás seguro de confirmar esta venta? Esto actualizará el inventario y no se puede deshacer de forma sencilla.')) {
-            router.post(`/sales/${sale.id}/confirm`);
-        }
+        confirm({
+            title: '¿Confirmar esta venta?',
+            description: 'Esto actualizará el inventario, registrará el movimiento contable y emitirá el comprobante oficial. Esta acción no se puede deshacer de forma sencilla.',
+            variant: 'warning',
+            confirmLabel: 'Sí, confirmar venta',
+            onConfirm: () => router.post(`/sales/${sale.id}/confirm`),
+        });
     };
 
     const currencySymbol = sale.currency_code === 'USD' ? '$' : 'S/';
@@ -584,6 +592,9 @@ export default function SaleShow({ sale }: { sale: any }) {
                 title={previewTitle}
                 subtitle={previewSubtitle}
             />
+
+            {/* Modal de confirmación estilizado */}
+            <ConfirmDialog {...dialogProps} />
         </>
     );
 }

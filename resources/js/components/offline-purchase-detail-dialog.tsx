@@ -8,6 +8,8 @@ import {
     DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import ConfirmDialog from '@/components/confirm-dialog';
+import { useConfirmDialog } from '@/hooks/use-confirm';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { WifiOff, Trash2, Clock, Calendar, Building2, Package, FileText, Eye } from 'lucide-react';
@@ -35,16 +37,25 @@ export function OfflinePurchaseDetailDialog({
     const tax = purchase.total_amount - subtotal;
     const isDraft = purchase.action === 'DRAFT';
 
+    const { confirm, dialogProps } = useConfirmDialog();
+
     const handleDiscard = () => {
-        if (confirm('¿Estás seguro de descartar esta compra offline? Se cancelará la sincronización y se revertirá el ajuste local de stock.')) {
-            if (onDiscard) {
-                onDiscard(purchase.uuid);
-            }
-            onOpenChange(false);
-        }
+        confirm({
+            title: '¿Descartar esta compra offline?',
+            description: 'Se cancelará la sincronización y se revertirá el ajuste local de stock en este dispositivo.',
+            variant: 'danger',
+            confirmLabel: 'Sí, descartar compra',
+            onConfirm: () => {
+                if (onDiscard) {
+                    onDiscard(purchase.uuid);
+                }
+                onOpenChange(false);
+            },
+        });
     };
 
     return (
+        <>
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
@@ -220,5 +231,8 @@ export function OfflinePurchaseDetailDialog({
                 </DialogFooter>
             </DialogContent>
         </Dialog>
+
+        <ConfirmDialog {...dialogProps} />
+        </>
     );
 }

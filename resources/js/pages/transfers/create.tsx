@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -155,19 +156,27 @@ export default function TransfersCreate({
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!data.source_branch_id) {
-            alert('Debe seleccionar la sucursal de origen.');
+            toast.warning('Sucursal de origen requerida', {
+                description: 'Debe seleccionar la sucursal de origen para la transferencia.',
+            });
             return;
         }
         if (!data.destination_branch_id) {
-            alert('Debe seleccionar la sucursal de destino.');
+            toast.warning('Sucursal de destino requerida', {
+                description: 'Debe seleccionar la sucursal de destino para la transferencia.',
+            });
             return;
         }
         if (isSameBranch) {
-            alert('La sucursal de origen y destino no pueden ser la misma.');
+            toast.warning('Sucursales idénticas', {
+                description: 'La sucursal de origen y destino no pueden ser la misma.',
+            });
             return;
         }
         if (data.lines.length === 0) {
-            alert('Debe agregar al menos un producto a la transferencia.');
+            toast.warning('Productos requeridos', {
+                description: 'Debe agregar al menos un producto a la transferencia.',
+            });
             return;
         }
         post('/transfers');

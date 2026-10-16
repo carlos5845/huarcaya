@@ -27,6 +27,7 @@ import { toast } from 'sonner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import QuickCustomerDialog from '@/components/quick-customer-dialog';
 import { cn, normalizeSearch, getLocalDateString } from '@/lib/utils';
 import { Head, useForm, Link, usePage, router } from '@inertiajs/react';
 import { useState, useEffect } from 'react';
@@ -99,124 +100,22 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
         }).catch(err => console.warn('[IndexedDB] Error loading local customers:', err));
     }, []);
 
-    const customerForm = useForm({
-        document_type: 'DNI',
-        document_number: '',
-        legal_name: '',
-        status: 'ACTIVE',
-    });
-
     const openNewCustomerModal = () => {
-        customerForm.clearErrors();
-        if (data.sale_type === 'FACTURA') {
-            customerForm.setData({
-                document_type: 'RUC',
-                document_number: '',
-                legal_name: '',
-                status: 'ACTIVE',
-            });
-        } else {
-            customerForm.setData({
-                document_type: 'DNI',
-                document_number: '',
-                legal_name: '',
-                status: 'ACTIVE',
-            });
-        }
         setOpenCustomerCombobox(false);
         setOpenCustomerDialog(true);
     };
 
-    const submitCustomer = async (e: React.FormEvent) => {
-        e.preventDefault();
-        customerForm.clearErrors();
-
-        const docType = customerForm.data.document_type.toUpperCase();
-        const docNum = customerForm.data.document_number.trim();
-        const legalName = customerForm.data.legal_name.trim();
-
-        if (data.sale_type === 'FACTURA' && docType !== 'RUC') {
-            customerForm.setError('document_number', 'Para emitir Factura, el tipo de documento debe ser obligatoriamente RUC.');
-            return;
+    const handleCustomerCreated = (docNum: string, newCustomerItem?: any) => {
+        if (newCustomerItem) {
+            setCustomerList((prev) => [newCustomerItem, ...prev]);
+            setData('customer_id', newCustomerItem.id.toString());
+        } else {
+            setLastCreatedDocNumber(docNum);
         }
+    };
 
-        if (docType === 'RUC' && !/^\d{11}$/.test(docNum)) {
-            customerForm.setError('document_number', 'El RUC debe tener exactamente 11 dígitos numéricos (ej. RUC 10 o RUC 20).');
-            return;
-        }
-
-        if (docType === 'DNI' && !/^\d{8}$/.test(docNum)) {
-            customerForm.setError('document_number', 'El DNI debe tener exactamente 8 dígitos numéricos.');
-            return;
-        }
-
-        if (!legalName) {
-            customerForm.setError('legal_name', docType === 'RUC' ? 'La Razón Social es obligatoria.' : 'El nombre completo es obligatorio.');
-            return;
-        }
-
-        if (!isOnline) {
-            // Mode Offline: register locally in IndexedDB and queue sync
-            const offlineUuid = crypto.randomUUID();
-            const tempId = `offline_${Date.now()}`;
-            const newCustomerItem = {
-                id: tempId,
-                uuid: offlineUuid,
-                document_type: docType,
-                document_number: docNum,
-                legal_name: legalName,
-                phone: null,
-                email: null,
-                is_offline: true,
-            };
-
-            try {
-                await db.customers.put(newCustomerItem);
-
-                await db.syncQueue.add({
-                    uuid: offlineUuid,
-                    entity_type: 'Customer',
-                    operation_type: 'CREATE',
-                    payload: {
-                        uuid: offlineUuid,
-                        document_type: newCustomerItem.document_type,
-                        document_number: newCustomerItem.document_number,
-                        legal_name: newCustomerItem.legal_name,
-                    },
-                    status: 'PENDING',
-                    retry_count: 0,
-                    client_timestamp: new Date().toISOString(),
-                });
-
-                setCustomerList(prev => [newCustomerItem, ...prev]);
-                setData('customer_id', tempId);
-                setOpenCustomerDialog(false);
-                customerForm.reset();
-
-                toast.success('Cliente registrado en modo offline', {
-                    description: 'Se guardó en el dispositivo y se sincronizará automáticamente cuando vuelva internet.',
-                });
-            } catch (err: any) {
-                toast.error('Error al guardar cliente offline', {
-                    description: err.message || 'Error en IndexedDB',
-                });
-            }
-            return;
-        }
-
-        setLastCreatedDocNumber(docNum);
-        customerForm.post('/customers', {
-            preserveScroll: true,
-            onSuccess: () => {
-                setOpenCustomerDialog(false);
-                customerForm.reset();
-                toast.success('Cliente registrado exitosamente');
-            },
-            onError: () => {
-                setLastCreatedDocNumber(null);
-                toast.error('No se pudo registrar el cliente. Verifica los datos.');
-            },
-        });
+    const handleSelectExistingCustomer = (customer: any) => {
+        setData('customer_id', customer.id.toString());
     };
 
         const { data, setData, post, processing, errors } = useForm({
@@ -1427,106 +1326,15 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
                 </form>
             </div>
 
-            <Dialog open={openCustomerDialog} onOpenChange={setOpenCustomerDialog}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>
-                            {data.sale_type === 'FACTURA' ? 'Registrar Cliente con RUC (Factura)' : 'Agregar Nuevo Cliente'}
-                        </DialogTitle>
-                        <DialogDescription>
-                            {data.sale_type === 'FACTURA'
-                                ? 'Por normativa SUNAT, para emitir una Factura Electrónica el cliente debe registrarse exclusivamente con RUC de 11 dígitos (RUC 20 o RUC 10 con negocio) y su Razón Social.'
-                                : 'Registra rápidamente un cliente con DNI, RUC u otro documento oficial.'}
-                        </DialogDescription>
-                    </DialogHeader>
-                    <form onSubmit={submitCustomer} className="space-y-4">
-                        {!isOnline && (
-                            <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-800 dark:text-amber-300 text-xs">
-                                <WifiOff className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
-                                <div>
-                                    <p className="font-semibold">Modo sin conexión a internet</p>
-                                    <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
-                                        El cliente se guardará de forma local en este dispositivo para la venta actual y se sincronizará automáticamente con el servidor cuando vuelva la conexión.
-                                    </p>
-                                </div>
-                            </div>
-                        )}
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="c_doc_type">Tipo de Documento</Label>
-                                <Select
-                                    value={data.sale_type === 'FACTURA' ? 'RUC' : customerForm.data.document_type}
-                                    disabled={data.sale_type === 'FACTURA'}
-                                    onValueChange={(v) => {
-                                        customerForm.setData('document_type', v);
-                                        customerForm.setData('document_number', '');
-                                    }}
-                                >
-                                    <SelectTrigger id="c_doc_type"><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                        {data.sale_type !== 'FACTURA' && <SelectItem value="DNI">DNI (8 dígitos)</SelectItem>}
-                                        <SelectItem value="RUC">RUC (11 dígitos)</SelectItem>
-                                        {data.sale_type !== 'FACTURA' && (
-                                            <>
-                                                <SelectItem value="CE">Carné de Extranjería</SelectItem>
-                                                <SelectItem value="PASAPORTE">Pasaporte</SelectItem>
-                                                <SelectItem value="OTRO">Otro</SelectItem>
-                                            </>
-                                        )}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="c_doc_num">
-                                    {customerForm.data.document_type === 'RUC' || data.sale_type === 'FACTURA'
-                                        ? 'Número de RUC (11 dígitos)'
-                                        : customerForm.data.document_type === 'DNI'
-                                            ? 'Número de DNI (8 dígitos)'
-                                            : 'Número de Documento'} <span className="text-red-500">*</span>
-                                </Label>
-                                <Input 
-                                    id="c_doc_num" 
-                                    required
-                                    placeholder={customerForm.data.document_type === 'RUC' || data.sale_type === 'FACTURA' ? '20XXXXXXXXX / 10XXXXXXXXX' : '8 dígitos'}
-                                    maxLength={customerForm.data.document_type === 'DNI' ? 8 : customerForm.data.document_type === 'RUC' ? 11 : customerForm.data.document_type === 'CE' ? 9 : 15}
-                                    value={customerForm.data.document_number} 
-                                    onChange={(e) => {
-                                        const val = e.target.value;
-                                        if (customerForm.data.document_type === 'DNI' || customerForm.data.document_type === 'RUC') {
-                                            if (val === '' || /^[0-9]+$/.test(val)) {
-                                                customerForm.setData('document_number', val);
-                                            }
-                                        } else {
-                                            customerForm.setData('document_number', val);
-                                        }
-                                    }} 
-                                    className="font-mono"
-                                />
-                                <InputError message={customerForm.errors.document_number} />
-                            </div>
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="c_legal_name">
-                                {customerForm.data.document_type === 'RUC' || data.sale_type === 'FACTURA'
-                                    ? 'Razón Social / Persona Natural con Negocio'
-                                    : 'Nombre Completo o Razón Social'} <span className="text-red-500">*</span>
-                            </Label>
-                            <Input
-                                id="c_legal_name"
-                                required
-                                placeholder={customerForm.data.document_type === 'RUC' || data.sale_type === 'FACTURA' ? 'Ej. INVERSIONES LOS ANDES S.A.C.' : 'Ej. Juan Pérez'}
-                                value={customerForm.data.legal_name}
-                                onChange={(e) => customerForm.setData('legal_name', e.target.value)}
-                            />
-                            <InputError message={customerForm.errors.legal_name} />
-                        </div>
-                        <DialogFooter>
-                            <Button type="button" variant="outline" onClick={() => setOpenCustomerDialog(false)}>Cancelar</Button>
-                            <Button type="submit" disabled={customerForm.processing}>Guardar Cliente</Button>
-                        </DialogFooter>
-                    </form>
-                </DialogContent>
-            </Dialog>
+            <QuickCustomerDialog
+                open={openCustomerDialog}
+                onOpenChange={setOpenCustomerDialog}
+                saleType={data.sale_type}
+                existingCustomers={customerList}
+                onCustomerCreated={handleCustomerCreated}
+                onSelectExistingCustomer={handleSelectExistingCustomer}
+                isOnline={isOnline}
+            />
         </>
     );
 }

@@ -36,6 +36,8 @@ import {
     ImageIcon,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import ConfirmDialog from '@/components/confirm-dialog';
+import { useConfirmDialog } from '@/hooks/use-confirm';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -126,6 +128,7 @@ export default function PurchasesIndex({
     const [dateFrom, setDateFrom] = useState(filters?.date_from || '');
     const [dateTo, setDateTo] = useState(filters?.date_to || '');
     const [branchId, setBranchId] = useState(filters?.branch_id || '');
+    const { confirm, dialogProps } = useConfirmDialog();
 
     // Offline detail modal state
     const [selectedOfflinePurchase, setSelectedOfflinePurchase] = useState<LocalOfflinePurchase | null>(null);
@@ -706,9 +709,13 @@ export default function PurchasesIndex({
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => {
-                                    if (confirm('¿Deseas descartar esta compra offline? Se cancelará el envío y se revertirá el ajuste local de stock.')) {
-                                        discardOfflinePurchase(p.uuid);
-                                    }
+                                    confirm({
+                                        title: '¿Descartar esta compra offline?',
+                                        description: 'Se cancelará el envío al servidor central y se revertirá el ajuste local de stock en este dispositivo.',
+                                        variant: 'danger',
+                                        confirmLabel: 'Sí, descartar',
+                                        onConfirm: () => discardOfflinePurchase(p.uuid),
+                                    });
                                 }}
                                 className="h-8 gap-1 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40"
                             >
@@ -1139,6 +1146,9 @@ export default function PurchasesIndex({
                 subtitle={previewDoc.subtitle}
                 fileName={previewDoc.fileName}
             />
+
+            {/* Modal de confirmación estilizado */}
+            <ConfirmDialog {...dialogProps} />
         </>
     );
 }

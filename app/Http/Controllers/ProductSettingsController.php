@@ -205,7 +205,7 @@ class ProductSettingsController extends Controller
         $validated = $request->validate([
             'branch_id' => ['required', 'exists:branches,id'],
             'type' => ['required', 'in:POSITIVE,NEGATIVE'],
-            'quantity' => ['required', 'numeric', 'min:0.01'],
+            'quantity' => ['required', 'integer', 'min:1'],
             'unit_cost' => ['nullable', 'numeric', 'min:0'],
             'reason' => ['required', 'string', 'max:100'],
         ]);

@@ -25,7 +25,10 @@ import {
     Printer,
     Download,
     TrendingUp,
-    Wallet
+    Wallet,
+    Clock,
+    RotateCcw,
+    Filter
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -34,6 +37,7 @@ import { Label } from '@/components/ui/label';
 import { useState } from 'react';
 import InputError from '@/components/input-error';
 import { getLocalDateString } from '@/lib/utils';
+import { DocumentPreviewModal } from '@/components/document-preview-modal';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Cuentas por Cobrar', href: '/receivables' },
@@ -231,6 +235,8 @@ export default function ReceivablesIndex({ receivables, customers_summary, payme
     // Quick Payment Modal state
     const [selectedReceivable, setSelectedReceivable] = useState<ReceivableItem | null>(null);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
     const paymentForm = useForm({
         amount: '',
@@ -238,6 +244,24 @@ export default function ReceivablesIndex({ receivables, customers_summary, payme
         operation_date: getLocalDateString(),
         notes: '',
     });
+
+    const hasActiveFilters = Boolean(data.search || data.status !== 'ACTIVE' || data.branch_id);
+
+    const handleResetFilters = () => {
+        setData({
+            search: '',
+            status: 'ACTIVE',
+            branch_id: '',
+        });
+        router.get('/receivables', {
+            search: '',
+            status: 'ACTIVE',
+            branch_id: '',
+        }, {
+            preserveState: true,
+            preserveScroll: true,
+        });
+    };
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
@@ -313,7 +337,7 @@ export default function ReceivablesIndex({ receivables, customers_summary, payme
                     <Card className="border shadow-xs">
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
                             <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                                Cartera Total por Cobrar
+                                Cartera por Cobrar
                             </CardTitle>
                             <div className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400">
                                 <Coins className="h-4 w-4" />
@@ -323,22 +347,26 @@ export default function ReceivablesIndex({ receivables, customers_summary, payme
                             <div className="text-2xl font-extrabold text-foreground">
                                 S/ {metrics.total_active_debt_pen.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </div>
-                            {metrics.total_active_debt_usd > 0 && (
+                            {metrics.total_active_debt_usd > 0 ? (
                                 <div className="text-xs font-semibold text-muted-foreground">
                                     + $ {metrics.total_active_debt_usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
                                 </div>
+                            ) : (
+                                <div className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                                    {metrics.overdue_count + metrics.current_count} créditos activos
+                                </div>
                             )}
                             <p className="text-[11px] text-muted-foreground">
-                                Saldo deudor activo acumulado
+                                Saldo total pendiente de cobro
                             </p>
                         </CardContent>
                     </Card>
 
                     {/* Card 2: Deuda Vencida en Mora */}
-                    <Card className={`border shadow-xs ${metrics.overdue_count > 0 ? 'bg-rose-50/50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900' : ''}`}>
+                    <Card className={`border shadow-xs ${metrics.overdue_count > 0 ? 'bg-rose-50/40 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900' : ''}`}>
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
                             <CardTitle className="text-xs font-semibold text-rose-700 dark:text-rose-400 uppercase tracking-wider">
-                                Deudas Vencidas en Mora
+                                Vencidas en Mora
                             </CardTitle>
                             <div className="p-2 rounded-lg bg-rose-100 dark:bg-rose-900/50 text-rose-600 dark:text-rose-400">
                                 <AlertTriangle className="h-4 w-4" />
@@ -349,12 +377,12 @@ export default function ReceivablesIndex({ receivables, customers_summary, payme
                                 S/ {metrics.total_overdue_debt_pen.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </div>
                             <div className="flex items-center gap-2">
-                                <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4 font-semibold">
-                                    {metrics.overdue_count} comprobante(s) vencido(s)
+                                <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4 font-semibold gap-1 bg-rose-600">
+                                    <AlertCircle className="h-2.5 w-2.5" /> {metrics.overdue_count} comprobante(s) en mora
                                 </Badge>
                             </div>
                             <p className="text-[11px] text-muted-foreground">
-                                Excedieron la fecha límite pactada
+                                {metrics.overdue_count > 0 ? 'Excedieron la fecha límite pactada' : 'Sin morosidad pendiente'}
                             </p>
                         </CardContent>
                     </Card>
@@ -363,7 +391,7 @@ export default function ReceivablesIndex({ receivables, customers_summary, payme
                     <Card className="border shadow-xs">
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
                             <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                                Por Vencer (Al Día)
+                                Vigente por Vencer
                             </CardTitle>
                             <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400">
                                 <CalendarClock className="h-4 w-4" />
@@ -373,11 +401,11 @@ export default function ReceivablesIndex({ receivables, customers_summary, payme
                             <div className="text-2xl font-extrabold text-foreground">
                                 S/ {metrics.total_current_debt_pen.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </div>
-                            <div className="text-xs font-medium text-blue-600 dark:text-blue-400">
-                                {metrics.current_count} crédito(s) vigentes
+                            <div className="text-xs font-medium text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                                <CheckCircle2 className="h-3 w-3" /> {metrics.current_count} crédito(s) dentro de plazo
                             </div>
                             <p className="text-[11px] text-muted-foreground">
-                                Dentro del plazo legal pactado
+                                Créditos comerciales al día
                             </p>
                         </CardContent>
                     </Card>
@@ -386,7 +414,7 @@ export default function ReceivablesIndex({ receivables, customers_summary, payme
                     <Card className="border shadow-xs">
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
                             <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                                Clientes Deudores
+                                Clientes en Cartera
                             </CardTitle>
                             <div className="p-2 rounded-lg bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400">
                                 <Users className="h-4 w-4" />
@@ -396,11 +424,11 @@ export default function ReceivablesIndex({ receivables, customers_summary, payme
                             <div className="text-2xl font-extrabold text-foreground">
                                 {metrics.debtor_customers_count}
                             </div>
-                            <div className="text-xs text-muted-foreground">
-                                {metrics.total_paid_count} cuenta(s) canceladas
+                            <div className="text-xs font-medium text-muted-foreground">
+                                Clientes con saldo pendiente
                             </div>
                             <p className="text-[11px] text-muted-foreground">
-                                Talleres, transportes y corporativos
+                                Talleres y cuentas recurrentes
                             </p>
                         </CardContent>
                     </Card>
@@ -420,17 +448,42 @@ export default function ReceivablesIndex({ receivables, customers_summary, payme
                                 />
                             </div>
 
-                            <div className="w-full md:w-56">
+                            <div className="w-full md:w-64">
                                 <Select value={data.status} onValueChange={(v) => { setData('status', v); }}>
                                     <SelectTrigger className="h-10">
                                         <SelectValue placeholder="Estado de Deuda" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="ACTIVE">Activas (Con saldo)</SelectItem>
-                                        <SelectItem value="OVERDUE">🚨 Solo Vencidas en Mora</SelectItem>
-                                        <SelectItem value="CURRENT">✅ Al Día / Por Vencer</SelectItem>
-                                        <SelectItem value="PAID">💰 Canceladas / Historial</SelectItem>
-                                        <SelectItem value="ALL">Todos los Registros</SelectItem>
+                                        <SelectItem value="ACTIVE">
+                                            <div className="flex items-center gap-2">
+                                                <Coins className="h-3.5 w-3.5 text-emerald-600" />
+                                                <span>Activas (Con saldo)</span>
+                                            </div>
+                                        </SelectItem>
+                                        <SelectItem value="OVERDUE">
+                                            <div className="flex items-center gap-2">
+                                                <AlertCircle className="h-3.5 w-3.5 text-rose-600" />
+                                                <span>Solo Vencidas en Mora</span>
+                                            </div>
+                                        </SelectItem>
+                                        <SelectItem value="CURRENT">
+                                            <div className="flex items-center gap-2">
+                                                <Clock className="h-3.5 w-3.5 text-blue-600" />
+                                                <span>Al Día / Por Vencer</span>
+                                            </div>
+                                        </SelectItem>
+                                        <SelectItem value="PAID">
+                                            <div className="flex items-center gap-2">
+                                                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                                                <span>Canceladas / Historial</span>
+                                            </div>
+                                        </SelectItem>
+                                        <SelectItem value="ALL">
+                                            <div className="flex items-center gap-2">
+                                                <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                                                <span>Todos los Registros</span>
+                                            </div>
+                                        </SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -451,9 +504,24 @@ export default function ReceivablesIndex({ receivables, customers_summary, payme
                                 </div>
                             )}
 
-                            <Button type="submit" className="h-10 px-5">
-                                Filtrar
-                            </Button>
+                            <div className="flex items-center gap-2">
+                                <Button type="submit" className="h-10 px-5 gap-1.5">
+                                    <Filter className="h-4 w-4" />
+                                    <span>Filtrar</span>
+                                </Button>
+                                {hasActiveFilters && (
+                                    <Button 
+                                        type="button" 
+                                        variant="outline" 
+                                        onClick={handleResetFilters} 
+                                        className="h-10 px-3 text-muted-foreground hover:text-foreground gap-1.5"
+                                        title="Limpiar filtros"
+                                    >
+                                        <RotateCcw className="h-4 w-4" />
+                                        <span className="hidden sm:inline text-xs">Limpiar</span>
+                                    </Button>
+                                )}
+                            </div>
                         </form>
                     </CardContent>
                 </Card>
@@ -537,8 +605,8 @@ export default function ReceivablesIndex({ receivables, customers_summary, payme
                                                                     {r.due_date ? new Date(r.due_date).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'Sin plazo'}
                                                                 </div>
                                                                 {isPaid ? (
-                                                                    <Badge className="bg-emerald-100 text-emerald-800 text-[10px] px-1.5 py-0 font-medium">
-                                                                        Cancelado
+                                                                    <Badge className="bg-emerald-100 text-emerald-800 text-[10px] px-1.5 py-0 font-medium gap-1">
+                                                                        <CheckCircle2 className="h-3 w-3" /> Cancelado
                                                                     </Badge>
                                                                 ) : isOverdue ? (
                                                                     <Badge variant="destructive" className="text-[10px] px-1.5 py-0 font-semibold gap-1 bg-rose-600">
@@ -546,12 +614,12 @@ export default function ReceivablesIndex({ receivables, customers_summary, payme
                                                                     </Badge>
                                                                 ) : r.status === 'ACTIVE' && r.due_date ? (
                                                                     r.days_remaining === 0 ? (
-                                                                        <Badge className="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0 font-medium">
-                                                                            Vence hoy
+                                                                        <Badge className="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0 font-medium gap-1">
+                                                                            <Clock className="h-3 w-3" /> Vence hoy
                                                                         </Badge>
                                                                     ) : (
-                                                                        <Badge className="bg-blue-50 text-blue-700 text-[10px] px-1.5 py-0 font-medium border border-blue-200">
-                                                                            Vence en {r.days_remaining}d
+                                                                        <Badge className="bg-blue-50 text-blue-700 text-[10px] px-1.5 py-0 font-medium border border-blue-200 gap-1">
+                                                                            <CalendarClock className="h-3 w-3" /> Vence en {r.days_remaining}d
                                                                         </Badge>
                                                                     )
                                                                 ) : null}
@@ -625,16 +693,16 @@ export default function ReceivablesIndex({ receivables, customers_summary, payme
                                                         {/* Estado */}
                                                         <TableCell className="text-center">
                                                             {isPaid ? (
-                                                                <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 font-medium">
-                                                                    Pagado Total
+                                                                <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 font-medium gap-1 text-[11px]">
+                                                                    <CheckCircle2 className="h-3 w-3" /> Pagado Total
                                                                 </Badge>
                                                             ) : r.paid_amount > 0 ? (
-                                                                <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 font-medium">
-                                                                    Amortizado Parcial
+                                                                <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 font-medium gap-1 text-[11px]">
+                                                                    <Clock className="h-3 w-3" /> Amortizado Parcial
                                                                 </Badge>
                                                             ) : (
-                                                                <Badge className="bg-muted text-foreground font-medium">
-                                                                    Pendiente (0%)
+                                                                <Badge className="bg-muted text-foreground font-medium gap-1 text-[11px]">
+                                                                    <AlertCircle className="h-3 w-3 text-muted-foreground" /> Pendiente (0%)
                                                                 </Badge>
                                                             )}
                                                         </TableCell>
@@ -871,34 +939,19 @@ export default function ReceivablesIndex({ receivables, customers_summary, payme
                                         <span>Exportar CSV</span>
                                     </Button>
 
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => window.print()}
-                                        className="h-8 text-xs gap-1.5"
-                                    >
-                                        <Printer className="h-3.5 w-3.5 text-muted-foreground" />
-                                        <span>Imprimir</span>
-                                    </Button>
                                 </div>
                             </CardContent>
                         </Card>
 
-                        {/* Banner del Período Activo */}
-                        <div className="flex items-center justify-between p-3.5 rounded-xl bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-900/60 text-purple-900 dark:text-purple-300">
-                            <div className="flex items-center gap-2.5">
-                                <BarChart3 className="h-5 w-5 text-purple-600 dark:text-purple-400 shrink-0" />
-                                <div>
-                                    <div className="text-xs font-bold uppercase tracking-wider">
-                                        Reporte de Recaudación y Cobranzas
-                                    </div>
-                                    <div className="text-sm font-semibold">
-                                        {report_data?.period_label || 'Período Activo'}
-                                    </div>
-                                </div>
+                        {/* Encabezado del Período Activo */}
+                        <div className="flex items-center justify-between border-b pb-2 pt-1">
+                            <div className="flex items-center gap-2">
+                                <BarChart3 className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                                <span className="text-sm font-bold text-foreground">
+                                    Reporte: {report_data?.period_label || 'Período Activo'}
+                                </span>
                             </div>
-                            <Badge className="bg-purple-600 text-white font-mono text-xs px-2.5 py-0.5">
+                            <Badge variant="outline" className="font-mono text-xs">
                                 {report_data?.collected_count || 0} operaciones registradas
                             </Badge>
                         </div>
@@ -1225,6 +1278,16 @@ export default function ReceivablesIndex({ receivables, customers_summary, payme
                     </form>
                 </DialogContent>
             </Dialog>
+
+            {/* Modal: Vista Previa de Liquidación A4 */}
+            <DocumentPreviewModal
+                open={isPreviewOpen}
+                onOpenChange={setIsPreviewOpen}
+                url={previewUrl}
+                title="Liquidación y Cuadre de Cobranzas (A4)"
+                subtitle="Documento administrativo de recaudación para arqueo y liquidación"
+                fileName={`liquidacion_cobranzas_${reportPeriod}_${new Date().toISOString().slice(0, 10)}.pdf`}
+            />
         </>
     );
 }

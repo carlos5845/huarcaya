@@ -10,7 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\View\View;
 use Inertia\Inertia;
 use Inertia\Response;
-use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class ReportController extends Controller
 {
@@ -86,7 +86,7 @@ class ReportController extends Controller
     /**
      * Exportación de cualquier reporte en formato Excel (.xlsx).
      */
-    public function exportExcel(Request $request, string $type): StreamedResponse
+    public function exportExcel(Request $request, string $type): BinaryFileResponse
     {
         $user = $request->user();
         $allowedBranchIds = $this->getAllowedBranchIds($request);

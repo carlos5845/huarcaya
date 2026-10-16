@@ -33,6 +33,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import ConfirmDialog from '@/components/confirm-dialog';
+import { useConfirmDialog } from '@/hooks/use-confirm';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
     DropdownMenu,
@@ -95,6 +97,7 @@ export default function SalesIndex({
     const [dateFrom, setDateFrom] = useState(filters?.date_from || '');
     const [dateTo, setDateTo] = useState(filters?.date_to || '');
     const [branchId, setBranchId] = useState(filters?.branch_id || '');
+    const { confirm, dialogProps } = useConfirmDialog();
 
     // Offline detail modal state
     const [selectedOfflineSale, setSelectedOfflineSale] = useState<LocalOfflineSale | null>(null);
@@ -541,9 +544,13 @@ export default function SalesIndex({
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => {
-                                    if (confirm('¿Deseas descartar esta venta offline? Se cancelará el envío y se repondrá el inventario local.')) {
-                                        discardOfflineSale(p.uuid);
-                                    }
+                                    confirm({
+                                        title: '¿Descartar esta venta offline?',
+                                        description: 'Se cancelará el envío al servidor central y se repondrá el inventario local en este dispositivo.',
+                                        variant: 'danger',
+                                        confirmLabel: 'Sí, descartar',
+                                        onConfirm: () => discardOfflineSale(p.uuid),
+                                    });
                                 }}
                                 className="h-8 gap-1 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40"
                             >
@@ -859,6 +866,9 @@ export default function SalesIndex({
                 onOpenChange={setOpenOfflineDialog}
                 onDiscard={discardOfflineSale}
             />
+
+            {/* Modal de confirmación estilizado */}
+            <ConfirmDialog {...dialogProps} />
         </>
     );
 }
