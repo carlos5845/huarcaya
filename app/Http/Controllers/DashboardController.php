@@ -177,10 +177,11 @@ class DashboardController extends Controller
 
             // Cuentas por Cobrar (Receivables)
             $receivablesBase = DB::table('receivables')
-                ->where('company_id', $companyId)
-                ->where('status', 'ACTIVE');
+                ->join('branches', 'receivables.branch_id', '=', 'branches.id')
+                ->where('branches.company_id', $companyId)
+                ->where('receivables.status', 'ACTIVE');
             if ($branchId && $branchId !== 'all') {
-                $receivablesBase->where('branch_id', $branchId);
+                $receivablesBase->where('receivables.branch_id', $branchId);
             }
             $pendingReceivablesTotal = (float) (clone $receivablesBase)->sum('balance_amount');
             $pendingReceivablesCount = (int) (clone $receivablesBase)->count();
