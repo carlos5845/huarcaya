@@ -47,7 +47,7 @@ const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Nueva Venta', href: '#' },
 ];
 
-export default function SaleCreate({ customers, generic_customer_id, payment_methods }: { customers: any[], generic_customer_id: number, payment_methods: any[] }) {
+export default function SaleCreate({ customers, generic_customer_id, payment_methods, from_quotation }: { customers: any[], generic_customer_id: number, payment_methods: any[], from_quotation?: any }) {
     const { isOnline } = useNetworkStatus();
     const defaultCustomer = generic_customer_id?.toString() || (customers.length > 0 ? customers[0].id.toString() : '');
 
@@ -133,6 +133,7 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
         exchange_rate: globalExchangeRate,
         notes: '',
         tax_mode: 'INCLUDED',
+        from_quotation_id: from_quotation?.id || null,
         lines: [] as {
             product_id: number;
             product_name: string;
@@ -152,6 +153,31 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
     }, [data.currency_code]);
 
     const [editingOfflineUuid, setEditingOfflineUuid] = useState<string | null>(null);
+
+    // Preload from quotation if provided
+    useEffect(() => {
+        if (!from_quotation) return;
+
+        setData((prev) => ({
+            ...prev,
+            customer_id: from_quotation.customer_id?.toString() || prev.customer_id,
+            currency_code: from_quotation.currency_code || 'PEN',
+            exchange_rate: Number(from_quotation.exchange_rate) || globalExchangeRate,
+            tax_mode: from_quotation.tax_mode || 'INCLUDED',
+            notes: from_quotation.notes ? `Convertido desde Cotización ${from_quotation.quotation_number}: ${from_quotation.notes}` : `Convertido desde Cotización ${from_quotation.quotation_number}`,
+            from_quotation_id: from_quotation.id,
+            lines: (from_quotation.lines || []).map((l: any) => ({
+                product_id: l.product_id,
+                product_name: l.product_name_snapshot,
+                internal_code: l.product_reference_snapshot,
+                quantity: Number(l.quantity),
+                unit_price: Number(l.unit_price),
+                available_quantity: Number(l.product?.inventories?.[0]?.quantity ?? 0),
+            })),
+        }));
+
+        toast.success(`Datos de Cotización ${from_quotation.quotation_number} cargados en la venta.`);
+    }, [from_quotation]);
 
     // Load offline draft if offline_uuid is present in query params
     useEffect(() => {

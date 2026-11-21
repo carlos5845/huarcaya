@@ -214,13 +214,16 @@ class ProductController extends Controller
 
     public function search(Request $request)
     {
-        $search = $request->input('q');
+        $search = $request->input('q') ?: $request->input('query');
 
         $branchId = $request->input('branch_id') ?: (Auth::user()->default_branch_id
                     ?? Branch::where('company_id', Auth::user()->company_id)->first()->id);
 
+        $cleanRef = Str::upper(preg_replace('/[^A-Za-z0-9]/', '', (string) $search));
+
         $products = Product::with([
             'brand',
+            'unit',
             'prices' => function ($q) use ($branchId) {
                 $q->where('status', 'ACTIVE')
                     ->where(function ($query) use ($branchId) {
@@ -233,33 +236,46 @@ class ProductController extends Controller
             },
         ])
             ->where('status', 'ACTIVE')
-            ->when($search, function ($query, $search) {
-                $query->where(function ($q) use ($search) {
+            ->when($search, function ($query, $search) use ($cleanRef) {
+                $query->where(function ($q) use ($search, $cleanRef) {
                     $q->whereLikeAccentInsensitive('primary_reference', "%{$search}%")
-                        ->orWhereLikeAccentInsensitive('normalized_reference', '%'.Str::upper(preg_replace('/[^A-Za-z0-9]/', '', $search)).'%')
                         ->orWhereLikeAccentInsensitive('name', "%{$search}%")
-                        ->orWhereHas('brand', function ($brandQuery) use ($search) {
-                            $brandQuery->whereLikeAccentInsensitive('name', "%{$search}%");
+                        ->orWhereLikeAccentInsensitive('internal_code', "%{$search}%");
+
+                    if (! empty($cleanRef)) {
+                        $q->orWhereLikeAccentInsensitive('normalized_reference', "%{$cleanRef}%");
+                    }
+
+                    $q->orWhereHas('brand', function ($brandQuery) use ($search) {
+                        $brandQuery->whereLikeAccentInsensitive('name', "%{$search}%");
+                    })
+                        ->orWhereHas('aliases', function ($aliasQuery) use ($search) {
+                            $aliasQuery->whereLikeAccentInsensitive('alias', "%{$search}%");
                         });
                 });
             })
-            ->limit(20)
-            ->get(['id', 'primary_reference', 'name', 'internal_code', 'brand_id']);
+            ->limit(30)
+            ->get(['id', 'primary_reference', 'name', 'internal_code', 'brand_id', 'unit_id']);
 
         $products->transform(function ($product) {
             $price = $product->prices->first();
             $inventory = $product->inventories->first();
 
             $suggestedPrice = $price ? $price->amount : ($inventory && $inventory->average_cost > 0 ? $inventory->average_cost * 1.30 : 0);
+            $availableQty = $inventory ? (float) ($inventory->available_quantity ?? $inventory->physical_quantity ?? 0) : 0;
 
             return [
                 'id' => $product->id,
                 'primary_reference' => $product->primary_reference,
                 'name' => $product->name,
                 'internal_code' => $product->internal_code,
-                'suggested_price' => round($suggestedPrice, 2),
+                'sku' => $product->internal_code ?: $product->primary_reference,
+                'unit_price' => round((float) $suggestedPrice, 2),
+                'suggested_price' => round((float) $suggestedPrice, 2),
+                'current_stock' => $availableQty,
+                'available_quantity' => $availableQty,
+                'unit' => $product->unit ? ['code' => $product->unit->code, 'name' => $product->unit->name] : ['code' => 'NIU'],
                 'brand' => $product->brand ? ['name' => $product->brand->name] : null,
-                'available_quantity' => $inventory ? (float) $inventory->available_quantity : 0,
             ];
         });
 

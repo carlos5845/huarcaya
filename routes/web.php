@@ -22,6 +22,7 @@ use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProductImportController;
 use App\Http\Controllers\ProductSettingsController;
 use App\Http\Controllers\PurchaseController;
+use App\Http\Controllers\QuotationController;
 use App\Http\Controllers\ReceivableController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\RoleController;
@@ -107,6 +108,9 @@ Route::middleware(['auth'])->group(function () {
     Route::middleware(['role_or_permission:Super Admin|view_company|view_branches'])->group(function () {
         Route::get('company', [CompanySettingsController::class, 'edit'])->name('company.edit');
         Route::match(['put', 'post'], 'company', [CompanySettingsController::class, 'update'])->name('company.update');
+        Route::post('company/bank-accounts', [CompanySettingsController::class, 'storeBankAccount'])->name('company.bank-accounts.store');
+        Route::put('company/bank-accounts/{bankAccount}', [CompanySettingsController::class, 'updateBankAccount'])->name('company.bank-accounts.update');
+        Route::delete('company/bank-accounts/{bankAccount}', [CompanySettingsController::class, 'destroyBankAccount'])->name('company.bank-accounts.destroy');
     });
 
     // Branch Management
@@ -147,6 +151,13 @@ Route::middleware(['auth'])->group(function () {
         Route::post('purchases/{purchase}/confirm', [PurchaseController::class, 'confirm'])->name('purchases.confirm');
         Route::resource('purchases', PurchaseController::class);
 
+    });
+
+    Route::middleware(['role_or_permission:Super Admin|view_sales|view_quotations'])->group(function () {
+        Route::get('quotations/{quotation}/print/a4', [QuotationController::class, 'printA4'])->name('quotations.print.a4');
+        Route::patch('quotations/{quotation}/status', [QuotationController::class, 'updateStatus'])->name('quotations.update-status');
+        Route::get('quotations/{quotation}/convert-to-sale', [QuotationController::class, 'convertToSale'])->name('quotations.convert-to-sale');
+        Route::resource('quotations', QuotationController::class)->except(['destroy']);
     });
 
     Route::middleware(['role_or_permission:Super Admin|view_sales'])->group(function () {

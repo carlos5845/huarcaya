@@ -117,7 +117,8 @@ const PERMISSION_CATEGORIES = [
         badgeColor: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20',
         description: 'Punto de venta, cuentas por cobrar, devoluciones y cartera de clientes',
         permissions: [
-            { key: 'view_sales', label: 'Ventas / Punto de Venta', description: 'Cotizaciones, punto de venta y emisión de comprobantes' },
+            { key: 'view_quotations', label: 'Cotizaciones y Presupuestos', description: 'Emisión de presupuestos comerciales, validez e impresión A4' },
+            { key: 'view_sales', label: 'Ventas / Punto de Venta', description: 'Punto de venta y emisión de comprobantes SUNAT' },
             { key: 'view_receivables', label: 'Cuentas por Cobrar', description: 'Control de créditos otorgados, saldos y registro de cobranzas' },
             { key: 'view_returns', label: 'Devoluciones y Garantías', description: 'Notas de crédito electrónicas, vales de devolución y reingresos' },
             { key: 'view_customers', label: 'Gestión de Clientes', description: 'Directorio fiscal (RUC/DNI) y registro de clientes compradores' },

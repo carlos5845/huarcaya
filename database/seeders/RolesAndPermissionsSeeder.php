@@ -20,6 +20,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'view_reports',
             'view_alerts',
             'view_sales',
+            'view_quotations',
             'view_receivables',
             'view_returns',
             'view_customers',

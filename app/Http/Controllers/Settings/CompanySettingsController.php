@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
 use App\Models\Company;
+use App\Models\CompanyBankAccount;
 use App\Models\Setting;
 use App\Models\SettingValue;
 use Illuminate\Http\Request;
@@ -31,6 +32,10 @@ class CompanySettingsController extends Controller
             $exchangeRateValue = $val ? $val->value : $exchangeRateSetting->default_value;
         }
 
+        $bankAccounts = $company
+            ? CompanyBankAccount::where('company_id', $company->id)->orderBy('id')->get()
+            : collect();
+
         return Inertia::render('company/index', [
             'company' => $company ? [
                 'id' => $company->id,
@@ -49,6 +54,7 @@ class CompanySettingsController extends Controller
                 'sunat_sol_user' => $company->sunat_sol_user ?? '',
                 'has_sol_password' => ! empty($company->sunat_sol_password),
             ] : null,
+            'bank_accounts' => $bankAccounts,
             'exchange_rate' => $exchangeRateValue ?? '3.80',
         ]);
     }
@@ -124,5 +130,89 @@ class CompanySettingsController extends Controller
         }
 
         return back()->with('success', 'Datos fiscales y configuración de la empresa actualizados.');
+    }
+
+    /**
+     * Store a new company bank account.
+     */
+    public function storeBankAccount(Request $request)
+    {
+        $companyId = $request->user()->company_id;
+        $company = Company::find($companyId) ?? Company::first();
+
+        if (! $company) {
+            return back()->with('error', 'Empresa no encontrada.');
+        }
+
+        $validated = $request->validate([
+            'bank_name' => ['required', 'string', 'max:50'],
+            'account_type' => ['required', 'string', 'max:30'],
+            'currency_code' => ['required', 'string', 'in:PEN,USD'],
+            'account_number' => ['required', 'string', 'max:50'],
+            'cci' => ['nullable', 'string', 'max:50'],
+            'beneficiary_name' => ['required', 'string', 'max:150'],
+            'is_active' => ['boolean'],
+        ]);
+
+        CompanyBankAccount::create([
+            'company_id' => $company->id,
+            'bank_name' => $validated['bank_name'],
+            'account_type' => $validated['account_type'],
+            'currency_code' => $validated['currency_code'],
+            'account_number' => $validated['account_number'],
+            'cci' => $validated['cci'] ?? null,
+            'beneficiary_name' => $validated['beneficiary_name'],
+            'is_active' => $request->boolean('is_active', true),
+        ]);
+
+        return back()->with('success', 'Cuenta bancaria registrada exitosamente.');
+    }
+
+    /**
+     * Update an existing company bank account.
+     */
+    public function updateBankAccount(Request $request, CompanyBankAccount $bankAccount)
+    {
+        $companyId = $request->user()->company_id;
+        if ($bankAccount->company_id !== $companyId) {
+            abort(403);
+        }
+
+        $validated = $request->validate([
+            'bank_name' => ['required', 'string', 'max:50'],
+            'account_type' => ['required', 'string', 'max:30'],
+            'currency_code' => ['required', 'string', 'in:PEN,USD'],
+            'account_number' => ['required', 'string', 'max:50'],
+            'cci' => ['nullable', 'string', 'max:50'],
+            'beneficiary_name' => ['required', 'string', 'max:150'],
+            'is_active' => ['boolean'],
+        ]);
+
+        $bankAccount->update([
+            'bank_name' => $validated['bank_name'],
+            'account_type' => $validated['account_type'],
+            'currency_code' => $validated['currency_code'],
+            'account_number' => $validated['account_number'],
+            'cci' => $validated['cci'] ?? null,
+            'beneficiary_name' => $validated['beneficiary_name'],
+            'is_active' => $request->boolean('is_active', true),
+        ]);
+
+        return back()->with('success', 'Cuenta bancaria actualizada exitosamente.');
+    }
+
+    /**
+     * Delete an existing company bank account.
+     */
+    public function destroyBankAccount(Request $request, CompanyBankAccount $bankAccount)
+    {
+        $companyId = $request->user()->company_id;
+        if ($bankAccount->company_id !== $companyId) {
+            abort(403);
+        }
+
+        $bankAccount->delete();
+
+        return back()->with('success', 'Cuenta bancaria eliminada exitosamente.');
     }
 }

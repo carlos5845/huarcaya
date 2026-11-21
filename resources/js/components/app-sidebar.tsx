@@ -71,6 +71,13 @@ export function AppSidebar() {
 
     // 2. Comercial y Ventas
     const salesItems: NavItem[] = [];
+    if (hasPerm('view_sales') || hasPerm('view_quotations')) {
+        salesItems.push({
+            title: 'Cotizaciones',
+            href: '/quotations',
+            icon: Calculator,
+        });
+    }
     if (hasPerm('view_sales')) {
         salesItems.push({
             title: 'Ventas',

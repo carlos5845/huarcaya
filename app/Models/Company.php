@@ -43,6 +43,11 @@ class Company extends Model
         return $this->hasMany(Branch::class);
     }
 
+    public function bankAccounts(): HasMany
+    {
+        return $this->hasMany(CompanyBankAccount::class);
+    }
+
     /**
      * Devuelve la URL pública del logotipo corporativo o el logo por defecto.
      */

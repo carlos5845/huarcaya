@@ -8,6 +8,7 @@ use App\Models\CustomerReturnLine;
 use App\Models\Payment;
 use App\Models\PaymentMethod;
 use App\Models\Product;
+use App\Models\Quotation;
 use App\Models\Receivable;
 use App\Models\Sale;
 use App\Models\SaleLine;
@@ -116,8 +117,18 @@ class SaleController extends Controller
         ]);
     }
 
-    public function create()
+    public function create(Request $request)
     {
+        $fromQuotation = null;
+        if ($request->has('from_quotation')) {
+            $fromQuotation = Quotation::with(['customer', 'lines.product.unit', 'lines.product.inventories' => function ($q) {
+                if (Auth::user()->default_branch_id) {
+                    $q->where('branch_id', Auth::user()->default_branch_id);
+                }
+            }])
+                ->where('company_id', Auth::user()->company_id)
+                ->find($request->input('from_quotation'));
+        }
 
         $genericCustomer = Customer::firstOrCreate(
             [
@@ -147,6 +158,7 @@ class SaleController extends Controller
                 }),
             'payment_methods' => PaymentMethod::where('company_id', Auth::user()->company_id)->where('is_active', true)->get(),
             'generic_customer_id' => $genericCustomer->id,
+            'from_quotation' => $fromQuotation,
         ]);
     }
 
@@ -162,6 +174,7 @@ class SaleController extends Controller
             'operation_date' => ['required', 'date'],
             'notes' => ['nullable', 'string'],
             'action' => ['nullable', 'string', 'in:CONFIRM,DRAFT'],
+            'from_quotation_id' => ['nullable', 'exists:quotations,id'],
             'lines' => ['required', 'array', 'min:1'],
             'lines.*.product_id' => ['required', 'exists:products,id'],
             'lines.*.quantity' => ['required', 'numeric', 'min:1'],
@@ -288,6 +301,19 @@ class SaleController extends Controller
                 'payment_status' => $isPaid ? 'PAID' : ($initPay > 0 ? 'PARTIAL' : 'UNPAID'),
             ]);
 
+            // Si proviene de una cotización, marcarla como convertida
+            if (! empty($validated['from_quotation_id'])) {
+                $quotation = Quotation::find($validated['from_quotation_id']);
+                if ($quotation) {
+                    $quotation->update([
+                        'status' => 'CONVERTED',
+                        'converted_sale_id' => $sale->id,
+                        'converted_at' => now(),
+                        'converted_by' => Auth::id(),
+                    ]);
+                }
+            }
+
             if ($action === 'CONFIRM') {
                 $this->executeSaleConfirmation($sale, $kardexService);
                 DB::commit();
@@ -404,6 +430,7 @@ class SaleController extends Controller
             'customers' => $customers,
             'payment_methods' => PaymentMethod::where('company_id', Auth::user()->company_id)->where('is_active', true)->get(),
             'generic_customer_id' => $genericCustomer->id,
+            'from_quotation' => $fromQuotation,
         ]);
     }
 
@@ -542,6 +569,19 @@ class SaleController extends Controller
                 'initial_payment_amount' => $initPay,
                 'payment_status' => $isPaid ? 'PAID' : ($initPay > 0 ? 'PARTIAL' : 'UNPAID'),
             ]);
+
+            // Si proviene de una cotización, marcarla como convertida
+            if (! empty($validated['from_quotation_id'])) {
+                $quotation = Quotation::find($validated['from_quotation_id']);
+                if ($quotation) {
+                    $quotation->update([
+                        'status' => 'CONVERTED',
+                        'converted_sale_id' => $sale->id,
+                        'converted_at' => now(),
+                        'converted_by' => Auth::id(),
+                    ]);
+                }
+            }
 
             if ($action === 'CONFIRM') {
                 $this->executeSaleConfirmation($sale, $kardexService);

@@ -16,10 +16,12 @@ import {
     MapPin,
     PackagePlus,
     Receipt,
+    RotateCcw,
     ShieldCheck,
     ShoppingCart,
     Store,
     TrendingDown,
+    TrendingUp,
     Users,
     Zap,
 } from 'lucide-react';
@@ -79,6 +81,16 @@ export default function Dashboard({ is_admin, user_info, stats, chartData, recen
         router.get('/dashboard', localFilters, { preserveState: true, preserveScroll: true });
     };
 
+    const resetFilters = () => {
+        const resetState = {
+            branch_id: is_admin ? 'all' : (branches?.[0]?.id?.toString() || ''),
+            month: '',
+            date: ''
+        };
+        setLocalFilters(resetState);
+        router.get('/dashboard', resetState, { preserveState: true, preserveScroll: true });
+    };
+
     // Acciones Rápidas para Administrador con iconos a color
     const adminQuickActions = [
         {
@@ -96,18 +108,18 @@ export default function Dashboard({ is_admin, user_info, stats, chartData, recen
             bgClass: 'bg-sky-500/10 dark:bg-sky-500/20 text-sky-600 dark:text-sky-400 border-sky-500/20',
         },
         {
-            title: 'Transferencia',
-            subtitle: 'Traslado entre tiendas',
-            href: '/transfers/create',
-            icon: ArrowLeftRight,
-            bgClass: 'bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/20',
+            title: 'Cotizaciones',
+            subtitle: 'Propuestas de venta',
+            href: '/quotations',
+            icon: FileText,
+            bgClass: 'bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border-indigo-500/20',
         },
         {
             title: 'Consultar Stock',
             subtitle: 'Inventario general',
             href: '/inventory',
             icon: Boxes,
-            bgClass: 'bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border-indigo-500/20',
+            bgClass: 'bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/20',
         },
         {
             title: 'Cobranzas',
@@ -135,17 +147,17 @@ export default function Dashboard({ is_admin, user_info, stats, chartData, recen
             bgClass: 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
         },
         {
+            title: 'Nueva Cotización',
+            subtitle: 'Generar proforma',
+            href: '/quotations/create',
+            icon: FileText,
+            bgClass: 'bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border-indigo-500/20',
+        },
+        {
             title: 'Consultar Stock',
             subtitle: 'Existencias en tienda',
             href: '/inventory',
             icon: Boxes,
-            bgClass: 'bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border-indigo-500/20',
-        },
-        {
-            title: 'Transferencias',
-            subtitle: 'Solicitar / Recibir',
-            href: '/transfers',
-            icon: ArrowLeftRight,
             bgClass: 'bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/20',
         },
         {
@@ -168,7 +180,7 @@ export default function Dashboard({ is_admin, user_info, stats, chartData, recen
     const myRevenueChange = !is_admin ? getChange(stats.my_revenue_this_month, stats.my_revenue_last_month) : 0;
     const mySalesCountChange = !is_admin ? getChange(stats.my_sales_count_this_month, stats.my_sales_count_last_month) : 0;
 
-    const currentBranchName = branches?.find(b => b.id.toString() === localFilters.branch_id)?.name || 'Mi Sucursal';
+    const currentBranchName = branches?.find(b => b.id.toString() === localFilters.branch_id)?.name || 'Todas las Sucursales';
 
     return (
         <>
@@ -242,200 +254,37 @@ export default function Dashboard({ is_admin, user_info, stats, chartData, recen
                     </div>
                 </div>
 
-                {/* SECCIÓN: TARJETAS DE KPIS */}
-                {is_admin ? (
-                    // === KPIS PARA ADMINISTRADOR ===
-                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                        <Card>
-                            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                                <CardTitle className="text-sm font-medium text-muted-foreground">Ingresos del Mes</CardTitle>
-                                <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                                    <DollarSign className="h-4 w-4" />
+                {/* SECCIÓN: BARRA DE FILTROS Y PERÍODO ANALIZADO */}
+                <div className="bg-white dark:bg-card border rounded-2xl p-4 sm:p-5 shadow-xs space-y-3">
+                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                                <Calendar className="w-4 h-4" />
+                            </div>
+                            <div>
+                                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">
+                                    Período Seleccionado
+                                </span>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm sm:text-base font-extrabold text-foreground">
+                                        {stats.period_label || 'Mes Actual'}
+                                    </span>
+                                    <Badge variant="outline" className="text-[11px] font-semibold text-primary border-primary/20 bg-primary/5">
+                                        {stats.comparison_label || 'vs mes anterior'}
+                                    </Badge>
                                 </div>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-bold">{formatCurrency(stats.revenue_this_month)}</div>
-                                <p className="text-xs text-muted-foreground mt-1 flex items-center">
-                                    {revenueChange >= 0 ? (
-                                        <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center">
-                                            <ArrowUpRight className="w-3.5 h-3.5 mr-0.5" /> +{revenueChange.toFixed(1)}%
-                                        </span>
-                                    ) : (
-                                        <span className="text-rose-600 dark:text-rose-400 font-medium flex items-center">
-                                            <ArrowDownRight className="w-3.5 h-3.5 mr-0.5" /> {revenueChange.toFixed(1)}%
-                                        </span>
-                                    )}
-                                    <span className="ml-1.5 text-muted-foreground">vs mes anterior</span>
-                                </p>
-                            </CardContent>
-                        </Card>
-
-                        <Card>
-                            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                                <CardTitle className="text-sm font-medium text-muted-foreground">Gastos del Mes (Compras)</CardTitle>
-                                <div className="p-2 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400">
-                                    <TrendingDown className="h-4 w-4" />
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-bold">{formatCurrency(stats.expenses_this_month)}</div>
-                                <p className="text-xs text-muted-foreground mt-1 flex items-center">
-                                    {expensesChange >= 0 ? (
-                                        <span className="text-rose-600 dark:text-rose-400 font-medium flex items-center">
-                                            <ArrowUpRight className="w-3.5 h-3.5 mr-0.5" /> +{expensesChange.toFixed(1)}%
-                                        </span>
-                                    ) : (
-                                        <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center">
-                                            <ArrowDownRight className="w-3.5 h-3.5 mr-0.5" /> {expensesChange.toFixed(1)}%
-                                        </span>
-                                    )}
-                                    <span className="ml-1.5 text-muted-foreground">vs mes anterior</span>
-                                </p>
-                            </CardContent>
-                        </Card>
-
-                        <Card>
-                            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                                <CardTitle className="text-sm font-medium text-muted-foreground">Ventas Realizadas</CardTitle>
-                                <div className="p-2 rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400">
-                                    <ShoppingCart className="h-4 w-4" />
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-bold">{stats.sales_count_this_month}</div>
-                                <p className="text-xs text-muted-foreground mt-1 flex items-center">
-                                    {salesCountChange >= 0 ? (
-                                        <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center">
-                                            <ArrowUpRight className="w-3.5 h-3.5 mr-0.5" /> +{salesCountChange.toFixed(1)}%
-                                        </span>
-                                    ) : (
-                                        <span className="text-rose-600 dark:text-rose-400 font-medium flex items-center">
-                                            <ArrowDownRight className="w-3.5 h-3.5 mr-0.5" /> {salesCountChange.toFixed(1)}%
-                                        </span>
-                                    )}
-                                    <span className="ml-1.5 text-muted-foreground">vs mes anterior</span>
-                                </p>
-                            </CardContent>
-                        </Card>
-
-                        <Card>
-                            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                                <CardTitle className="text-sm font-medium text-muted-foreground">Productos Activos</CardTitle>
-                                <div className="p-2 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
-                                    <Boxes className="h-4 w-4" />
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-bold">{stats.products_count}</div>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                    Total de ítems en catálogo global
-                                </p>
-                            </CardContent>
-                        </Card>
-                    </div>
-                ) : (
-                    // === KPIS PARA USUARIO NORMAL / OPERATIVO ===
-                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                        <Card>
-                            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                                <CardTitle className="text-sm font-medium text-muted-foreground">Mis Ventas del Mes</CardTitle>
-                                <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                                    <DollarSign className="h-4 w-4" />
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-bold">{formatCurrency(stats.my_revenue_this_month)}</div>
-                                <p className="text-xs text-muted-foreground mt-1 flex items-center">
-                                    {myRevenueChange >= 0 ? (
-                                        <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center">
-                                            <ArrowUpRight className="w-3.5 h-3.5 mr-0.5" /> +{myRevenueChange.toFixed(1)}%
-                                        </span>
-                                    ) : (
-                                        <span className="text-rose-600 dark:text-rose-400 font-medium flex items-center">
-                                            <ArrowDownRight className="w-3.5 h-3.5 mr-0.5" /> {myRevenueChange.toFixed(1)}%
-                                        </span>
-                                    )}
-                                    <span className="ml-1.5 text-muted-foreground">vs mes anterior</span>
-                                </p>
-                            </CardContent>
-                        </Card>
-
-                        <Card>
-                            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                                <CardTitle className="text-sm font-medium text-muted-foreground">Mis Ventas de Hoy</CardTitle>
-                                <div className="p-2 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400">
-                                    <Zap className="h-4 w-4" />
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                                    {formatCurrency(stats.my_revenue_today)}
-                                </div>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                    {stats.my_sales_count_today} {stats.my_sales_count_today === 1 ? 'comprobante emitido' : 'comprobantes emitidos'} hoy
-                                </p>
-                            </CardContent>
-                        </Card>
-
-                        <Card>
-                            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                                <CardTitle className="text-sm font-medium text-muted-foreground">Comprobantes del Mes</CardTitle>
-                                <div className="p-2 rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400">
-                                    <Receipt className="h-4 w-4" />
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-bold">{stats.my_sales_count_this_month}</div>
-                                <p className="text-xs text-muted-foreground mt-1 flex items-center">
-                                    {mySalesCountChange >= 0 ? (
-                                        <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center">
-                                            <ArrowUpRight className="w-3.5 h-3.5 mr-0.5" /> +{mySalesCountChange.toFixed(1)}%
-                                        </span>
-                                    ) : (
-                                        <span className="text-rose-600 dark:text-rose-400 font-medium flex items-center">
-                                            <ArrowDownRight className="w-3.5 h-3.5 mr-0.5" /> {mySalesCountChange.toFixed(1)}%
-                                        </span>
-                                    )}
-                                    <span className="ml-1.5 text-muted-foreground">vs mes anterior</span>
-                                </p>
-                            </CardContent>
-                        </Card>
-
-                        <Card>
-                            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                                <CardTitle className="text-sm font-medium text-muted-foreground">Stock en Tienda</CardTitle>
-                                <div className="p-2 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
-                                    <Store className="h-4 w-4" />
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-bold">{stats.branch_stock_count}</div>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                    Ítems con existencia en {currentBranchName}
-                                </p>
-                            </CardContent>
-                        </Card>
-                    </div>
-                )}
-
-                {/* SECCIÓN: GRÁFICO Y ANÁLISIS */}
-                <Card className="w-full">
-                    <CardHeader className="flex flex-col xl:flex-row xl:items-center justify-between pb-4 gap-4">
-                        <div>
-                            <CardTitle className="text-lg font-bold">
-                                {is_admin ? 'Ventas por Usuario / Vendedor' : 'Mi Evolución de Ventas'}
-                            </CardTitle>
-                            <CardDescription>
-                                {is_admin
-                                    ? 'Rendimiento y ranking comparativo del equipo de ventas'
-                                    : 'Seguimiento de mis ventas diarias durante el periodo seleccionado'}
-                            </CardDescription>
+                            </div>
                         </div>
-                        <div className="flex flex-col sm:flex-row items-center gap-2">
-                            {/* Selector de Sucursal (Solo para Admin con múltiples sucursales) */}
+
+                        {/* Controles de Filtros */}
+                        <div className="flex flex-wrap items-center gap-2">
+                            {/* Selector de Sucursal (Solo para Admin) */}
                             {is_admin && (
-                                <Select value={localFilters.branch_id} onValueChange={(val) => setLocalFilters({...localFilters, branch_id: val})}>
-                                    <SelectTrigger className="w-full sm:w-[170px] h-9">
+                                <Select 
+                                    value={localFilters.branch_id} 
+                                    onValueChange={(val) => setLocalFilters({ ...localFilters, branch_id: val })}
+                                >
+                                    <SelectTrigger className="w-full sm:w-[170px] h-9 text-xs">
                                         <SelectValue placeholder="Sucursal" />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -449,21 +298,16 @@ export default function Dashboard({ is_admin, user_info, stats, chartData, recen
 
                             {/* Año */}
                             <Select
-                                value={localFilters.month ? localFilters.month.substring(0, 4) : 'all'}
+                                value={localFilters.month ? localFilters.month.substring(0, 4) : '2026'}
                                 onValueChange={(val) => {
-                                    if (val === 'all') {
-                                        setLocalFilters({...localFilters, month: '', date: ''});
-                                    } else {
-                                        const m = localFilters.month ? localFilters.month.substring(5, 7) : '01';
-                                        setLocalFilters({...localFilters, month: `${val}-${m}`, date: ''});
-                                    }
+                                    const m = localFilters.month ? localFilters.month.substring(5, 7) : '10';
+                                    setLocalFilters({ ...localFilters, month: `${val}-${m}`, date: '' });
                                 }}
                             >
-                                <SelectTrigger className="w-full sm:w-[110px] h-9">
+                                <SelectTrigger className="w-[100px] h-9 text-xs">
                                     <SelectValue placeholder="Año" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="all">Todos</SelectItem>
                                     {[2024, 2025, 2026, 2027].map(y => (
                                         <SelectItem key={y} value={String(y)}>{y}</SelectItem>
                                     ))}
@@ -472,21 +316,16 @@ export default function Dashboard({ is_admin, user_info, stats, chartData, recen
 
                             {/* Mes */}
                             <Select
-                                value={localFilters.month ? localFilters.month.substring(5, 7) : 'all'}
+                                value={localFilters.month ? localFilters.month.substring(5, 7) : '10'}
                                 onValueChange={(val) => {
-                                    if (val === 'all') {
-                                        setLocalFilters({...localFilters, month: '', date: ''});
-                                    } else {
-                                        const y = localFilters.month ? localFilters.month.substring(0, 4) : new Date().getFullYear().toString();
-                                        setLocalFilters({...localFilters, month: `${y}-${val}`, date: ''});
-                                    }
+                                    const y = localFilters.month ? localFilters.month.substring(0, 4) : '2026';
+                                    setLocalFilters({ ...localFilters, month: `${y}-${val}`, date: '' });
                                 }}
                             >
-                                <SelectTrigger className="w-full sm:w-[130px] h-9">
+                                <SelectTrigger className="w-[125px] h-9 text-xs">
                                     <SelectValue placeholder="Mes" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="all">Todos</SelectItem>
                                     <SelectItem value="01">Enero</SelectItem>
                                     <SelectItem value="02">Febrero</SelectItem>
                                     <SelectItem value="03">Marzo</SelectItem>
@@ -506,15 +345,297 @@ export default function Dashboard({ is_admin, user_info, stats, chartData, recen
                             <Input
                                 type="date"
                                 value={localFilters.date}
-                                onChange={(e) => setLocalFilters({...localFilters, date: e.target.value, month: ''})}
-                                className="h-9 w-full sm:w-[140px]"
+                                onChange={(e) => setLocalFilters({ ...localFilters, date: e.target.value, month: '' })}
+                                className="h-9 w-[135px] text-xs"
+                                title="Filtrar por fecha exacta"
                             />
 
-                            <Button onClick={applyFilters} className="h-9 w-full sm:w-auto" variant="default">
-                                <Filter className="w-3.5 h-3.5 mr-1.5" />
+                            <Button onClick={applyFilters} className="h-9 text-xs gap-1.5" variant="default">
+                                <Filter className="w-3.5 h-3.5" />
                                 Filtrar
                             </Button>
+
+                            {(localFilters.date || (localFilters.month && localFilters.month !== '2026-11')) && (
+                                <Button 
+                                    onClick={resetFilters} 
+                                    variant="outline" 
+                                    className="h-9 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
+                                    title="Restablecer período"
+                                >
+                                    <RotateCcw className="w-3.5 h-3.5" />
+                                    Limpiar
+                                </Button>
+                            )}
                         </div>
+                    </div>
+                </div>
+
+                {/* SECCIÓN: TARJETAS DE KPIS */}
+                {is_admin ? (
+                    // === KPIS PARA ADMINISTRADOR ===
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                        {/* Card 1: Ingresos por Ventas */}
+                        <Card className="border shadow-xs hover:shadow-md transition-shadow">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                                <div className="space-y-0.5">
+                                    <CardTitle className="text-sm font-semibold text-muted-foreground">
+                                        Ingresos por Ventas
+                                    </CardTitle>
+                                    <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                                        {stats.period_label || 'Período'}
+                                    </span>
+                                </div>
+                                <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                    <DollarSign className="h-5 w-5" />
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-2xl font-black tracking-tight text-foreground">
+                                    {formatCurrency(stats.revenue_this_month)}
+                                </div>
+                                <div className="flex items-center justify-between text-xs mt-2 pt-2 border-t text-muted-foreground">
+                                    <span className="flex items-center">
+                                        {revenueChange >= 0 ? (
+                                            <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center">
+                                                <ArrowUpRight className="w-3.5 h-3.5 mr-0.5" /> +{revenueChange.toFixed(1)}%
+                                            </span>
+                                        ) : (
+                                            <span className="text-rose-600 dark:text-rose-400 font-semibold flex items-center">
+                                                <ArrowDownRight className="w-3.5 h-3.5 mr-0.5" /> {revenueChange.toFixed(1)}%
+                                            </span>
+                                        )}
+                                        <span className="ml-1 text-[11px]">{stats.comparison_label || 'vs anterior'}</span>
+                                    </span>
+                                    <span className="text-[11px] font-semibold text-foreground">
+                                        {stats.sales_count_this_month} {stats.sales_count_this_month === 1 ? 'venta' : 'ventas'}
+                                    </span>
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        {/* Card 2: Gastos de Compras */}
+                        <Card className="border shadow-xs hover:shadow-md transition-shadow">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                                <div className="space-y-0.5">
+                                    <CardTitle className="text-sm font-semibold text-muted-foreground">
+                                        Gastos en Compras
+                                    </CardTitle>
+                                    <span className="text-[11px] font-medium text-rose-600 dark:text-rose-400">
+                                        Mercadería ingresada
+                                    </span>
+                                </div>
+                                <div className="p-2.5 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+                                    <TrendingDown className="h-5 w-5" />
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-2xl font-black tracking-tight text-foreground">
+                                    {formatCurrency(stats.expenses_this_month)}
+                                </div>
+                                <div className="flex items-center justify-between text-xs mt-2 pt-2 border-t text-muted-foreground">
+                                    <span className="flex items-center">
+                                        {expensesChange >= 0 ? (
+                                            <span className="text-rose-600 dark:text-rose-400 font-semibold flex items-center">
+                                                <ArrowUpRight className="w-3.5 h-3.5 mr-0.5" /> +{expensesChange.toFixed(1)}%
+                                            </span>
+                                        ) : (
+                                            <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center">
+                                                <ArrowDownRight className="w-3.5 h-3.5 mr-0.5" /> {expensesChange.toFixed(1)}%
+                                            </span>
+                                        )}
+                                        <span className="ml-1 text-[11px]">{stats.comparison_label || 'vs anterior'}</span>
+                                    </span>
+                                    <span className="text-[11px] font-semibold text-foreground">
+                                        {stats.purchases_count || 0} {stats.purchases_count === 1 ? 'compra' : 'compras'}
+                                    </span>
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        {/* Card 3: Ventas Realizadas y Ticket Promedio */}
+                        <Card className="border shadow-xs hover:shadow-md transition-shadow">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                                <div className="space-y-0.5">
+                                    <CardTitle className="text-sm font-semibold text-muted-foreground">
+                                        Ventas Realizadas
+                                    </CardTitle>
+                                    <span className="text-[11px] font-medium text-sky-600 dark:text-sky-400">
+                                        Operaciones cerradas
+                                    </span>
+                                </div>
+                                <div className="p-2.5 rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
+                                    <ShoppingCart className="h-5 w-5" />
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-2xl font-black tracking-tight text-foreground">
+                                    {stats.sales_count_this_month}
+                                </div>
+                                <div className="flex items-center justify-between text-xs mt-2 pt-2 border-t text-muted-foreground">
+                                    <span className="flex items-center">
+                                        {salesCountChange >= 0 ? (
+                                            <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center">
+                                                <ArrowUpRight className="w-3.5 h-3.5 mr-0.5" /> +{salesCountChange.toFixed(1)}%
+                                            </span>
+                                        ) : (
+                                            <span className="text-rose-600 dark:text-rose-400 font-semibold flex items-center">
+                                                <ArrowDownRight className="w-3.5 h-3.5 mr-0.5" /> {salesCountChange.toFixed(1)}%
+                                            </span>
+                                        )}
+                                        <span className="ml-1 text-[11px]">{stats.comparison_label || 'vs anterior'}</span>
+                                    </span>
+                                    <span className="text-[11px] font-medium text-muted-foreground">
+                                        Prom: {formatCurrency(stats.average_ticket || 0)}
+                                    </span>
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        {/* Card 4: Valorización de Inventario & Catálogo */}
+                        <Card className="border shadow-xs hover:shadow-md transition-shadow">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                                <div className="space-y-0.5">
+                                    <CardTitle className="text-sm font-semibold text-muted-foreground">
+                                        Valorización de Inventario
+                                    </CardTitle>
+                                    <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                                        Stock en almacén
+                                    </span>
+                                </div>
+                                <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                                    <Boxes className="h-5 w-5" />
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-2xl font-black tracking-tight text-foreground">
+                                    {formatCurrency(stats.inventory_valuation || 0)}
+                                </div>
+                                <div className="flex items-center justify-between text-xs mt-2 pt-2 border-t text-muted-foreground">
+                                    <span className="text-[11px] font-semibold text-foreground">
+                                        {stats.products_count} productos
+                                    </span>
+                                    <span className="text-[11px] text-muted-foreground">
+                                        {(stats.total_units_stock || 0).toLocaleString()} unds físicas
+                                    </span>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </div>
+                ) : (
+                    // === KPIS PARA USUARIO NORMAL / OPERATIVO ===
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                        <Card className="border shadow-xs hover:shadow-md transition-shadow">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                                <div className="space-y-0.5">
+                                    <CardTitle className="text-sm font-semibold text-muted-foreground">Mis Ventas</CardTitle>
+                                    <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                                        {stats.period_label || 'Período'}
+                                    </span>
+                                </div>
+                                <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                    <DollarSign className="h-5 w-5" />
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-2xl font-black tracking-tight text-foreground">{formatCurrency(stats.my_revenue_this_month)}</div>
+                                <p className="text-xs text-muted-foreground mt-2 pt-2 border-t flex items-center">
+                                    {myRevenueChange >= 0 ? (
+                                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center">
+                                            <ArrowUpRight className="w-3.5 h-3.5 mr-0.5" /> +{myRevenueChange.toFixed(1)}%
+                                        </span>
+                                    ) : (
+                                        <span className="text-rose-600 dark:text-rose-400 font-semibold flex items-center">
+                                            <ArrowDownRight className="w-3.5 h-3.5 mr-0.5" /> {myRevenueChange.toFixed(1)}%
+                                        </span>
+                                    )}
+                                    <span className="ml-1 text-[11px]">{stats.comparison_label || 'vs anterior'}</span>
+                                </p>
+                            </CardContent>
+                        </Card>
+
+                        <Card className="border shadow-xs hover:shadow-md transition-shadow">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                                <div className="space-y-0.5">
+                                    <CardTitle className="text-sm font-semibold text-muted-foreground">Mis Ventas de Hoy</CardTitle>
+                                    <span className="text-[11px] font-medium text-purple-600 dark:text-purple-400">Jornada actual</span>
+                                </div>
+                                <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+                                    <Zap className="h-5 w-5" />
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-2xl font-black tracking-tight text-purple-600 dark:text-purple-400">
+                                    {formatCurrency(stats.my_revenue_today)}
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-2 pt-2 border-t">
+                                    {stats.my_sales_count_today} {stats.my_sales_count_today === 1 ? 'comprobante emitido' : 'comprobantes emitidos'} hoy
+                                </p>
+                            </CardContent>
+                        </Card>
+
+                        <Card className="border shadow-xs hover:shadow-md transition-shadow">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                                <div className="space-y-0.5">
+                                    <CardTitle className="text-sm font-semibold text-muted-foreground">Comprobantes del Mes</CardTitle>
+                                    <span className="text-[11px] font-medium text-sky-600 dark:text-sky-400">Operaciones cerradas</span>
+                                </div>
+                                <div className="p-2.5 rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
+                                    <Receipt className="h-5 w-5" />
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-2xl font-black tracking-tight text-foreground">{stats.my_sales_count_this_month}</div>
+                                <p className="text-xs text-muted-foreground mt-2 pt-2 border-t flex items-center">
+                                    {mySalesCountChange >= 0 ? (
+                                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center">
+                                            <ArrowUpRight className="w-3.5 h-3.5 mr-0.5" /> +{mySalesCountChange.toFixed(1)}%
+                                        </span>
+                                    ) : (
+                                        <span className="text-rose-600 dark:text-rose-400 font-semibold flex items-center">
+                                            <ArrowDownRight className="w-3.5 h-3.5 mr-0.5" /> {mySalesCountChange.toFixed(1)}%
+                                        </span>
+                                    )}
+                                    <span className="ml-1 text-[11px]">{stats.comparison_label || 'vs anterior'}</span>
+                                </p>
+                            </CardContent>
+                        </Card>
+
+                        <Card className="border shadow-xs hover:shadow-md transition-shadow">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                                <div className="space-y-0.5">
+                                    <CardTitle className="text-sm font-semibold text-muted-foreground">Stock en Tienda</CardTitle>
+                                    <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400">{currentBranchName}</span>
+                                </div>
+                                <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                                    <Store className="h-5 w-5" />
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-2xl font-black tracking-tight text-foreground">{stats.branch_stock_count}</div>
+                                <p className="text-xs text-muted-foreground mt-2 pt-2 border-t">
+                                    {(stats.branch_units_stock || 0).toLocaleString()} unidades disponibles en sucursal
+                                </p>
+                            </CardContent>
+                        </Card>
+                    </div>
+                )}
+
+                {/* SECCIÓN: GRÁFICO Y ANÁLISIS */}
+                <Card className="w-full">
+                    <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 gap-4">
+                        <div>
+                            <CardTitle className="text-lg font-bold">
+                                {is_admin ? 'Ventas por Usuario / Vendedor' : 'Mi Evolución de Ventas'}
+                            </CardTitle>
+                            <CardDescription>
+                                {is_admin
+                                    ? `Rendimiento y ranking de ventas durante ${stats.period_label || 'el período seleccionado'}`
+                                    : `Seguimiento de ventas diarias durante ${stats.period_label || 'el período seleccionado'}`}
+                            </CardDescription>
+                        </div>
+                        <Badge variant="outline" className="text-xs font-semibold px-3 py-1 bg-muted/50 border self-start sm:self-center">
+                            {stats.period_label || 'Período activo'}
+                        </Badge>
                     </CardHeader>
                     <CardContent>
                         {chartData && chartData.length > 0 ? (
@@ -539,92 +660,94 @@ export default function Dashboard({ is_admin, user_info, stats, chartData, recen
                                                 tickLine={false}
                                                 tickFormatter={(value) => `S/ ${value}`}
                                                 tick={{ fontSize: 11 }}
-                                                dx={-8}
+                                                dx={-5}
                                             />
                                             <Tooltip
-                                                formatter={(value: any) => [
-                                                    formatCurrency(Number(value)),
-                                                    'Ingresos'
-                                                ]}
-                                                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: '12px' }}
-                                                cursor={{ fill: 'rgba(0,0,0,0.05)' }}
+                                                cursor={{ fill: 'rgba(0, 0, 0, 0.04)' }}
+                                                content={({ active, payload }) => {
+                                                    if (active && payload && payload.length) {
+                                                        const data = payload[0].payload;
+                                                        return (
+                                                            <div className="rounded-xl border bg-background/95 p-3 shadow-xl backdrop-blur-md">
+                                                                <span className="text-xs font-bold block text-foreground mb-1">
+                                                                    {data.name}
+                                                                </span>
+                                                                <div className="flex items-center gap-2 text-xs">
+                                                                    <span className="font-extrabold text-primary">
+                                                                        {formatCurrency(data.total_amount)}
+                                                                    </span>
+                                                                    <span className="text-muted-foreground">
+                                                                        ({data.total_sales} {data.total_sales === 1 ? 'venta' : 'ventas'})
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    }
+                                                    return null;
+                                                }}
                                             />
-                                            <Bar dataKey="total_amount" fill="#0f9aff" radius={[4, 4, 0, 0]} maxBarSize={55}>
-                                                {chartData.map((_entry: any, index: number) => (
-                                                    <Cell key={`cell-${index}`} fill={index === 0 ? '#10b981' : '#3b82f6'} />
+                                            <Bar dataKey="total_amount" radius={[6, 6, 0, 0]}>
+                                                {chartData.map((_, index) => (
+                                                    <Cell
+                                                        key={`cell-${index}`}
+                                                        className="fill-primary hover:fill-primary/80 transition-colors"
+                                                    />
                                                 ))}
                                             </Bar>
                                         </BarChart>
                                     </ResponsiveContainer>
                                 </div>
 
-                                {/* Lateral informativo (2 Columnas) */}
-                                <div className="lg:col-span-2 rounded-xl border mt-2 overflow-hidden">
-                                    {is_admin ? (
-                                        // Ranking de Vendedores para Admin
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full text-sm text-left">
-                                                <thead className="text-xs text-muted-foreground bg-muted/50 uppercase border-b">
-                                                    <tr>
-                                                        <th className="px-4 py-3 font-semibold">Vendedor</th>
-                                                        <th className="px-4 py-3 font-semibold text-center">Ventas</th>
-                                                        <th className="px-4 py-3 font-semibold text-right">Total</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y">
-                                                    {chartData.map((user: any, idx: number) => (
-                                                        <tr key={idx} className="hover:bg-muted/30 transition-colors">
-                                                            <td className="px-4 py-3 font-medium flex items-center gap-2.5">
-                                                                <div className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
-                                                                    {idx + 1}
-                                                                </div>
-                                                                <span className="truncate">{user.name}</span>
-                                                            </td>
-                                                            <td className="px-4 py-3 text-center text-sm">{user.total_sales}</td>
-                                                            <td className="px-4 py-3 text-right font-semibold text-sm text-emerald-600 dark:text-emerald-400">
-                                                                {formatCurrency(Number(user.total_amount))}
-                                                            </td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    ) : (
-                                        // Resumen Personal para Usuario Normal
-                                        <div className="p-5 space-y-4">
-                                            <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                                                <Zap className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-                                                Resumen de Desempeño
-                                            </h4>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div className="p-3 rounded-lg bg-muted/40 border">
-                                                    <span className="text-[11px] text-muted-foreground block">Ticket Promedio</span>
-                                                    <span className="text-base font-bold text-foreground">
-                                                        {formatCurrency(
-                                                            stats.my_sales_count_this_month > 0
-                                                                ? stats.my_revenue_this_month / stats.my_sales_count_this_month
-                                                                : 0
-                                                        )}
+                                {/* Resumen / Ranking (2 Columnas) */}
+                                <div className="lg:col-span-2 space-y-3 bg-muted/20 border rounded-xl p-4">
+                                    <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
+                                        <span>{is_admin ? 'Ranking de Ventas' : 'Detalle de Días'}</span>
+                                        <span className="text-[10px] text-muted-foreground font-normal">
+                                            {chartData.length} registros
+                                        </span>
+                                    </h4>
+                                    <div className="space-y-2.5 max-h-[220px] overflow-y-auto pr-1">
+                                        {chartData.map((item, idx) => (
+                                            <div
+                                                key={idx}
+                                                className="flex items-center justify-between p-2.5 rounded-lg bg-card border text-xs shadow-xs hover:border-primary/30 transition-colors"
+                                            >
+                                                <div className="flex items-center gap-2.5 min-w-0">
+                                                    <span className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] shrink-0 ${
+                                                        idx === 0 
+                                                            ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20' 
+                                                            : idx === 1 
+                                                            ? 'bg-slate-500/10 text-slate-600 border border-slate-500/20' 
+                                                            : idx === 2 
+                                                            ? 'bg-orange-500/10 text-orange-600 border border-orange-500/20' 
+                                                            : 'bg-muted text-muted-foreground'
+                                                    }`}>
+                                                        {idx + 1}
                                                     </span>
+                                                    <div className="truncate">
+                                                        <span className="font-semibold block text-foreground truncate">
+                                                            {item.name}
+                                                        </span>
+                                                        <span className="text-[10px] text-muted-foreground">
+                                                            {item.total_sales} {item.total_sales === 1 ? 'operación' : 'operaciones'}
+                                                        </span>
+                                                    </div>
                                                 </div>
-                                                <div className="p-3 rounded-lg bg-muted/40 border">
-                                                    <span className="text-[11px] text-muted-foreground block">Ventas de Hoy</span>
-                                                    <span className="text-base font-bold text-purple-600 dark:text-purple-400">
-                                                        {formatCurrency(stats.my_revenue_today)}
-                                                    </span>
-                                                </div>
+                                                <span className="font-bold text-foreground shrink-0 ml-2">
+                                                    {formatCurrency(item.total_amount)}
+                                                </span>
                                             </div>
-                                            <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-700 dark:text-emerald-300">
-                                                ¡Excelente ritmo! Cada venta suma a tu productividad diaria en {currentBranchName}.
-                                            </div>
-                                        </div>
-                                    )}
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
                         ) : (
-                            <div className="h-[260px] w-full flex items-center justify-center text-muted-foreground text-sm flex-col gap-2">
-                                <Users className="w-8 h-8 opacity-25" />
-                                <span>No hay registros de ventas para el filtro seleccionado.</span>
+                            <div className="h-[250px] flex flex-col items-center justify-center text-center p-6 border border-dashed rounded-xl">
+                                <Activity className="w-10 h-10 text-muted-foreground/30 mb-2" />
+                                <p className="text-sm font-semibold text-foreground">Sin actividad registrada en este período</p>
+                                <p className="text-xs text-muted-foreground max-w-sm mt-1">
+                                    No se registraron ventas confirmadas para los filtros aplicados. Intenta seleccionando otro mes o sucursal en el panel superior.
+                                </p>
                             </div>
                         )}
                     </CardContent>

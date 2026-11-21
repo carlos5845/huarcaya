@@ -1,4 +1,4 @@
-import { Head, useForm } from '@inertiajs/react';
+import { Head, useForm, router } from '@inertiajs/react';
 import {
     Building2,
     Coins,
@@ -6,6 +6,14 @@ import {
     Image as ImageIcon,
     Landmark,
     Save,
+    CreditCard,
+    Plus,
+    Pencil,
+    Trash2,
+    CheckCircle2,
+    AlertCircle,
+    X,
+    Lock
 } from 'lucide-react';
 import React, { useState } from 'react';
 import { toast } from 'sonner';
@@ -14,6 +22,17 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter
+} from '@/components/ui/dialog';
+import ConfirmDialog from '@/components/confirm-dialog';
+import { useConfirmDialog } from '@/hooks/use-confirm';
 
 interface CompanyData {
     id: number;
@@ -30,15 +49,126 @@ interface CompanyData {
     has_custom_logo: boolean;
 }
 
+interface BankAccount {
+    id: number;
+    company_id: number;
+    bank_name: string;
+    account_type: string;
+    currency_code: string;
+    account_number: string;
+    cci: string | null;
+    beneficiary_name: string;
+    is_active: boolean;
+}
+
 interface Props {
     company: CompanyData | null;
+    bank_accounts: BankAccount[];
     exchange_rate: string;
 }
 
-export default function CompanyIndex({ company, exchange_rate }: Props) {
+export default function CompanyIndex({ company, bank_accounts, exchange_rate }: Props) {
+    const { confirm, dialogProps } = useConfirmDialog();
     const [logoPreview, setLogoPreview] = useState<string | null>(
         company?.logo_url || null,
     );
+
+    // Modal de Cuenta Bancaria
+    const [isBankModalOpen, setIsBankModalOpen] = useState(false);
+    const [editingAccount, setEditingAccount] = useState<BankAccount | null>(null);
+
+    const bankForm = useForm({
+        bank_name: '',
+        account_type: 'Cuenta Corriente',
+        currency_code: 'PEN',
+        account_number: '',
+        cci: '',
+        beneficiary_name: company?.business_name || 'INVERSIONES HUARCAYA S.A.C.',
+        is_active: true,
+    });
+
+    const openAddBankModal = () => {
+        setEditingAccount(null);
+        bankForm.setData({
+            bank_name: '',
+            account_type: 'Cuenta Corriente',
+            currency_code: 'PEN',
+            account_number: '',
+            cci: '',
+            beneficiary_name: company?.business_name || 'INVERSIONES HUARCAYA S.A.C.',
+            is_active: true,
+        });
+        bankForm.clearErrors();
+        setIsBankModalOpen(true);
+    };
+
+    const openEditBankModal = (account: BankAccount) => {
+        setEditingAccount(account);
+        bankForm.setData({
+            bank_name: account.bank_name,
+            account_type: account.account_type,
+            currency_code: account.currency_code,
+            account_number: account.account_number,
+            cci: account.cci || '',
+            beneficiary_name: account.beneficiary_name,
+            is_active: account.is_active,
+        });
+        bankForm.clearErrors();
+        setIsBankModalOpen(true);
+    };
+
+    const handleBankSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (editingAccount) {
+            bankForm.put(`/company/bank-accounts/${editingAccount.id}`, {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setIsBankModalOpen(false);
+                    toast.success('Cuenta bancaria actualizada');
+                },
+                onError: () => toast.error('Verifica los campos obligatorios'),
+            });
+        } else {
+            bankForm.post('/company/bank-accounts', {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setIsBankModalOpen(false);
+                    toast.success('Cuenta bancaria agregada');
+                },
+                onError: () => toast.error('Verifica los campos obligatorios'),
+            });
+        }
+    };
+
+    const handleDeleteAccount = (account: BankAccount) => {
+        confirm({
+            title: '¿Eliminar cuenta bancaria?',
+            description: `Se eliminará la cuenta de ${account.bank_name} (${account.account_number}) de los datos de la empresa y no saldrá en futuras cotizaciones.`,
+            confirmText: 'Eliminar cuenta',
+            variant: 'danger',
+            onConfirm: () => {
+                router.delete(`/company/bank-accounts/${account.id}`, {
+                    preserveScroll: true,
+                    onSuccess: () => toast.success('Cuenta bancaria eliminada'),
+                });
+            },
+        });
+    };
+
+    const handleToggleActive = (account: BankAccount) => {
+        router.put(`/company/bank-accounts/${account.id}`, {
+            bank_name: account.bank_name,
+            account_type: account.account_type,
+            currency_code: account.currency_code,
+            account_number: account.account_number,
+            cci: account.cci,
+            beneficiary_name: account.beneficiary_name,
+            is_active: !account.is_active,
+        }, {
+            preserveScroll: true,
+            onSuccess: () => toast.success(`Cuenta bancaria ${!account.is_active ? 'activada' : 'desactivada'}`),
+        });
+    };
 
     const { data, setData, post, processing, errors, recentlySuccessful } =
         useForm<{
@@ -409,6 +539,117 @@ export default function CompanyIndex({ company, exchange_rate }: Props) {
                                 </div>
                             </div>
                         </div>
+
+                        {/* 3. Cuentas Bancarias de Recaudación (Cotizaciones y Pagos) */}
+                        <div className="lg:col-span-2">
+                            <div className="rounded-xl border border-border bg-card p-5 space-y-4 shadow-xs">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/60 pb-3">
+                                    <div className="flex items-center gap-2">
+                                        <Landmark className="h-4 w-4 text-primary" />
+                                        <div>
+                                            <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                                                3. Cuentas Bancarias de Recaudación
+                                            </h2>
+                                            <p className="text-[11px] text-muted-foreground">
+                                                Estas cuentas se imprimen en las hojas A4 de cotización y pedidos
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={openAddBankModal}
+                                        className="h-8 gap-1.5 text-xs font-semibold text-primary border-primary/30 hover:bg-primary/10 shadow-2xs self-start sm:self-auto"
+                                    >
+                                        <Plus className="h-3.5 w-3.5" />
+                                        Agregar Cuenta
+                                    </Button>
+                                </div>
+
+                                {bank_accounts.length === 0 ? (
+                                    <div className="text-center py-6 border border-dashed rounded-lg bg-muted/20">
+                                        <CreditCard className="h-8 w-8 mx-auto text-muted-foreground/50 mb-2" />
+                                        <p className="text-xs font-medium text-foreground">No hay cuentas bancarias registradas</p>
+                                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                                            Agrega cuentas en Soles o Dólares para que figuren en las cotizaciones a clientes.
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2.5">
+                                        {bank_accounts.map((acc) => (
+                                            <div
+                                                key={acc.id}
+                                                className={`p-3 rounded-lg border transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
+                                                    acc.is_active ? 'bg-card border-border/70 hover:border-border' : 'bg-muted/30 border-dashed border-border/50 opacity-75'
+                                                }`}
+                                            >
+                                                <div className="space-y-1 min-w-0 flex-1">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <span className="font-bold text-sm text-foreground flex items-center gap-1.5">
+                                                            <Landmark className="h-3.5 w-3.5 text-primary" />
+                                                            {acc.bank_name}
+                                                        </span>
+                                                        <Badge variant="outline" className={`text-[10px] py-0 font-mono ${acc.currency_code === 'PEN' ? 'border-emerald-500/40 text-emerald-600 bg-emerald-500/10' : 'border-blue-500/40 text-blue-600 bg-blue-500/10'}`}>
+                                                            {acc.currency_code} ({acc.currency_code === 'PEN' ? 'Soles' : 'Dólares'})
+                                                        </Badge>
+                                                        <Badge variant="secondary" className="text-[10px] py-0">
+                                                            {acc.account_type}
+                                                        </Badge>
+                                                        {!acc.is_active && (
+                                                            <Badge variant="outline" className="text-[10px] py-0 text-amber-600 border-amber-400 bg-amber-50">
+                                                                Inactiva
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1 font-mono">
+                                                        <span>N° Cuenta: <strong className="text-foreground select-all">{acc.account_number}</strong></span>
+                                                        {acc.cci && <span>CCI: <strong className="text-foreground select-all">{acc.cci}</strong></span>}
+                                                    </div>
+
+                                                    <p className="text-[11px] text-muted-foreground">
+                                                        Titular: <span className="font-medium text-foreground">{acc.beneficiary_name}</span>
+                                                    </p>
+                                                </div>
+
+                                                <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                                                        onClick={() => handleToggleActive(acc)}
+                                                    >
+                                                        {acc.is_active ? 'Desactivar' : 'Activar'}
+                                                    </Button>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-7 w-7 text-primary"
+                                                        title="Editar cuenta"
+                                                        onClick={() => openEditBankModal(acc)}
+                                                    >
+                                                        <Pencil className="h-3.5 w-3.5" />
+                                                    </Button>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-7 w-7 text-rose-500 hover:text-rose-700 hover:bg-rose-50"
+                                                        title="Eliminar cuenta"
+                                                        onClick={() => handleDeleteAccount(acc)}
+                                                    >
+                                                        <Trash2 className="h-3.5 w-3.5" />
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     </div>
 
                     <div className="flex items-center justify-end gap-4 border-t border-border pt-4">
@@ -432,6 +673,129 @@ export default function CompanyIndex({ company, exchange_rate }: Props) {
                         </Button>
                     </div>
                 </form>
+
+                {/* Modal para Agregar / Editar Cuenta Bancaria */}
+                <Dialog open={isBankModalOpen} onOpenChange={setIsBankModalOpen}>
+                    <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                            <DialogTitle className="flex items-center gap-2">
+                                <Landmark className="h-5 w-5 text-primary" />
+                                {editingAccount ? 'Editar Cuenta Bancaria' : 'Nueva Cuenta Bancaria de Recaudación'}
+                            </DialogTitle>
+                            <DialogDescription className="text-xs">
+                                Configura los datos de la cuenta bancaria para los pagos de cotizaciones.
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <form onSubmit={handleBankSubmit} className="space-y-4 py-2">
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-semibold">Banco *</Label>
+                                    <Input
+                                        value={bankForm.data.bank_name}
+                                        onChange={(e) => bankForm.setData('bank_name', e.target.value)}
+                                        placeholder="Ej: BCP, BBVA, Interbank..."
+                                        className="h-9 text-xs"
+                                        required
+                                    />
+                                    <InputError message={bankForm.errors.bank_name} />
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-semibold">Moneda *</Label>
+                                    <Select
+                                        value={bankForm.data.currency_code}
+                                        onValueChange={(val) => bankForm.setData('currency_code', val)}
+                                    >
+                                        <SelectTrigger className="h-9 text-xs">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="PEN">Soles (PEN S/)</SelectItem>
+                                            <SelectItem value="USD">Dólares (USD $)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <InputError message={bankForm.errors.currency_code} />
+                                </div>
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label className="text-xs font-semibold">Tipo de Cuenta *</Label>
+                                <Select
+                                    value={bankForm.data.account_type}
+                                    onValueChange={(val) => bankForm.setData('account_type', val)}
+                                >
+                                    <SelectTrigger className="h-9 text-xs">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Cuenta Corriente">Cuenta Corriente</SelectItem>
+                                        <SelectItem value="Cuenta de Ahorros">Cuenta de Ahorros</SelectItem>
+                                        <SelectItem value="Cuenta Maestra">Cuenta Maestra</SelectItem>
+                                        <SelectItem value="Billetera Digital">Billetera Digital (Yape / Plin)</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <InputError message={bankForm.errors.account_type} />
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label className="text-xs font-semibold">Número de Cuenta *</Label>
+                                <Input
+                                    value={bankForm.data.account_number}
+                                    onChange={(e) => bankForm.setData('account_number', e.target.value)}
+                                    placeholder="Ej: 191-2345678-0-12"
+                                    className="h-9 text-xs font-mono"
+                                    required
+                                />
+                                <InputError message={bankForm.errors.account_number} />
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label className="text-xs font-semibold">Código de Cuenta Interbancario (CCI)</Label>
+                                <Input
+                                    value={bankForm.data.cci}
+                                    onChange={(e) => bankForm.setData('cci', e.target.value)}
+                                    placeholder="Ej: 002-191-002345678012-54"
+                                    className="h-9 text-xs font-mono"
+                                />
+                                <InputError message={bankForm.errors.cci} />
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label className="text-xs font-semibold">Titular / Beneficiario *</Label>
+                                <Input
+                                    value={bankForm.data.beneficiary_name}
+                                    onChange={(e) => bankForm.setData('beneficiary_name', e.target.value)}
+                                    placeholder="Ej: INVERSIONES HUARCAYA S.A.C."
+                                    className="h-9 text-xs"
+                                    required
+                                />
+                                <InputError message={bankForm.errors.beneficiary_name} />
+                            </div>
+
+                            <DialogFooter className="pt-2">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => setIsBankModalOpen(false)}
+                                    className="h-9 text-xs"
+                                >
+                                    Cancelar
+                                </Button>
+                                <Button
+                                    type="submit"
+                                    disabled={bankForm.processing}
+                                    className="h-9 text-xs font-bold gap-1.5 bg-primary"
+                                >
+                                    <Save className="h-3.5 w-3.5" />
+                                    {bankForm.processing ? 'Guardando...' : (editingAccount ? 'Actualizar Cuenta' : 'Guardar Cuenta')}
+                                </Button>
+                            </DialogFooter>
+                        </form>
+                    </DialogContent>
+                </Dialog>
+
+                <ConfirmDialog {...dialogProps} />
             </div>
         </>
     );
