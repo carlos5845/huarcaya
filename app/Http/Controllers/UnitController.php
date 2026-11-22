@@ -14,7 +14,8 @@ class UnitController extends Controller
 {
     public function index()
     {
-        $units = Unit::orderBy('name')->get();
+        $companyId = Auth::user()->company_id;
+        $units = Unit::where('company_id', $companyId)->orderBy('name')->get();
 
         return Inertia::render('catalog/units/index', [
             'units' => $units,
@@ -23,16 +24,22 @@ class UnitController extends Controller
 
     public function store(Request $request)
     {
+        $companyId = Auth::user()->company_id;
+
         $validated = $request->validate([
-            'code' => ['required', 'string', 'max:10', 'unique:units,code'],
+            'code' => [
+                'required',
+                'string',
+                'max:10',
+                Rule::unique('units', 'code')->where('company_id', $companyId),
+            ],
             'name' => ['required', 'string', 'max:255'],
             'status' => ['required', 'in:ACTIVE,INACTIVE'],
         ]);
 
-        $companyId = Auth::user()->company_id;
         $normalizedName = Str::upper(preg_replace('/[^A-Za-z0-9]/', '', $validated['name']));
 
-        if (Unit::where('company_id', $companyId)->whereRaw('UPPER(REPLACE(name, " ", "")) = ?', [$normalizedName])->exists()) {
+        if (Unit::where('company_id', $companyId)->whereRaw("UPPER(REPLACE(name, ' ', '')) = ?", [$normalizedName])->exists()) {
             throw ValidationException::withMessages([
                 'name' => 'Ya existe una unidad con este nombre.',
             ]);
@@ -52,7 +59,12 @@ class UnitController extends Controller
     public function update(Request $request, Unit $unit)
     {
         $validated = $request->validate([
-            'code' => ['required', 'string', 'max:10', Rule::unique('units')->ignore($unit->id)],
+            'code' => [
+                'required',
+                'string',
+                'max:10',
+                Rule::unique('units', 'code')->where('company_id', $unit->company_id)->ignore($unit->id),
+            ],
             'name' => ['required', 'string', 'max:255'],
             'status' => ['required', 'in:ACTIVE,INACTIVE'],
         ]);
@@ -60,7 +72,7 @@ class UnitController extends Controller
         $normalizedName = Str::upper(preg_replace('/[^A-Za-z0-9]/', '', $validated['name']));
 
         if (Unit::where('company_id', $unit->company_id)
-            ->whereRaw('UPPER(REPLACE(name, " ", "")) = ?', [$normalizedName])
+            ->whereRaw("UPPER(REPLACE(name, ' ', '')) = ?", [$normalizedName])
             ->where('id', '!=', $unit->id)
             ->exists()) {
             throw ValidationException::withMessages([
