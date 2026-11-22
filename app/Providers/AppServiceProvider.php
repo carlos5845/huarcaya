@@ -2,7 +2,6 @@
 
 namespace App\Providers;
 
-use App\Services\SingleDeviceSessionService;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Database\Eloquent\Builder;
@@ -76,9 +75,6 @@ class AppServiceProvider extends ServiceProvider
                     Fortify::username() => 'Tu cuenta se encuentra inactiva. Contacta con el administrador.',
                 ]);
             }
-
-            // Cerrar limpiamente otras sesiones y registrar motivo de terminación
-            app(SingleDeviceSessionService::class)->terminateOtherSessions($event->user, request());
         });
     }
 

@@ -5,7 +5,6 @@ namespace App\Providers;
 use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
 use App\Models\User;
-use App\Services\SingleDeviceSessionService;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -74,33 +73,6 @@ class FortifyServiceProvider extends ServiceProvider
                 throw ValidationException::withMessages([
                     Fortify::username() => 'La sucursal a la que perteneces ha sido desactivada.',
                 ]);
-            }
-
-            $sessionService = app(SingleDeviceSessionService::class);
-            $activeSessions = $sessionService->getActiveSessions($user, $request->session()->getId());
-
-            // Si tiene sesión activa previa y NO ha confirmado reemplazarla, advertir estilo WhatsApp
-            if ($activeSessions->isNotEmpty() && ! $request->boolean('confirm_override')) {
-                $firstSession = $activeSessions->first();
-                $formatted = $sessionService->formatSessionInfo($firstSession);
-
-                throw ValidationException::withMessages([
-                    'active_session_found' => [json_encode([
-                        'device' => $formatted['device'],
-                        'platform' => $formatted['platform'],
-                        'browser' => $formatted['browser'],
-                        'is_desktop' => $formatted['is_desktop'],
-                        'ip_address' => $formatted['ip_address'],
-                        'last_activity' => $formatted['last_activity_human'],
-                        'last_activity_date' => $formatted['last_activity_date'],
-                        'message' => "Ya tienes una sesión activa en {$formatted['device']} (IP: {$formatted['ip_address']}).",
-                    ])],
-                ]);
-            }
-
-            // Si confirmó reemplazarla o no tenía sesiones previas
-            if ($activeSessions->isNotEmpty() && $request->boolean('confirm_override')) {
-                $sessionService->terminateOtherSessions($user, $request);
             }
 
             return $user;

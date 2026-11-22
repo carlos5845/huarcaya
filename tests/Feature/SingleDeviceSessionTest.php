@@ -55,7 +55,7 @@ test('usuario sin sesion previa inicia sesion directamente', function () {
     $this->assertAuthenticatedAs($this->user);
 });
 
-test('usuario con sesion activa en otro equipo recibe advertencia tipo whatsapp si no confirma override', function () {
+test('usuario con sesion activa en otro equipo puede iniciar sesion simultaneamente sin desconexion', function () {
     // 1. Simular sesión activa previa en PC de Oficina (Windows - Chrome)
     $oldSessionId = Str::random(40);
     DB::table('sessions')->insert([
@@ -75,70 +75,22 @@ test('usuario con sesion activa en otro equipo recibe advertencia tipo whatsapp 
         'login_at' => now()->subMinutes(10),
     ]);
 
-    // 2. Intentar login desde otro dispositivo sin confirmar override
+    // 2. Iniciar sesión desde otro dispositivo (ej. Android)
     $response = $this->withServerVariables(['REMOTE_ADDR' => '192.168.1.25'])
         ->withHeaders(['User-Agent' => 'Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36'])
         ->post('/login', [
             'dni' => '12345678',
             'password' => 'Secret1234*!',
-            'confirm_override' => false,
-        ]);
-
-    $response->assertSessionHasErrors(['active_session_found']);
-    $this->assertGuest();
-
-    // La sesión anterior debe seguir viva en sessions
-    $this->assertDatabaseHas('sessions', [
-        'id' => $oldSessionId,
-        'user_id' => $this->user->id,
-    ]);
-});
-
-test('usuario con sesion activa que confirma override cierra la anterior y registra aviso', function () {
-    // 1. Crear sesión activa en PC
-    $oldSessionId = Str::random(40);
-    DB::table('sessions')->insert([
-        'id' => $oldSessionId,
-        'user_id' => $this->user->id,
-        'ip_address' => '192.168.1.15',
-        'user_agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'payload' => serialize(['user_id' => $this->user->id]),
-        'last_activity' => now()->timestamp,
-    ]);
-
-    $history = LoginHistory::create([
-        'user_id' => $this->user->id,
-        'session_id' => $oldSessionId,
-        'ip_address' => '192.168.1.15',
-        'user_agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'login_at' => now()->subMinutes(10),
-    ]);
-
-    // 2. Login confirmando override desde Android
-    $response = $this->withServerVariables(['REMOTE_ADDR' => '192.168.1.25'])
-        ->withHeaders(['User-Agent' => 'Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36'])
-        ->post('/login', [
-            'dni' => '12345678',
-            'password' => 'Secret1234*!',
-            'confirm_override' => true,
         ]);
 
     $response->assertSessionHasNoErrors();
     $this->assertAuthenticatedAs($this->user);
 
-    // 3. La sesión vieja debe haber sido eliminada de 'sessions'
-    $this->assertDatabaseMissing('sessions', [
+    // 3. La sesión anterior debe seguir viva en 'sessions' (sesiones concurrentes permitidas)
+    $this->assertDatabaseHas('sessions', [
         'id' => $oldSessionId,
+        'user_id' => $this->user->id,
     ]);
-
-    // 4. El LoginHistory de la sesión vieja debe tener logout_at
-    $history->refresh();
-    expect($history->logout_at)->not->toBeNull();
-
-    // 5. Debe existir la clave en caché para alertar a la sesión vieja
-    expect(Cache::has("terminated_session:{$oldSessionId}"))->toBeTrue();
-    $terminatedData = Cache::get("terminated_session:{$oldSessionId}");
-    expect($terminatedData['terminated_by']['ip'])->toBe('192.168.1.25');
 });
 
 test('middleware CheckTerminatedSession detecta sesion terminada y redirige al login con aviso', function () {
