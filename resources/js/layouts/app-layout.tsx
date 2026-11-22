@@ -1,4 +1,3 @@
-import { UserSetupDialog } from '@/components/user-setup-dialog';
 import { useFlashToast } from '@/hooks/use-flash-toast';
 import AppLayoutTemplate from '@/layouts/app/app-sidebar-layout';
 import type { BreadcrumbItem } from '@/types';
@@ -15,7 +14,6 @@ export default function AppLayout({
     return (
         <AppLayoutTemplate breadcrumbs={breadcrumbs}>
             {children}
-            <UserSetupDialog />
         </AppLayoutTemplate>
     );
 }

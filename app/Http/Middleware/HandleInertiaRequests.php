@@ -47,11 +47,7 @@ class HandleInertiaRequests extends Middleware
                 'user' => $request->user(),
                 'roles' => $request->user() ? $request->user()->getRoleNames() : [],
                 'permissions' => $request->user() ? $request->user()->getAllPermissions()->pluck('name') : [],
-                'requires_setup' => $request->user() ? (
-                    $request->user()->must_change_password ||
-                    empty($request->user()->dni_ubigeo) ||
-                    empty($request->user()->dni_expiration_date)
-                ) : false,
+                'requires_setup' => false,
             ],
             'flash' => [
                 'success' => $request->session()->get('success'),

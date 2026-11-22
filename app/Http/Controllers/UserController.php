@@ -90,7 +90,7 @@ class UserController extends Controller
             'email' => $validated['email'],
             'password' => Hash::make($validated['dni']),
             'status' => $validated['status'],
-            'must_change_password' => true,
+            'must_change_password' => false,
         ]);
 
         $user->assignRole($validated['role']);
