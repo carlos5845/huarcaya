@@ -185,8 +185,8 @@ class InventoryController extends Controller
                 ->withSum(['minStocks as min_stock_quantity' => fn ($q) => $q->whereIn('branch_id', $allowedBranchIds)], 'minimum_quantity');
         }
 
-        // Ordenar primero los que tienen stock físico mayor a 0, luego los agotados/sin stock en las siguientes páginas
-        $products = $query->orderByRaw('CASE WHEN COALESCE(physical_quantity, 0) > 0 THEN 1 ELSE 0 END DESC, COALESCE(physical_quantity, 0) DESC, products.id DESC')
+        // Ordenar primero los que tienen mayor stock físico (NULL al final para compatibilidad ANSI/PostgreSQL), luego por ID descendente
+        $products = $query->orderByRaw('physical_quantity DESC NULLS LAST, products.id DESC')
             ->paginate(20)
             ->withQueryString();
 

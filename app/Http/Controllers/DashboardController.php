@@ -244,7 +244,7 @@ class DashboardController extends Controller
 
             // Ventas recientes
             $recentSalesQuery = Sale::where('company_id', $companyId)
-                ->with(['customer:id,name,document_number', 'creator:id,name']);
+                ->with(['customer:id,legal_name,trade_name,document_number', 'creator:id,name']);
 
             if ($branchId && $branchId !== 'all') {
                 $recentSalesQuery->where('branch_id', $branchId);
@@ -350,7 +350,7 @@ class DashboardController extends Controller
             // Últimas ventas del usuario actual
             $recentSales = Sale::where('company_id', $companyId)
                 ->where('created_by', $user->id)
-                ->with(['customer:id,name,document_number', 'creator:id,name'])
+                ->with(['customer:id,legal_name,trade_name,document_number', 'creator:id,name'])
                 ->orderByRaw('COALESCE(operation_date, created_at) DESC')
                 ->take(6)
                 ->get();

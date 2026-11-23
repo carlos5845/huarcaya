@@ -46,7 +46,20 @@ class AppServiceProvider extends ServiceProvider
             if ($driver === 'sqlite') {
                 return $this->whereRaw("unaccent({$column}) LIKE unaccent(?)", [$search]);
             } elseif ($driver === 'pgsql') {
-                return $this->whereRaw("unaccent({$column}) ILIKE unaccent(?)", [$search]);
+                static $hasUnaccent = null;
+                if ($hasUnaccent === null) {
+                    try {
+                        $hasUnaccent = (bool) \DB::selectOne("SELECT 1 FROM pg_extension WHERE extname = 'unaccent'");
+                    } catch (\Throwable $e) {
+                        $hasUnaccent = false;
+                    }
+                }
+
+                if ($hasUnaccent) {
+                    return $this->whereRaw("unaccent({$column}) ILIKE unaccent(?)", [$search]);
+                }
+
+                return $this->whereRaw("{$column} ILIKE ?", [$search]);
             } else {
                 return $this->where($column, 'like', "%{$search}%");
             }
@@ -59,7 +72,20 @@ class AppServiceProvider extends ServiceProvider
             if ($driver === 'sqlite') {
                 return $this->orWhereRaw("unaccent({$column}) LIKE unaccent(?)", [$search]);
             } elseif ($driver === 'pgsql') {
-                return $this->orWhereRaw("unaccent({$column}) ILIKE unaccent(?)", [$search]);
+                static $hasUnaccent = null;
+                if ($hasUnaccent === null) {
+                    try {
+                        $hasUnaccent = (bool) \DB::selectOne("SELECT 1 FROM pg_extension WHERE extname = 'unaccent'");
+                    } catch (\Throwable $e) {
+                        $hasUnaccent = false;
+                    }
+                }
+
+                if ($hasUnaccent) {
+                    return $this->orWhereRaw("unaccent({$column}) ILIKE unaccent(?)", [$search]);
+                }
+
+                return $this->orWhereRaw("{$column} ILIKE ?", [$search]);
             } else {
                 return $this->orWhere($column, 'like', "%{$search}%");
             }
