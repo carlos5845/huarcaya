@@ -184,7 +184,7 @@
         <table class="header-table">
             <tr>
                 <td style="width: 65%; vertical-align: top;">
-                    <img src="{{ asset('logo-text.png') }}" alt="{{ $company->business_name ?? 'Inversiones Huarcaya' }}" style="max-height: 44px; max-width: 220px; object-fit: contain; margin-bottom: 5px; display: block;" />
+                    <img src="{{ $company ? $company->logoUrl() : asset('logo-text.png') }}" alt="{{ $company->business_name ?? 'Inversiones Huarcaya' }}" style="max-height: 44px; max-width: 220px; object-fit: contain; margin-bottom: 5px; display: block;" />
                     <div class="company-title">{{ $company->business_name ?? $company->name ?? 'INVERSIONES HUARCAYA S.A.C.' }}</div>
                     <div class="company-subtitle">
                         R.U.C. N° {{ $company->document_number ?? '20600000000' }} &bull; {{ $company->address ?? 'Oficina Principal' }}<br>
@@ -206,9 +206,13 @@
             <div class="meta-item">
                 <strong>Ámbito / Sucursal:</strong> {{ $branchName }}
             </div>
-            @if(!empty($filters['date_from']) || !empty($filters['date_to']))
+            @if(($report['uses_date_range'] ?? true) && (!empty($filters['date_from']) || !empty($filters['date_to'])))
             <div class="meta-item">
                 <strong>Período:</strong> {{ $filters['date_from'] ?? 'Inicio' }} al {{ $filters['date_to'] ?? 'Hoy' }}
+            </div>
+            @elseif(!($report['uses_date_range'] ?? true))
+            <div class="meta-item">
+                <strong>Corte:</strong> Stock actual al {{ $generatedAt }}
             </div>
             @endif
             @if(!empty($filters['search']))
@@ -246,7 +250,14 @@
                 <tr>
                     @foreach($report['columns'] as $col)
                     <td class="{{ ($col['align'] ?? '') === 'right' ? 'text-right' : '' }}">
-                        {{ $row[$col['key']] ?? '-' }}
+                        @php($cellVal = $row[$col['key']] ?? null)
+                        @if($cellVal === null || $cellVal === '')
+                            -
+                        @elseif(in_array($col['format'] ?? null, ['currency', 'number'], true) && is_numeric($cellVal))
+                            {{ number_format((float) $cellVal, 2) }}
+                        @else
+                            {{ $cellVal }}
+                        @endif
                     </td>
                     @endforeach
                 </tr>

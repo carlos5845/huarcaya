@@ -19,21 +19,47 @@ class ReportController extends Controller
     ) {}
 
     /**
-     * Obtiene las sucursales autorizadas para el usuario en sesión.
+     * Obtiene las sucursales autorizadas para el usuario en sesión (acotadas a su empresa).
      */
     protected function getAllowedBranchIds(Request $request): array
     {
         $user = $request->user();
         if ($user->hasRole('Super Admin')) {
-            return Branch::where('status', 'ACTIVE')->pluck('id')->toArray();
+            return Branch::where('company_id', $user->company_id)
+                ->where('status', 'ACTIVE')
+                ->pluck('id')
+                ->toArray();
         }
 
-        $ids = $user->branches()->where('branches.status', 'ACTIVE')->pluck('branches.id')->toArray();
+        $ids = $user->branches()
+            ->where('branches.company_id', $user->company_id)
+            ->where('branches.status', 'ACTIVE')
+            ->pluck('branches.id')
+            ->toArray();
+
         if (empty($ids) && $user->default_branch_id) {
             $ids = [$user->default_branch_id];
         }
 
         return $ids;
+    }
+
+    /**
+     * Normaliza y valida el parámetro branch_id del request (retorna null si es 'ALL' o vacío).
+     */
+    protected function resolveBranchFilter(Request $request, array $allowedBranchIds, string $forbiddenMessage): ?int
+    {
+        $raw = $request->input('branch_id');
+        if ($raw === null || $raw === '' || strtoupper((string) $raw) === 'ALL') {
+            return null;
+        }
+
+        $branchId = (int) $raw;
+        if (! in_array($branchId, $allowedBranchIds, true)) {
+            abort(403, $forbiddenMessage);
+        }
+
+        return $branchId;
     }
 
     /**
@@ -46,18 +72,14 @@ class ReportController extends Controller
         $allowedBranchIds = $this->getAllowedBranchIds($request);
 
         $reportType = $request->input('type', 'sales');
-
-        $branchId = $request->input('branch_id');
-        if ($branchId !== null && $branchId !== '' && $branchId !== 'ALL') {
-            $branchId = (int) $branchId;
-            if (! in_array($branchId, $allowedBranchIds)) {
-                abort(403, 'No tienes autorización para consultar reportes de esta sucursal.');
-            }
-        } else {
-            $branchId = null;
-        }
+        $branchId = $this->resolveBranchFilter(
+            $request,
+            $allowedBranchIds,
+            'No tienes autorización para consultar reportes de esta sucursal.'
+        );
 
         $filters = [
+            'company_id' => $user->company_id,
             'date_from' => $request->input('date_from', now()->startOfMonth()->format('Y-m-d')),
             'date_to' => $request->input('date_to', now()->format('Y-m-d')),
             'branch_id' => $branchId ? (string) $branchId : '',
@@ -67,8 +89,8 @@ class ReportController extends Controller
         $report = $this->reportService->getReportData($reportType, $allowedBranchIds, $filters, 15);
 
         $branches = $isSuperAdmin
-            ? Branch::where('status', 'ACTIVE')->orderBy('name')->get(['id', 'name'])
-            : $user->branches()->where('branches.status', 'ACTIVE')->orderBy('name')->get(['branches.id', 'branches.name']);
+            ? Branch::where('company_id', $user->company_id)->where('status', 'ACTIVE')->orderBy('name')->get(['id', 'name'])
+            : $user->branches()->where('branches.company_id', $user->company_id)->where('branches.status', 'ACTIVE')->orderBy('name')->get(['branches.id', 'branches.name']);
 
         if ($branches->isEmpty() && $user->default_branch_id) {
             $branches = Branch::where('id', $user->default_branch_id)->get(['id', 'name']);
@@ -79,7 +101,13 @@ class ReportController extends Controller
             'report' => $report,
             'branches' => $branches,
             'is_super_admin' => $isSuperAdmin,
-            'filters' => $filters,
+            'can_select_branch' => $isSuperAdmin || $branches->count() > 1,
+            'filters' => [
+                'date_from' => $filters['date_from'],
+                'date_to' => $filters['date_to'],
+                'branch_id' => $filters['branch_id'],
+                'search' => $filters['search'],
+            ],
         ]);
     }
 
@@ -90,18 +118,16 @@ class ReportController extends Controller
     {
         $user = $request->user();
         $allowedBranchIds = $this->getAllowedBranchIds($request);
-
-        $branchId = $request->input('branch_id');
-        if ($branchId !== null && $branchId !== '' && $branchId !== 'ALL') {
-            $branchId = (int) $branchId;
-            if (! in_array($branchId, $allowedBranchIds)) {
-                abort(403, 'No tienes autorización para exportar datos de esta sucursal.');
-            }
-        }
+        $branchId = $this->resolveBranchFilter(
+            $request,
+            $allowedBranchIds,
+            'No tienes autorización para exportar datos de esta sucursal.'
+        );
 
         $filters = [
-            'date_from' => $request->input('date_from'),
-            'date_to' => $request->input('date_to'),
+            'company_id' => $user->company_id,
+            'date_from' => $request->input('date_from', now()->startOfMonth()->format('Y-m-d')),
+            'date_to' => $request->input('date_to', now()->format('Y-m-d')),
             'branch_id' => $branchId,
             'search' => $request->input('search'),
         ];
@@ -116,28 +142,26 @@ class ReportController extends Controller
     {
         $user = $request->user();
         $allowedBranchIds = $this->getAllowedBranchIds($request);
-
-        $branchId = $request->input('branch_id');
-        if ($branchId !== null && $branchId !== '' && $branchId !== 'ALL') {
-            $branchId = (int) $branchId;
-            if (! in_array($branchId, $allowedBranchIds)) {
-                abort(403, 'No tienes autorización para visualizar reportes de esta sucursal.');
-            }
-        }
+        $branchId = $this->resolveBranchFilter(
+            $request,
+            $allowedBranchIds,
+            'No tienes autorización para visualizar reportes de esta sucursal.'
+        );
 
         $filters = [
-            'date_from' => $request->input('date_from'),
-            'date_to' => $request->input('date_to'),
+            'company_id' => $user->company_id,
+            'date_from' => $request->input('date_from', now()->startOfMonth()->format('Y-m-d')),
+            'date_to' => $request->input('date_to', now()->format('Y-m-d')),
             'branch_id' => $branchId,
             'search' => $request->input('search'),
         ];
 
         $report = $this->reportService->getReportData($type, $allowedBranchIds, $filters, 250);
 
-        $company = Company::first();
+        $company = $user->company ?? Company::first();
 
         $branchName = 'Todas las Sucursales Autorizadas';
-        if ($branchId) {
+        if ($branchId !== null) {
             $b = Branch::find($branchId);
             if ($b) {
                 $branchName = $b->name;

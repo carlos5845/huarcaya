@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Head, router } from '@inertiajs/react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -47,6 +47,7 @@ interface ColumnDef {
     key: string;
     label: string;
     align?: 'right' | 'center' | 'left';
+    format?: 'currency' | 'number';
 }
 
 interface KpiDef {
@@ -58,6 +59,7 @@ interface ReportData {
     type: string;
     title: string;
     description: string;
+    uses_date_range?: boolean;
     kpis: KpiDef[];
     columns: ColumnDef[];
     rows: {
@@ -72,6 +74,7 @@ interface Props {
     report: ReportData;
     branches: BranchItem[];
     is_super_admin: boolean;
+    can_select_branch?: boolean;
     filters: {
         date_from?: string;
         date_to?: string;
@@ -124,6 +127,7 @@ export default function ReportsIndex({
     report,
     branches,
     is_super_admin,
+    can_select_branch,
     filters,
 }: Props) {
     const [selectedType, setSelectedType] = useState(report_type);
@@ -134,29 +138,44 @@ export default function ReportsIndex({
 
     const [printModalOpen, setPrintModalOpen] = useState(false);
 
+    useEffect(() => {
+        setSelectedType(report_type);
+        setDateFrom(filters.date_from || '');
+        setDateTo(filters.date_to || '');
+        setBranchId(filters.branch_id || 'ALL');
+        setSearch(filters.search || '');
+    }, [report_type, filters.date_from, filters.date_to, filters.branch_id, filters.search]);
+
+    const allowBranchSelector = can_select_branch ?? (is_super_admin || branches.length > 1);
+    const usesDateRange = report.uses_date_range !== false;
+
     const applyFilters = (typeOverride?: string, newParams?: Partial<typeof filters>) => {
         const type = typeOverride || selectedType;
-        const query: any = {
+        const resolvedBranch = newParams?.branch_id !== undefined ? newParams.branch_id : branchId;
+        const query: Record<string, string | undefined> = {
             type,
             date_from: newParams?.date_from !== undefined ? newParams.date_from : dateFrom,
             date_to: newParams?.date_to !== undefined ? newParams.date_to : dateTo,
-            branch_id: (newParams?.branch_id !== undefined ? newParams.branch_id : branchId) === 'ALL' ? undefined : (newParams?.branch_id || branchId),
-            search: newParams?.search !== undefined ? newParams.search : search,
+            branch_id: resolvedBranch && resolvedBranch !== 'ALL' ? resolvedBranch : undefined,
+            search: newParams?.search !== undefined ? newParams.search : (search || undefined),
         };
 
         router.get('/reports', query, { preserveState: true, preserveScroll: true });
     };
 
+    const formatLocalDate = (d: Date) => {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
     const handleQuickDate = (period: 'today' | 'week' | 'month' | 'year') => {
         const now = new Date();
-        const formatDate = (d: Date) => d.toISOString().split('T')[0];
+        let from = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const to = formatLocalDate(now);
 
-        let from = new Date();
-        const to = formatDate(now);
-
-        if (period === 'today') {
-            from = now;
-        } else if (period === 'week') {
+        if (period === 'week') {
             from.setDate(now.getDate() - 7);
         } else if (period === 'month') {
             from = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -164,10 +183,26 @@ export default function ReportsIndex({
             from = new Date(now.getFullYear(), 0, 1);
         }
 
-        const newFrom = formatDate(from);
+        const newFrom = formatLocalDate(from);
         setDateFrom(newFrom);
         setDateTo(to);
         applyFilters(selectedType, { date_from: newFrom, date_to: to });
+    };
+
+    const formatCellValue = (col: ColumnDef, value: any): string => {
+        if (value === null || value === undefined || value === '') {
+            return '-';
+        }
+        if (col.format === 'currency' || col.format === 'number') {
+            const num = Number(value);
+            if (!Number.isNaN(num)) {
+                return num.toLocaleString('es-PE', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                });
+            }
+        }
+        return String(value);
     };
 
     const getQueryString = () => {
@@ -211,9 +246,6 @@ export default function ReportsIndex({
                             <h1 className="text-2xl font-bold tracking-tight text-foreground">
                                 Centro de Reportes y Análisis
                             </h1>
-                            <Badge variant="outline" className="text-xs">
-                                Etapa 15
-                            </Badge>
                         </div>
                         <p className="text-sm text-muted-foreground mt-1">
                             Consolidado general de inventarios, facturación, compras, cobranzas y operaciones por sucursal.
@@ -282,17 +314,25 @@ export default function ReportsIndex({
                     <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                             <Calendar className="h-4 w-4" />
-                            <span>Período Rápido:</span>
-                            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => handleQuickDate('today')}>Hoy</Button>
-                            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => handleQuickDate('week')}>7 Días</Button>
-                            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => handleQuickDate('month')}>Este Mes</Button>
-                            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => handleQuickDate('year')}>Este Año</Button>
+                            {usesDateRange ? (
+                                <>
+                                    <span>Período Rápido:</span>
+                                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => handleQuickDate('today')}>Hoy</Button>
+                                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => handleQuickDate('week')}>7 Días</Button>
+                                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => handleQuickDate('month')}>Este Mes</Button>
+                                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => handleQuickDate('year')}>Este Año</Button>
+                                </>
+                            ) : (
+                                <Badge variant="secondary" className="text-xs font-normal">
+                                    Foto de stock actual (no depende de rango de fechas)
+                                </Badge>
+                            )}
                         </div>
                     </div>
 
                     <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 items-center">
                         {/* Selector de Sucursal */}
-                        {is_super_admin ? (
+                        {allowBranchSelector ? (
                             <Select
                                 value={branchId}
                                 onValueChange={(val) => {
@@ -323,22 +363,24 @@ export default function ReportsIndex({
                         )}
 
                         {/* Fecha Desde */}
-                        <div className="flex items-center gap-2">
+                        <div className={`flex items-center gap-2 ${!usesDateRange ? 'opacity-50' : ''}`}>
                             <span className="text-xs text-muted-foreground whitespace-nowrap">Desde:</span>
                             <Input
                                 type="date"
                                 value={dateFrom}
+                                disabled={!usesDateRange}
                                 onChange={(e) => setDateFrom(e.target.value)}
                                 className="w-full"
                             />
                         </div>
 
                         {/* Fecha Hasta */}
-                        <div className="flex items-center gap-2">
+                        <div className={`flex items-center gap-2 ${!usesDateRange ? 'opacity-50' : ''}`}>
                             <span className="text-xs text-muted-foreground whitespace-nowrap">Hasta:</span>
                             <Input
                                 type="date"
                                 value={dateTo}
+                                disabled={!usesDateRange}
                                 onChange={(e) => setDateTo(e.target.value)}
                                 className="w-full"
                             />
@@ -430,7 +472,7 @@ export default function ReportsIndex({
                                                     key={col.key}
                                                     className={`py-3 ${col.align === 'right' ? 'text-right font-mono' : ''}`}
                                                 >
-                                                    {row[col.key] !== null && row[col.key] !== undefined ? String(row[col.key]) : '-'}
+                                                    {formatCellValue(col, row[col.key])}
                                                 </TableCell>
                                             ))}
                                         </TableRow>
