@@ -14,6 +14,7 @@ export function NetworkStatusBadge({ branchId }: { branchId?: number }) {
     const { confirm, dialogProps } = useConfirmDialog();
     const {
         isOnline,
+        offlineCacheReady,
         pendingCount,
         failedCount,
         totalPendingCount,
@@ -129,15 +130,15 @@ export function NetworkStatusBadge({ branchId }: { branchId?: number }) {
                             </>
                         )}
                     </div>
-                    <span className="text-[10px] px-2 py-0.5 rounded bg-muted font-medium text-muted-foreground uppercase">
-                        PWA Offline
+                    <span className={`text-[10px] px-2 py-0.5 rounded font-medium uppercase ${offlineCacheReady ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-muted text-muted-foreground'}`}>
+                        {offlineCacheReady ? 'Caché Offline Lista' : 'PWA Offline'}
                     </span>
                 </div>
 
                 <div className="text-xs space-y-2 text-muted-foreground">
                     <p className="text-[11px] leading-relaxed">
                         {!isOnline
-                            ? 'El sistema está operando en modo local. Puedes continuar emitiendo ventas y compras; se guardarán en tu dispositivo y se sincronizarán en cuanto vuelva la red.'
+                            ? 'El sistema está operando en modo local. Puedes continuar registrando ventas, compras y formularios; se guardarán en tu dispositivo y se sincronizarán automáticamente al volver la red.'
                             : 'El sistema está conectado directamente al servidor central. Todos los comprobantes y movimientos se guardan en tiempo real.'}
                     </p>
 

@@ -1,7 +1,7 @@
-// SIMAQ PWA Service Worker (v4 - Full Offline Shell, Vite Chunks, Storage & Inertia SPA)
-const STATIC_CACHE = 'simaq-static-v4';
-const PAGES_CACHE = 'simaq-pages-v4';
-const INERTIA_CACHE = 'simaq-inertia-v4';
+// SIMAQ PWA Service Worker (v5 - Full Offline Shell, Complete Vite Chunks, Storage & Inertia SPA)
+const STATIC_CACHE = 'simaq-static-v5';
+const PAGES_CACHE = 'simaq-pages-v5';
+const INERTIA_CACHE = 'simaq-inertia-v5';
 const VALID_CACHES = [STATIC_CACHE, PAGES_CACHE, INERTIA_CACHE];
 
 const CORE_STATIC_ASSETS = [
@@ -51,7 +51,7 @@ self.addEventListener('activate', (event) => {
     self.clients.claim();
 });
 
-// Warm up Vite build chunks from /build/manifest.json in gentle batches
+// Warm up ALL Vite build chunks (file, css, imports, dynamicImports, assets) using Promise.allSettled
 async function warmupBuildAssets() {
     try {
         const res = await fetch('/build/manifest.json', { cache: 'no-cache' });
@@ -59,40 +59,68 @@ async function warmupBuildAssets() {
         const manifest = await res.json();
         const assetUrls = new Set();
 
-        for (const entry of Object.values(manifest)) {
-            if (entry && typeof entry === 'object') {
-                if (entry.file) {
-                    assetUrls.add(`/build/${entry.file}`);
+        const collectEntry = (entry) => {
+            if (!entry || typeof entry !== 'object') return;
+            if (entry.file) {
+                assetUrls.add(`/build/${entry.file}`);
+            }
+            if (Array.isArray(entry.css)) {
+                for (const cssFile of entry.css) {
+                    assetUrls.add(`/build/${cssFile}`);
                 }
-                if (Array.isArray(entry.css)) {
-                    for (const cssFile of entry.css) {
-                        assetUrls.add(`/build/${cssFile}`);
+            }
+            if (Array.isArray(entry.assets)) {
+                for (const assetFile of entry.assets) {
+                    assetUrls.add(`/build/${assetFile}`);
+                }
+            }
+            if (Array.isArray(entry.imports)) {
+                for (const impKey of entry.imports) {
+                    if (manifest[impKey]) {
+                        collectEntry(manifest[impKey]);
                     }
                 }
             }
+            if (Array.isArray(entry.dynamicImports)) {
+                for (const dynKey of entry.dynamicImports) {
+                    if (manifest[dynKey]) {
+                        collectEntry(manifest[dynKey]);
+                    }
+                }
+            }
+        };
+
+        for (const entry of Object.values(manifest)) {
+            collectEntry(entry);
         }
 
         const cache = await caches.open(STATIC_CACHE);
         const urls = Array.from(assetUrls);
-        const batchSize = 6;
+        const batchSize = 15;
+        let cachedCount = 0;
 
         for (let i = 0; i < urls.length; i += batchSize) {
             const batch = urls.slice(i, i + batchSize);
-            await Promise.all(
+            await Promise.allSettled(
                 batch.map(async (url) => {
-                    try {
-                        const existing = await cache.match(url);
-                        if (!existing) {
-                            const assetRes = await fetch(url);
-                            if (assetRes && assetRes.status === 200) {
-                                await cache.put(url, assetRes.clone());
-                            }
-                        }
-                    } catch {
-                        // Ignore individual asset failures
+                    const existing = await cache.match(url, { ignoreVary: true });
+                    if (existing) {
+                        cachedCount++;
+                        return;
+                    }
+                    const assetRes = await fetch(url);
+                    if (assetRes && assetRes.status === 200) {
+                        await cache.put(url, assetRes.clone());
+                        cachedCount++;
                     }
                 })
             );
+        }
+
+        // Notify all open tabs that offline asset cache is ready
+        const allClients = await self.clients.matchAll({ includeUncontrolled: true });
+        for (const client of allClients) {
+            client.postMessage({ type: 'WARMUP_COMPLETE', count: cachedCount, total: urls.length });
         }
     } catch {
         // Ignore if offline or manifest unavailable
@@ -158,14 +186,16 @@ self.addEventListener('fetch', (event) => {
         event.respondWith(
             (async () => {
                 const cache = await caches.open(STATIC_CACHE);
-                const cached = await cache.match(request);
+                const cached =
+                    (await cache.match(request, { ignoreVary: true })) ||
+                    (await cache.match(url.pathname, { ignoreVary: true }));
                 if (cached) {
                     return cached;
                 }
                 try {
                     const networkResponse = await fetch(request);
                     if (networkResponse && networkResponse.status === 200) {
-                        await cache.put(request, networkResponse.clone());
+                        await cache.put(url.pathname, networkResponse.clone());
                     }
                     return networkResponse;
                 } catch {
@@ -198,9 +228,9 @@ self.addEventListener('fetch', (event) => {
                     }
                     return networkResponse;
                 } catch {
-                    const exactMatch = await cache.match(fullKey);
+                    const exactMatch = await cache.match(fullKey, { ignoreVary: true });
                     if (exactMatch) return exactMatch;
-                    const baseMatch = await cache.match(baseKey);
+                    const baseMatch = await cache.match(baseKey, { ignoreVary: true });
                     if (baseMatch) return baseMatch;
                     return Response.error();
                 }
@@ -231,13 +261,13 @@ self.addEventListener('fetch', (event) => {
                     }
                     return networkResponse;
                 } catch {
-                    const exact = await cache.match(cacheKey);
+                    const exact = await cache.match(cacheKey, { ignoreVary: true });
                     if (exact) return exact;
-                    const base = await cache.match(url.pathname);
+                    const base = await cache.match(url.pathname, { ignoreVary: true });
                     if (base) return base;
-                    const dash = await cache.match('/dashboard');
+                    const dash = await cache.match('/dashboard', { ignoreVary: true });
                     if (dash) return dash;
-                    const root = await cache.match('/');
+                    const root = await cache.match('/', { ignoreVary: true });
                     if (root) return root;
                     return Response.error();
                 }

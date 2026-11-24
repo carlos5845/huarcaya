@@ -8,6 +8,8 @@ import {
     retryQueueOperation,
     discardQueueOperation,
     checkServerConnectivity,
+    getLastConnectivityStatus,
+    notifyConnectivityChange,
     isSyncActive,
     warmupOfflinePages,
 } from '@/services/sync-service';
@@ -25,7 +27,9 @@ export function useNetworkStatus(activeBranchId?: number) {
     const page = usePage();
     const inertiaVersion = page?.version ?? null;
     const [isMounted, setIsMounted] = useState<boolean>(false);
-    const [isOnline, setIsOnline] = useState<boolean>(true);
+    // Always initialize from global connectivity truth so navigating between modules never flashes green while offline
+    const [isOnline, setIsOnline] = useState<boolean>(() => getLastConnectivityStatus());
+    const [offlineCacheReady, setOfflineCacheReady] = useState<boolean>(false);
     const [pendingCount, setPendingCount] = useState<number>(0);
     const [failedCount, setFailedCount] = useState<number>(0);
     const [failedOperations, setFailedOperations] = useState<FailedSyncOperation[]>([]);
@@ -50,6 +54,7 @@ export function useNetworkStatus(activeBranchId?: number) {
                     uuid: item.uuid,
                     entity_type: item.entity_type,
                     doc_number:
+                        item.payload?.label ||
                         item.payload?.temp_sale_number ||
                         item.payload?.temp_purchase_number ||
                         item.payload?.uuid?.slice(0, 8) ||
@@ -120,11 +125,19 @@ export function useNetworkStatus(activeBranchId?: number) {
 
     useEffect(() => {
         setIsMounted(true);
-        if (typeof navigator !== 'undefined') {
-            setIsOnline(navigator.onLine);
-        }
+        setIsOnline(getLastConnectivityStatus());
 
         refreshPendingCount();
+
+        // Listen for SW warmup completion message
+        const handleSwMessage = (event: MessageEvent) => {
+            if (event.data?.type === 'WARMUP_COMPLETE') {
+                setOfflineCacheReady(true);
+            }
+        };
+        if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+            navigator.serviceWorker.addEventListener('message', handleSwMessage);
+        }
 
         // Initial real-connectivity check & catalog/sync boot
         const runOnlineBootstrap = async () => {
@@ -170,6 +183,7 @@ export function useNetworkStatus(activeBranchId?: number) {
         };
 
         const handleOffline = () => {
+            notifyConnectivityChange(false);
             setIsOnline(false);
         };
 
@@ -234,6 +248,9 @@ export function useNetworkStatus(activeBranchId?: number) {
             window.removeEventListener('simaq:sync-finished', handleSyncFinished);
             window.removeEventListener('simaq:connectivity-change', handleConnectivityChange);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
+            if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+                navigator.serviceWorker.removeEventListener('message', handleSwMessage);
+            }
             clearInterval(countInterval);
             clearInterval(retryInterval);
         };
@@ -241,7 +258,8 @@ export function useNetworkStatus(activeBranchId?: number) {
 
     return {
         isMounted,
-        isOnline: isMounted ? isOnline : true,
+        isOnline: isMounted ? isOnline : getLastConnectivityStatus(),
+        offlineCacheReady,
         pendingCount: isMounted ? pendingCount : 0,
         failedCount: isMounted ? failedCount : 0,
         totalPendingCount: isMounted ? (pendingCount + failedCount) : 0,

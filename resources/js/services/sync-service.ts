@@ -184,34 +184,30 @@ export async function warmupOfflinePages(explicitVersion?: string | null): Promi
         'Accept': 'text/html, application/xhtml+xml',
     };
 
-    const inertiaCache = hasCacheApi ? await caches.open('simaq-inertia-v4').catch(() => null) : null;
+    const inertiaCache = hasCacheApi ? await caches.open('simaq-inertia-v5').catch(() => null) : null;
     const batchSize = 4;
 
     for (let i = 0; i < routesToWarmup.length; i += batchSize) {
         if (!navigator.onLine || !lastServerReachable) break;
         const batch = routesToWarmup.slice(i, i + batchSize);
-        await Promise.all(
+        await Promise.allSettled(
             batch.map(async (route) => {
-                try {
-                    const res = await fetch(route, {
-                        method: 'GET',
-                        headers,
-                        credentials: 'same-origin',
-                    });
-                    if (res.ok && inertiaCache) {
-                        await inertiaCache.put(route, res.clone());
-                    }
-                } catch {
-                    // Silently ignore (e.g., user lacks permission or went offline mid-warmup)
+                const res = await fetch(route, {
+                    method: 'GET',
+                    headers,
+                    credentials: 'same-origin',
+                });
+                if (res.ok && inertiaCache) {
+                    await inertiaCache.put(route, res.clone());
                 }
             })
         );
     }
 
-    // 2. Warm up full HTML shell for /dashboard into simaq-pages-v4 (so F5 offline works cleanly)
+    // 2. Warm up full HTML shell for /dashboard into simaq-pages-v5 (so F5 offline works cleanly)
     if (navigator.onLine && lastServerReachable) {
         try {
-            const pagesCache = hasCacheApi ? await caches.open('simaq-pages-v4').catch(() => null) : null;
+            const pagesCache = hasCacheApi ? await caches.open('simaq-pages-v5').catch(() => null) : null;
             const res = await fetch('/dashboard', {
                 method: 'GET',
                 headers: { Accept: 'text/html' },
@@ -774,8 +770,155 @@ export async function discardQueueOperation(queueId: number): Promise<boolean> {
     return res;
 }
 
+// Recent mutation fingerprint cache to prevent accidental double-clicks when modals stay open
+const recentMutationFingerprints = new Map<string, number>();
+
+function fileToBase64(file: File | Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+    });
+}
+
+function base64ToBlob(dataUrl: string, fallbackType = 'application/octet-stream'): Blob {
+    const parts = dataUrl.split(',');
+    const header = parts[0] || '';
+    const base64 = parts[1] || parts[0] || '';
+    const mimeMatch = header.match(/data:([^;]+);base64/);
+    const mime = mimeMatch ? mimeMatch[1] : fallbackType;
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return new Blob([bytes], { type: mime });
+}
+
+async function serializeOfflineValue(value: any): Promise<any> {
+    if (typeof File !== 'undefined' && value instanceof File) {
+        return {
+            __offlineFile: true,
+            name: value.name,
+            type: value.type || 'application/octet-stream',
+            size: value.size,
+            base64: await fileToBase64(value),
+        };
+    }
+    if (typeof Blob !== 'undefined' && value instanceof Blob) {
+        return {
+            __offlineFile: true,
+            name: 'archivo.bin',
+            type: value.type || 'application/octet-stream',
+            size: value.size,
+            base64: await fileToBase64(value),
+        };
+    }
+    if (typeof FormData !== 'undefined' && value instanceof FormData) {
+        const obj: Record<string, any> = {};
+        for (const [k, v] of value.entries()) {
+            const serialized = await serializeOfflineValue(v);
+            if (k in obj) {
+                obj[k] = Array.isArray(obj[k]) ? [...obj[k], serialized] : [obj[k], serialized];
+            } else {
+                obj[k] = serialized;
+            }
+        }
+        return obj;
+    }
+    if (Array.isArray(value)) {
+        return Promise.all(value.map((item) => serializeOfflineValue(item)));
+    }
+    if (value && typeof value === 'object') {
+        const out: Record<string, any> = {};
+        for (const [k, v] of Object.entries(value)) {
+            if (v !== undefined) {
+                out[k] = await serializeOfflineValue(v);
+            }
+        }
+        return out;
+    }
+    return value;
+}
+
+function containsSerializedFile(value: any): boolean {
+    if (!value || typeof value !== 'object') return false;
+    if (value.__offlineFile === true) return true;
+    if (Array.isArray(value)) return value.some(containsSerializedFile);
+    return Object.values(value).some(containsSerializedFile);
+}
+
+function appendToFormData(fd: FormData, key: string, value: any): void {
+    if (value === null || value === undefined) return;
+    if (value && typeof value === 'object' && value.__offlineFile === true) {
+        const blob = base64ToBlob(value.base64, value.type);
+        fd.append(key, blob, value.name || 'archivo.bin');
+        return;
+    }
+    if (Array.isArray(value)) {
+        value.forEach((item, idx) => appendToFormData(fd, `${key}[${idx}]`, item));
+        return;
+    }
+    if (typeof value === 'object') {
+        Object.entries(value).forEach(([k, v]) => appendToFormData(fd, `${key}[${k}]`, v));
+        return;
+    }
+    fd.append(key, typeof value === 'boolean' ? (value ? '1' : '0') : String(value));
+}
+
 /**
- * Synchronize all pending and failed operations to the server batch endpoint.
+ * Enqueues any generic CRUD mutation (POST/PUT/PATCH/DELETE) into IndexedDB when offline.
+ * Includes a 3-second deduplication window to prevent accidental double-clicks if a modal stays open.
+ */
+export async function enqueueOfflineHttpMutation(params: {
+    url: string;
+    method: 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+    data: any;
+    label: string;
+}): Promise<{ queued: boolean; duplicated?: boolean; uuid?: string }> {
+    const serializedData = await serializeOfflineValue(params.data ?? {});
+    const fingerprint = `${params.method}|${params.url}|${JSON.stringify(serializedData).slice(0, 500)}`;
+    const now = Date.now();
+    const lastSeen = recentMutationFingerprints.get(fingerprint);
+
+    if (lastSeen && now - lastSeen < 3000) {
+        return { queued: false, duplicated: true };
+    }
+    recentMutationFingerprints.set(fingerprint, now);
+
+    const opUuid = crypto.randomUUID();
+
+    await db.syncQueue.add({
+        uuid: opUuid,
+        entity_type: 'HTTP_MUTATION',
+        operation_type: params.method === 'DELETE' ? 'UPDATE' : (params.method === 'POST' ? 'CREATE' : 'UPDATE'),
+        payload: {
+            url: params.url,
+            method: params.method,
+            data: serializedData,
+            label: params.label,
+            has_files: containsSerializedFile(serializedData),
+        },
+        status: 'PENDING',
+        retry_count: 0,
+        client_timestamp: new Date().toISOString(),
+    });
+
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('simaq:offline-mutation-queued', {
+            detail: { uuid: opUuid, url: params.url, method: params.method, label: params.label },
+        }));
+        window.dispatchEvent(new CustomEvent('simaq:sync-finished'));
+    }
+
+    return { queued: true, uuid: opUuid };
+}
+
+/**
+ * Synchronize all pending and failed operations to the server.
+ * 1) Structured domain operations (CUSTOMER -> PURCHASE -> SALE) via /api/v1/sync/batch in safe micro-batches.
+ * 2) Generic CRUD mutations (HTTP_MUTATION) replayed chronologically with redirect: 'manual' and CSRF protection.
  */
 export async function syncPendingOperations(branchId?: number): Promise<SyncBatchResult> {
     if (isSyncInFlight) {
@@ -794,9 +937,14 @@ export async function syncPendingOperations(branchId?: number): Promise<SyncBatc
         return { syncedCount: 0, failedCount: 0, results: [] };
     }
 
-    // Sort by dependency priority (CUSTOMER -> PURCHASE -> SALE) then client_timestamp
+    const structuredOps = pendingOps.filter(op => op.entity_type !== 'HTTP_MUTATION');
+    const httpMutationOps = pendingOps
+        .filter(op => op.entity_type === 'HTTP_MUTATION')
+        .sort((a, b) => new Date(a.client_timestamp).getTime() - new Date(b.client_timestamp).getTime());
+
+    // Sort structured ops by dependency priority (CUSTOMER -> PURCHASE -> SALE) then client_timestamp
     const priorityMap: Record<string, number> = { CUSTOMER: 1, PURCHASE: 2, SALE: 3 };
-    pendingOps.sort((a, b) => {
+    structuredOps.sort((a, b) => {
         const pA = priorityMap[a.entity_type] ?? 99;
         const pB = priorityMap[b.entity_type] ?? 99;
         if (pA !== pB) return pA - pB;
@@ -809,11 +957,11 @@ export async function syncPendingOperations(branchId?: number): Promise<SyncBatc
     const ids = pendingOps.map(op => op.id!).filter(Boolean);
     await db.syncQueue.where('id').anyOf(ids).modify({ status: 'SYNCING' });
 
-    // Split into safe micro-batches: operations with base64 file attachments go 1-by-1 to avoid Nginx 413
+    // Split structured ops into safe micro-batches: operations with base64 file attachments go 1-by-1 to avoid Nginx 413
     const chunks: SyncQueueItem[][] = [];
     let currentLightweightChunk: SyncQueueItem[] = [];
 
-    for (const op of pendingOps) {
+    for (const op of structuredOps) {
         const hasHeavyFile = Boolean(op.payload?.document_file?.base64);
         if (hasHeavyFile) {
             if (currentLightweightChunk.length > 0) {
@@ -886,9 +1034,109 @@ export async function syncPendingOperations(branchId?: number): Promise<SyncBatc
     try {
         const allResults: SyncBatchResult['results'] = [];
 
+        // A. Process structured operations (CUSTOMER -> PURCHASE -> SALE)
         for (const chunk of chunks) {
             const chunkResults = await sendChunk(chunk);
             allResults.push(...chunkResults);
+        }
+
+        // B. Process generic HTTP_MUTATION queue chronologically with redirect: 'manual'
+        if (httpMutationOps.length > 0) {
+            const sessionState = await refreshCsrfSession();
+            if (sessionState === 'unauthenticated') {
+                throw new Error('Tu sesión expiró mientras estabas sin internet. Inicia sesión nuevamente para sincronizar tus operaciones pendientes.');
+            }
+            if (sessionState === 'offline') {
+                throw new Error('El servidor no responde todavía. Se reintentará automáticamente.');
+            }
+
+            for (const op of httpMutationOps) {
+                const targetUrl = op.payload?.url;
+                const httpMethod = String(op.payload?.method || 'POST').toUpperCase();
+                const payloadData = op.payload?.data ?? {};
+                const hasFiles = Boolean(op.payload?.has_files || containsSerializedFile(payloadData));
+
+                const executeMutation = async () => {
+                    const headers: Record<string, string> = {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-XSRF-TOKEN': getCsrfToken(),
+                    };
+
+                    let fetchMethod = httpMethod;
+                    let body: BodyInit | undefined;
+
+                    if (hasFiles) {
+                        const fd = new FormData();
+                        if (httpMethod !== 'POST') {
+                            fetchMethod = 'POST';
+                            fd.append('_method', httpMethod);
+                        }
+                        Object.entries(payloadData).forEach(([k, v]) => appendToFormData(fd, k, v));
+                        body = fd;
+                    } else {
+                        headers['Content-Type'] = 'application/json';
+                        if (httpMethod !== 'GET') {
+                            body = JSON.stringify(payloadData);
+                        }
+                    }
+
+                    return fetch(targetUrl, {
+                        method: fetchMethod,
+                        headers,
+                        credentials: 'same-origin',
+                        redirect: 'manual',
+                        body,
+                    });
+                };
+
+                let res = await executeMutation();
+
+                if (res.status === 419) {
+                    const refreshed = await refreshCsrfSession();
+                    if (refreshed === 'ok') {
+                        res = await executeMutation();
+                    }
+                }
+
+                // With redirect: 'manual', Laravel 302/303 produces response.type === 'opaqueredirect' (status 0)
+                // Also treat DELETE 404 as idempotent SUCCESS (record already deleted on server)
+                const isSuccess =
+                    res.type === 'opaqueredirect' ||
+                    res.ok ||
+                    (httpMethod === 'DELETE' && res.status === 404);
+
+                if (isSuccess) {
+                    allResults.push({
+                        uuid: op.uuid,
+                        status: 'SUCCESS',
+                        message: `${op.payload?.label || 'Operación'} sincronizada.`,
+                    });
+                } else if (res.status === 401 || res.status === 403) {
+                    throw new Error('Tu sesión expiró mientras estabas sin internet. Inicia sesión nuevamente para sincronizar tus operaciones pendientes.');
+                } else {
+                    let errorMsg = `Error del servidor (${res.status})`;
+                    try {
+                        const errJson = await res.json();
+                        if (errJson?.errors && typeof errJson.errors === 'object') {
+                            const firstField = Object.values(errJson.errors)[0];
+                            if (Array.isArray(firstField) && firstField.length > 0) {
+                                errorMsg = String(firstField[0]);
+                            }
+                        } else if (errJson?.message) {
+                            errorMsg = String(errJson.message);
+                        }
+                    } catch {
+                        // keep status fallback
+                    }
+
+                    allResults.push({
+                        uuid: op.uuid,
+                        status: 'FAILED',
+                        message: errorMsg,
+                    });
+                }
+            }
         }
 
         const results = allResults;
