@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { usePage } from '@inertiajs/react';
 import { db } from '@/lib/db';
 import {
     syncPendingOperations,
@@ -21,6 +22,8 @@ export interface FailedSyncOperation {
 }
 
 export function useNetworkStatus(activeBranchId?: number) {
+    const page = usePage();
+    const inertiaVersion = page?.version ?? null;
     const [isMounted, setIsMounted] = useState<boolean>(false);
     const [isOnline, setIsOnline] = useState<boolean>(true);
     const [pendingCount, setPendingCount] = useState<number>(0);
@@ -142,8 +145,8 @@ export function useNetworkStatus(activeBranchId?: number) {
                 });
             }
 
-            // Pre-cache key offline pages in background so Sales/Purchases open seamlessly without internet
-            warmupOfflinePages().catch(() => {});
+            // Pre-cache key offline pages in background so Sales/Purchases/all modules open seamlessly without internet
+            warmupOfflinePages(inertiaVersion).catch(() => {});
         };
 
         runOnlineBootstrap();

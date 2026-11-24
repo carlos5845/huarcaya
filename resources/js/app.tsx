@@ -3,7 +3,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { initializeTheme } from '@/hooks/use-appearance';
-import { notifyConnectivityChange } from '@/services/sync-service';
+import { notifyConnectivityChange, setInertiaVersion } from '@/services/sync-service';
 import AppLayout from '@/layouts/app-layout';
 import AuthLayout from '@/layouts/auth-layout';
 import SettingsLayout from '@/layouts/settings/layout';
@@ -66,9 +66,18 @@ if (typeof window !== 'undefined') {
         }
     });
 
-    router.on('success', () => {
+    router.on('success', (event) => {
+        if (event.detail.page?.version) {
+            setInertiaVersion(event.detail.page.version);
+        }
         if (navigator.onLine) {
             notifyConnectivityChange(true);
+        }
+    });
+
+    router.on('navigate', (event) => {
+        if (event.detail.page?.version) {
+            setInertiaVersion(event.detail.page.version);
         }
     });
 

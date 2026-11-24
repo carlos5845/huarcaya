@@ -25,6 +25,55 @@ export interface SyncBatchResult {
 let isSyncInFlight = false;
 let lastServerReachable = true;
 let hasWarmedUpOfflinePages = false;
+let currentInertiaVersion = '';
+
+export function setInertiaVersion(version?: string | null): void {
+    if (version) {
+        currentInertiaVersion = version;
+    }
+}
+
+function resolveInertiaVersion(explicitVersion?: string | null): string {
+    if (explicitVersion) {
+        currentInertiaVersion = explicitVersion;
+        return explicitVersion;
+    }
+    if (currentInertiaVersion) {
+        return currentInertiaVersion;
+    }
+    if (typeof document === 'undefined') return '';
+
+    // Inertia v3 stores initial page payload in <script data-page="app" type="application/json">
+    try {
+        const scriptEl = document.querySelector('script[data-page]');
+        if (scriptEl?.textContent) {
+            const parsed = JSON.parse(scriptEl.textContent);
+            if (parsed?.version) {
+                currentInertiaVersion = parsed.version;
+                return parsed.version;
+            }
+        }
+    } catch {
+        // ignore
+    }
+
+    // Legacy Inertia v1/v2 fallback: #app[data-page]
+    try {
+        const appEl = document.getElementById('app');
+        const pageAttr = appEl?.getAttribute('data-page');
+        if (pageAttr) {
+            const parsed = JSON.parse(pageAttr);
+            if (parsed?.version) {
+                currentInertiaVersion = parsed.version;
+                return parsed.version;
+            }
+        }
+    } catch {
+        // ignore
+    }
+
+    return '';
+}
 
 export function isSyncActive(): boolean {
     return isSyncInFlight;
@@ -93,8 +142,14 @@ export async function checkServerConnectivity(timeoutMs = 3500): Promise<boolean
  * 2. HTML shell (/dashboard) into PAGES_CACHE so F5 works offline
  * 3. All main Inertia module pages into INERTIA_CACHE so clicking sidebar links works offline
  */
-export async function warmupOfflinePages(): Promise<void> {
+export async function warmupOfflinePages(explicitVersion?: string | null): Promise<void> {
     if (hasWarmedUpOfflinePages || typeof window === 'undefined' || !navigator.onLine) {
+        return;
+    }
+
+    const inertiaVersion = resolveInertiaVersion(explicitVersion);
+    if (!inertiaVersion) {
+        // Wait until Inertia page version is known to avoid 409 Conflict responses
         return;
     }
 
@@ -121,18 +176,6 @@ export async function warmupOfflinePages(): Promise<void> {
     }
 
     // 3. Warm up Inertia JSON payloads for all sidebar modules in gentle batches of 3
-    let inertiaVersion = '';
-    try {
-        const appEl = document.getElementById('app');
-        const pageAttr = appEl?.getAttribute('data-page');
-        if (pageAttr) {
-            const parsed = JSON.parse(pageAttr);
-            inertiaVersion = parsed?.version || '';
-        }
-    } catch {
-        // ignore parse errors
-    }
-
     const routesToWarmup = [
         '/dashboard',
         '/sales',
@@ -147,19 +190,17 @@ export async function warmupOfflinePages(): Promise<void> {
         '/transfers',
         '/closings',
         '/inventory',
-        '/catalog/products',
+        '/products',
         '/reports',
         '/alerts',
     ];
 
     const headers: Record<string, string> = {
         'X-Inertia': 'true',
+        'X-Inertia-Version': inertiaVersion,
         'X-Requested-With': 'XMLHttpRequest',
         'Accept': 'text/html, application/xhtml+xml',
     };
-    if (inertiaVersion) {
-        headers['X-Inertia-Version'] = inertiaVersion;
-    }
 
     const batchSize = 3;
     for (let i = 0; i < routesToWarmup.length; i += batchSize) {
