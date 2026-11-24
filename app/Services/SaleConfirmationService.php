@@ -233,7 +233,7 @@ class SaleConfirmationService
                     'branch_id' => $sale->branch_id,
                     'customer_id' => $sale->customer_id,
                     'payment_number' => 'P'.date('Ymd').'-'.strtoupper(Str::random(6)),
-                    'operation_date' => now(),
+                    'operation_date' => $sale->operation_date ?? now(),
                     'currency_code' => $sale->currency_code,
                     'exchange_rate' => $sale->exchange_rate,
                     'total_amount' => $initialPayment,

@@ -2,14 +2,13 @@
 
 namespace App\Services;
 
+use App\Models\Branch;
 use App\Models\Conflict;
 use App\Models\DailyClosing;
 use App\Models\DailyClosingCashCount;
 use App\Models\DailyClosingVersion;
 use App\Models\PaymentMethod;
-use App\Models\PaymentMethodLine;
 use App\Models\Purchase;
-use App\Models\RefundMethodLine;
 use App\Models\Sale;
 use App\Models\SyncOperation;
 use App\Models\Transfer;
@@ -27,64 +26,73 @@ class DailyClosingService
      */
     public function getDailyMetrics(int $branchId, string $date): array
     {
-        // 1. Sales on date
+        $branch = Branch::find($branchId);
+        $companyId = $branch?->company_id;
+
+        // Expresión SQL ANSI (PostgreSQL & SQLite) para normalizar montos a Soles (PEN)
+        $penSalesExpr = fn (string $col) => "COALESCE(SUM(CASE WHEN currency_code = 'USD' THEN {$col} * COALESCE(exchange_rate, 1) ELSE {$col} END), 0)";
+
+        // 1. Sales on date (strictly CONFIRMED sales only — excludes DRAFT and CANCELLED)
         $salesQuery = Sale::where('branch_id', $branchId)
             ->whereDate('operation_date', $date)
-            ->where('status', '!=', 'CANCELLED');
+            ->where('status', 'CONFIRMED');
 
         $salesCount = (int) (clone $salesQuery)->count();
-        $totalSales = (float) (clone $salesQuery)->sum('total_amount');
-        $cashSales = (float) (clone $salesQuery)->where('payment_type', 'CASH')->sum('total_amount');
-        $creditSales = (float) (clone $salesQuery)->where('payment_type', 'CREDIT')->sum('total_amount');
-        $subtotal = (float) (clone $salesQuery)->sum('subtotal_amount');
-        $tax = (float) (clone $salesQuery)->sum('tax_amount');
-        $discount = (float) (clone $salesQuery)->sum('discount_amount');
+        $totalSales = (float) ((clone $salesQuery)->selectRaw($penSalesExpr('total_amount').' as agg')->value('agg') ?? 0);
+        // Al Contado (payment_type = CASH: incluye Efectivo, Yape, Plin, Transferencia, POS) vs Al Crédito (CREDIT)
+        $cashSales = (float) ((clone $salesQuery)->where('payment_type', 'CASH')->selectRaw($penSalesExpr('total_amount').' as agg')->value('agg') ?? 0);
+        $creditSales = (float) ((clone $salesQuery)->where('payment_type', 'CREDIT')->selectRaw($penSalesExpr('total_amount').' as agg')->value('agg') ?? 0);
+        $subtotal = (float) ((clone $salesQuery)->selectRaw($penSalesExpr('subtotal_amount').' as agg')->value('agg') ?? 0);
+        $tax = (float) ((clone $salesQuery)->selectRaw($penSalesExpr('tax_amount').' as agg')->value('agg') ?? 0);
+        $discount = (float) ((clone $salesQuery)->selectRaw($penSalesExpr('discount_amount').' as agg')->value('agg') ?? 0);
 
-        // Document breakdown
-        $facturasQuery = (clone $salesQuery)->where('external_document_type', 'FACTURA');
-        $boletasQuery = (clone $salesQuery)->where('external_document_type', 'BOLETA');
-        $notasQuery = (clone $salesQuery)->where(function ($q) {
-            $q->whereNull('external_document_type')
-                ->orWhereNotIn('external_document_type', ['FACTURA', 'BOLETA']);
-        });
+        // Document breakdown using COALESCE(NULLIF(external_document_type, ''), sale_type)
+        $docTypeExpr = "COALESCE(NULLIF(external_document_type, ''), sale_type)";
+        $facturasQuery = (clone $salesQuery)->whereRaw("{$docTypeExpr} = ?", ['FACTURA']);
+        $boletasQuery = (clone $salesQuery)->whereRaw("{$docTypeExpr} = ?", ['BOLETA']);
+        $notasQuery = (clone $salesQuery)->whereRaw("({$docTypeExpr} IS NULL OR {$docTypeExpr} NOT IN (?, ?))", ['FACTURA', 'BOLETA']);
 
         $byDocument = [
             'FACTURA' => [
                 'label' => 'Facturas',
-                'count' => (int) $facturasQuery->count(),
-                'total' => (float) $facturasQuery->sum('total_amount'),
+                'count' => (int) (clone $facturasQuery)->count(),
+                'total' => round((float) ((clone $facturasQuery)->selectRaw($penSalesExpr('total_amount').' as agg')->value('agg') ?? 0), 2),
             ],
             'BOLETA' => [
                 'label' => 'Boletas',
-                'count' => (int) $boletasQuery->count(),
-                'total' => (float) $boletasQuery->sum('total_amount'),
+                'count' => (int) (clone $boletasQuery)->count(),
+                'total' => round((float) ((clone $boletasQuery)->selectRaw($penSalesExpr('total_amount').' as agg')->value('agg') ?? 0), 2),
             ],
             'NOTA_VENTA' => [
                 'label' => 'Notas de Venta / Otros',
-                'count' => (int) $notasQuery->count(),
-                'total' => (float) $notasQuery->sum('total_amount'),
+                'count' => (int) (clone $notasQuery)->count(),
+                'total' => round((float) ((clone $notasQuery)->selectRaw($penSalesExpr('total_amount').' as agg')->value('agg') ?? 0), 2),
             ],
         ];
 
-        // 2. Payments & Refunds by payment method
-        $activeMethods = PaymentMethod::where('is_active', true)->orderBy('id')->get();
+        // 2. Payments & Refunds by payment method (normalized to PEN & scoped to branch's company)
+        $activeMethodsQuery = PaymentMethod::where('is_active', true)->orderBy('id');
+        if ($companyId) {
+            $activeMethodsQuery->where('company_id', $companyId);
+        }
+        $activeMethods = $activeMethodsQuery->get();
 
-        $paymentsByMethod = PaymentMethodLine::whereHas('payment', function ($q) use ($branchId, $date) {
-            $q->where('branch_id', $branchId)
-                ->whereDate('operation_date', $date)
-                ->where('status', '!=', 'CANCELLED');
-        })
-            ->selectRaw('payment_method_id, SUM(amount) as total')
-            ->groupBy('payment_method_id')
+        $paymentsByMethod = DB::table('payment_method_lines')
+            ->join('payments', 'payment_method_lines.payment_id', '=', 'payments.id')
+            ->where('payments.branch_id', $branchId)
+            ->whereDate('payments.operation_date', $date)
+            ->where('payments.status', 'CONFIRMED')
+            ->selectRaw("payment_method_lines.payment_method_id, SUM(CASE WHEN payments.currency_code = 'USD' THEN payment_method_lines.amount * COALESCE(payments.exchange_rate, 1) ELSE payment_method_lines.amount END) as total")
+            ->groupBy('payment_method_lines.payment_method_id')
             ->pluck('total', 'payment_method_id');
 
-        $refundsByMethod = RefundMethodLine::whereHas('refund', function ($q) use ($branchId, $date) {
-            $q->where('branch_id', $branchId)
-                ->whereDate('operation_date', $date)
-                ->where('status', '!=', 'CANCELLED');
-        })
-            ->selectRaw('payment_method_id, SUM(amount) as total')
-            ->groupBy('payment_method_id')
+        $refundsByMethod = DB::table('refund_method_lines')
+            ->join('refunds', 'refund_method_lines.refund_id', '=', 'refunds.id')
+            ->where('refunds.branch_id', $branchId)
+            ->whereDate('refunds.operation_date', $date)
+            ->where('refunds.status', 'CONFIRMED')
+            ->selectRaw("refund_method_lines.payment_method_id, SUM(CASE WHEN refunds.currency_code = 'USD' THEN refund_method_lines.amount * COALESCE(refunds.exchange_rate, 1) ELSE refund_method_lines.amount END) as total")
+            ->groupBy('refund_method_lines.payment_method_id')
             ->pluck('total', 'payment_method_id');
 
         $paymentMethodsData = [];
@@ -94,19 +102,20 @@ class DailyClosingService
         foreach ($activeMethods as $method) {
             $collectedFromPayments = (float) ($paymentsByMethod[$method->id] ?? 0);
 
-            // Also check for direct cash sales with this payment_method_id without payment record (fallback)
-            $directSalesWithoutPayment = (float) Sale::where('branch_id', $branchId)
+            // Fallback strictly for legacy/CONFIRMED cash sales that do not have any payment allocation
+            $directSalesWithoutPayment = (float) (Sale::where('branch_id', $branchId)
                 ->whereDate('operation_date', $date)
-                ->where('status', '!=', 'CANCELLED')
+                ->where('status', 'CONFIRMED')
                 ->where('payment_type', 'CASH')
                 ->where('payment_method_id', $method->id)
                 ->whereDoesntHave('receivable.allocations')
-                ->sum('total_amount');
+                ->selectRaw($penSalesExpr('total_amount').' as agg')
+                ->value('agg') ?? 0);
 
-            // Avoid double count: if payments exist, use payments; otherwise fallback
+            // Avoid double count if payments exist without receivable allocations; fallback only when no payments exist for this method
             $grossExpected = $collectedFromPayments > 0 ? $collectedFromPayments : $directSalesWithoutPayment;
             $refundedForMethod = (float) ($refundsByMethod[$method->id] ?? 0);
-            $expected = max(0.0, $grossExpected - $refundedForMethod);
+            $expected = round($grossExpected - $refundedForMethod, 2);
 
             $paymentMethodsData[] = [
                 'id' => $method->id,
@@ -115,20 +124,20 @@ class DailyClosingService
                 'is_cash' => (bool) $method->is_cash,
                 'gross_amount' => round($grossExpected, 2),
                 'refunded_amount' => round($refundedForMethod, 2),
-                'expected_amount' => round($expected, 2),
+                'expected_amount' => $expected,
             ];
 
             $totalExpectedCash += $expected;
             $totalRefundsAmount += $refundedForMethod;
         }
 
-        // 3. Purchases on date
+        // 3. Purchases on date (normalized to PEN)
         $purchasesQuery = Purchase::where('branch_id', $branchId)
             ->whereDate('document_date', $date)
             ->whereNotIn('status', ['CANCELLED', 'DRAFT']);
 
         $purchasesCount = (int) (clone $purchasesQuery)->count();
-        $purchasesTotal = (float) (clone $purchasesQuery)->sum('total_amount');
+        $purchasesTotal = (float) ((clone $purchasesQuery)->selectRaw($penSalesExpr('total_amount').' as agg')->value('agg') ?? 0);
 
         // 4. Transfers on date
         $transfersSentCount = (int) Transfer::where('source_branch_id', $branchId)
@@ -227,21 +236,36 @@ class DailyClosingService
             $countsInput = $data['counts'] ?? [];
             $nextVersionNumber = ((int) $closing->versions()->max('version_number')) + 1;
 
-            $expectedMap = [];
-            foreach ($metrics['payment_methods'] as $pm) {
-                $expectedMap[$pm['id']] = (float) $pm['expected_amount'];
+            // Index user-submitted counts by payment_method_id so no active method can be omitted
+            $countedMap = [];
+            foreach ($countsInput as $countItem) {
+                $methodId = (int) $countItem['payment_method_id'];
+                $countedMap[$methodId] = [
+                    'counted_amount' => (float) ($countItem['counted_amount'] ?? 0),
+                    'notes' => $countItem['notes'] ?? null,
+                ];
             }
 
             $totalExpected = 0.0;
             $totalCounted = 0.0;
+            $resolvedCounts = [];
 
-            foreach ($countsInput as $countItem) {
-                $methodId = (int) $countItem['payment_method_id'];
-                $counted = (float) ($countItem['counted_amount'] ?? 0);
-                $expected = $expectedMap[$methodId] ?? 0.0;
+            foreach ($metrics['payment_methods'] as $pm) {
+                $methodId = (int) $pm['id'];
+                $expected = (float) $pm['expected_amount'];
+                $counted = $countedMap[$methodId]['counted_amount'] ?? 0.0;
+                $notes = $countedMap[$methodId]['notes'] ?? null;
 
                 $totalExpected += $expected;
                 $totalCounted += $counted;
+
+                $resolvedCounts[] = [
+                    'payment_method_id' => $methodId,
+                    'expected_amount' => round($expected, 2),
+                    'counted_amount' => round($counted, 2),
+                    'difference_amount' => round($counted - $expected, 2),
+                    'notes' => $notes,
+                ];
             }
 
             $totalDifference = round($totalCounted - $totalExpected, 2);
@@ -258,20 +282,15 @@ class DailyClosingService
                 'notes' => $data['notes'] ?? null,
             ]);
 
-            foreach ($countsInput as $countItem) {
-                $methodId = (int) $countItem['payment_method_id'];
-                $counted = (float) ($countItem['counted_amount'] ?? 0);
-                $expected = $expectedMap[$methodId] ?? 0.0;
-                $diff = round($counted - $expected, 2);
-
+            foreach ($resolvedCounts as $countRow) {
                 DailyClosingCashCount::create([
                     'uuid' => (string) Str::uuid(),
                     'daily_closing_version_id' => $version->id,
-                    'payment_method_id' => $methodId,
-                    'expected_amount' => round($expected, 2),
-                    'counted_amount' => round($counted, 2),
-                    'difference_amount' => $diff,
-                    'notes' => $countItem['notes'] ?? null,
+                    'payment_method_id' => $countRow['payment_method_id'],
+                    'expected_amount' => $countRow['expected_amount'],
+                    'counted_amount' => $countRow['counted_amount'],
+                    'difference_amount' => $countRow['difference_amount'],
+                    'notes' => $countRow['notes'],
                 ]);
             }
 

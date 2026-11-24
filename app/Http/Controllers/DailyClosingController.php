@@ -192,7 +192,7 @@ class DailyClosingController extends Controller
 
                 // Si existe descuadre (diferencia != 0), notificar a administradores y personal de sucursal
                 try {
-                    $diff = (float) $closing->difference_amount;
+                    $diff = (float) $closing->difference;
                     if (abs($diff) >= 0.01) {
                         $closing->load('branch');
                         $branchUsers = User::whereHas('branches', function ($query) use ($closing) {
