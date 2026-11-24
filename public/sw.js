@@ -1,7 +1,7 @@
-// SIMAQ PWA Service Worker (v2 - Production VPS & Inertia SPA Ready)
-const STATIC_CACHE = 'simaq-static-v2';
-const PAGES_CACHE = 'simaq-pages-v2';
-const INERTIA_CACHE = 'simaq-inertia-v2';
+// SIMAQ PWA Service Worker (v3 - Production VPS & Inertia SPA Ready)
+const STATIC_CACHE = 'simaq-static-v3';
+const PAGES_CACHE = 'simaq-pages-v3';
+const INERTIA_CACHE = 'simaq-inertia-v3';
 const VALID_CACHES = [STATIC_CACHE, PAGES_CACHE, INERTIA_CACHE];
 
 const CORE_STATIC_ASSETS = [
@@ -83,6 +83,8 @@ function isStaticAsset(pathname) {
 // - Non-GET / Network-only -> Network directly
 // - Static assets -> Cache First (fast offline boot)
 // - Inertia SPA requests (X-Inertia: true) -> Network First with dedicated INERTIA_CACHE (JSON)
+//   If uncached & offline, return Response.error() so Inertia triggers clean networkError handler
+//   instead of showing the plain-JSON modal.
 // - Full HTML page navigations -> Network First with dedicated PAGES_CACHE (HTML)
 self.addEventListener('fetch', (event) => {
     const request = event.request;
@@ -111,12 +113,14 @@ self.addEventListener('fetch', (event) => {
                     if (cachedResponse) {
                         return cachedResponse;
                     }
-                    return fetch(request).then((networkResponse) => {
-                        if (networkResponse && networkResponse.status === 200) {
-                            cache.put(request, networkResponse.clone());
-                        }
-                        return networkResponse;
-                    });
+                    return fetch(request)
+                        .then((networkResponse) => {
+                            if (networkResponse && networkResponse.status === 200) {
+                                cache.put(request, networkResponse.clone());
+                            }
+                            return networkResponse;
+                        })
+                        .catch(() => Response.error());
                 })
             )
         );
@@ -125,26 +129,34 @@ self.addEventListener('fetch', (event) => {
 
     // 2. Inertia SPA navigation requests (JSON responses): Network First -> INERTIA_CACHE
     if (request.headers.get('X-Inertia') === 'true') {
-        const cacheKey = url.pathname + url.search;
+        const fullKey = url.pathname + url.search;
+        const baseKey = url.pathname;
         event.respondWith(
             caches.open(INERTIA_CACHE).then((cache) =>
                 fetch(request)
                     .then((networkResponse) => {
                         const contentType = networkResponse.headers.get('content-type') || '';
-                        if (networkResponse && networkResponse.status === 200 && contentType.includes('application/json')) {
-                            cache.put(cacheKey, networkResponse.clone());
+                        const isInertiaResp = networkResponse.headers.get('X-Inertia') === 'true' || contentType.includes('application/json');
+                        if (networkResponse && networkResponse.status === 200 && isInertiaResp) {
+                            cache.put(fullKey, networkResponse.clone());
+                            if (fullKey !== baseKey) {
+                                cache.put(baseKey, networkResponse.clone());
+                            }
                         }
                         return networkResponse;
                     })
                     .catch(() =>
-                        cache.match(cacheKey).then((cachedResponse) => {
-                            if (cachedResponse) {
-                                return cachedResponse;
+                        cache.match(fullKey).then((exactMatch) => {
+                            if (exactMatch) {
+                                return exactMatch;
                             }
-                            return new Response(
-                                JSON.stringify({ error: 'offline_uncached_page' }),
-                                { status: 503, headers: { 'Content-Type': 'application/json' } }
-                            );
+                            return cache.match(baseKey).then((baseMatch) => {
+                                if (baseMatch) {
+                                    return baseMatch;
+                                }
+                                // Return network error so Inertia triggers router.on('networkError') cleanly
+                                return Response.error();
+                            });
                         })
                     )
             )
@@ -160,7 +172,6 @@ self.addEventListener('fetch', (event) => {
                 fetch(request)
                     .then((networkResponse) => {
                         const contentType = networkResponse.headers.get('content-type') || '';
-                        // Only cache valid HTML pages (avoid caching redirects to /login)
                         if (
                             networkResponse &&
                             networkResponse.status === 200 &&
@@ -176,7 +187,7 @@ self.addEventListener('fetch', (event) => {
                             if (cachedResponse) {
                                 return cachedResponse;
                             }
-                            return cache.match('/dashboard').then((dash) => dash || cache.match('/'));
+                            return cache.match('/dashboard').then((dash) => dash || cache.match('/') || Response.error());
                         })
                     )
             )

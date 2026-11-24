@@ -43,12 +43,24 @@ initializeTheme();
 // Handle offline and network errors gracefully across the application
 if (typeof window !== 'undefined') {
     router.on('networkError', (event) => {
-        // Prevent uncaught promise rejection in the browser console
+        // Prevent uncaught promise rejection and Inertia error modal when offline
         event.preventDefault();
-        toast.error('Sin conexión con el servidor', {
+        toast.warning('Módulo no disponible sin conexión', {
             id: 'global-network-error',
-            description: 'La acción no pudo completarse. Por favor verifica tu conexión a internet.',
+            description: 'Esta pantalla requiere conexión a internet. Puedes seguir registrando Ventas y Compras en modo offline.',
         });
+    });
+
+    router.on('httpException', (event) => {
+        // Prevent Inertia plain-JSON modal if a proxy/SW returns 502/503 while offline
+        const status = event.detail.response?.status;
+        if (!navigator.onLine || status === 502 || status === 503 || status === 504) {
+            event.preventDefault();
+            toast.warning('Sin conexión con el servidor', {
+                id: 'global-network-error',
+                description: 'Este módulo no está disponible sin internet. Puedes seguir registrando Ventas y Compras en modo offline.',
+            });
+        }
     });
 
     router.on('before', (event) => {

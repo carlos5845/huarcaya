@@ -8,6 +8,7 @@ import {
     discardQueueOperation,
     checkServerConnectivity,
     isSyncActive,
+    warmupOfflinePages,
 } from '@/services/sync-service';
 
 export interface FailedSyncOperation {
@@ -140,6 +141,9 @@ export function useNetworkStatus(activeBranchId?: number) {
                     console.error('Error actualizando catálogo offline:', err);
                 });
             }
+
+            // Pre-cache key offline pages in background so Sales/Purchases open seamlessly without internet
+            warmupOfflinePages().catch(() => {});
         };
 
         runOnlineBootstrap();
@@ -191,16 +195,20 @@ export function useNetworkStatus(activeBranchId?: number) {
         // Polling pending operations count every 5s
         const countInterval = setInterval(refreshPendingCount, 5000);
 
-        // Real connectivity check + automatic retry every 30s if pending operations exist
+        // Real connectivity check + automatic retry every 30s only when browser reports network available
         const retryInterval = setInterval(async () => {
             if (isSyncActive()) return;
+            if (typeof navigator !== 'undefined' && !navigator.onLine) {
+                setIsOnline(false);
+                return;
+            }
+            const pending = await db.syncQueue.filter(q => q.status === 'PENDING').count();
+            if (pending === 0) return;
+
             const reachable = await checkServerConnectivity();
             setIsOnline(reachable);
             if (reachable) {
-                const pending = await db.syncQueue.filter(q => q.status === 'PENDING').count();
-                if (pending > 0) {
-                    triggerSync();
-                }
+                triggerSync();
             }
         }, 30000);
 

@@ -16,6 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { router } from '@inertiajs/react';
+import { getLastConnectivityStatus } from '@/services/sync-service';
 import { toast } from 'sonner';
 
 interface NotificationItem {
@@ -117,13 +118,18 @@ export function NotificationsMenu() {
     }, []);
 
     const fetchNotifications = useCallback(async () => {
-        // Pausar o evitar polling innecesario si la pestaña está oculta
+        // Pausar o evitar polling innecesario si la pestaña está oculta o sin conexión a internet
         if (typeof document !== 'undefined' && document.hidden) {
+            return;
+        }
+        if (typeof navigator !== 'undefined' && (!navigator.onLine || !getLastConnectivityStatus())) {
             return;
         }
 
         try {
-            const response = await fetch('/api/notifications/unread');
+            const response = await fetch('/api/notifications/unread', {
+                headers: { Accept: 'application/json' },
+            });
             if (response.ok) {
                 const data = await response.json();
                 const fetchedNotifs: NotificationItem[] = data.notifications || [];
@@ -159,7 +165,10 @@ export function NotificationsMenu() {
                 });
             }
         } catch (error) {
-            console.error('Error fetching notifications:', error);
+            // Silenciar errores de red cuando el equipo está offline para no ensuciar la consola
+            if (typeof navigator !== 'undefined' && navigator.onLine && !(error instanceof TypeError)) {
+                console.error('Error fetching notifications:', error);
+            }
         }
     }, [notifyBrowser]);
 
@@ -169,18 +178,23 @@ export function NotificationsMenu() {
         // Polling cada 12 segundos
         const interval = setInterval(fetchNotifications, 12000);
 
-        // Al volver a la pestaña, refrescar de inmediato
+        // Al volver a la pestaña o recuperar internet, refrescar de inmediato
         const handleVisibilityChange = () => {
             if (!document.hidden) {
                 fetchNotifications();
             }
         };
+        const handleOnline = () => {
+            fetchNotifications();
+        };
 
         document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('online', handleOnline);
 
         return () => {
             clearInterval(interval);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('online', handleOnline);
         };
     }, [fetchNotifications]);
 

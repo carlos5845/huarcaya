@@ -22,9 +22,18 @@ export interface SyncBatchResult {
 
 // In-memory lock to prevent concurrent batch syncs or premature SYNCING resets
 let isSyncInFlight = false;
+let lastServerReachable = true;
+let hasWarmedUpOfflinePages = false;
 
 export function isSyncActive(): boolean {
     return isSyncInFlight;
+}
+
+export function getLastConnectivityStatus(): boolean {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        return false;
+    }
+    return lastServerReachable;
 }
 
 /**
@@ -42,6 +51,7 @@ function getCsrfToken(): string {
  */
 export async function checkServerConnectivity(timeoutMs = 3500): Promise<boolean> {
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        lastServerReachable = false;
         return false;
     }
 
@@ -55,11 +65,67 @@ export async function checkServerConnectivity(timeoutMs = 3500): Promise<boolean
             credentials: 'same-origin',
             signal: controller.signal,
         });
+        lastServerReachable = res.ok;
         return res.ok;
     } catch {
+        lastServerReachable = false;
         return false;
     } finally {
         clearTimeout(timer);
+    }
+}
+
+/**
+ * Silently pre-warms key offline-capable Inertia pages into the Service Worker's INERTIA_CACHE
+ * so the user can open Sales, Purchases, and Dashboard even if internet drops before visiting them.
+ */
+export async function warmupOfflinePages(): Promise<void> {
+    if (hasWarmedUpOfflinePages || typeof window === 'undefined' || !navigator.onLine) {
+        return;
+    }
+
+    hasWarmedUpOfflinePages = true;
+
+    let inertiaVersion = '';
+    try {
+        const appEl = document.getElementById('app');
+        const pageAttr = appEl?.getAttribute('data-page');
+        if (pageAttr) {
+            const parsed = JSON.parse(pageAttr);
+            inertiaVersion = parsed?.version || '';
+        }
+    } catch {
+        // ignore parse errors
+    }
+
+    const routesToWarmup = [
+        '/dashboard',
+        '/sales',
+        '/sales/create',
+        '/purchases',
+        '/purchases/create',
+    ];
+
+    const headers: Record<string, string> = {
+        'X-Inertia': 'true',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Accept': 'text/html, application/xhtml+xml',
+    };
+    if (inertiaVersion) {
+        headers['X-Inertia-Version'] = inertiaVersion;
+    }
+
+    for (const route of routesToWarmup) {
+        if (!navigator.onLine || !lastServerReachable) break;
+        try {
+            await fetch(route, {
+                method: 'GET',
+                headers,
+                credentials: 'same-origin',
+            });
+        } catch {
+            // Silently ignore individual warmup errors (e.g., user lacks permission for a module)
+        }
     }
 }
 
