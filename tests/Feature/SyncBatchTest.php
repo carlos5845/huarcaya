@@ -507,3 +507,41 @@ test('it syncs offline customer with non-numeric id and dependent sale in topolo
     expect($createdSale->customer_id)->toBe($createdCustomer->id)
         ->and($createdSale->status)->toBe('CONFIRMED');
 });
+
+test('it returns full pwa build assets list for offline precaching', function () {
+    $response = $this->getJson(route('pwa.assets'));
+
+    $response->assertOk()
+        ->assertJsonStructure(['assets', 'count']);
+
+    expect($response->json('count'))->toBeGreaterThan(0);
+});
+
+test('it returns expanded offline catalog datasets without sensitive credentials', function () {
+    $response = $this->actingAs($this->user)->getJson(route('sync.catalog'));
+
+    $response->assertOk()
+        ->assertJsonStructure([
+            'products',
+            'customers',
+            'suppliers',
+            'brands',
+            'categories',
+            'units',
+            'branches',
+            'company',
+            'payment_methods',
+            'receivables',
+            'recent_sales',
+            'recent_purchases',
+            'recent_quotations',
+            'recent_transfers',
+            'branch',
+            'server_time',
+        ]);
+
+    $company = $response->json('company');
+    expect($company)->toBeArray()
+        ->and($company)->not->toHaveKey('sunat_sol_password')
+        ->and($company)->not->toHaveKey('sunat_sol_user');
+});

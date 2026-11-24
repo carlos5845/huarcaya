@@ -1,7 +1,7 @@
-// SIMAQ PWA Service Worker (v5 - Full Offline Shell, Complete Vite Chunks, Storage & Inertia SPA)
-const STATIC_CACHE = 'simaq-static-v5';
-const PAGES_CACHE = 'simaq-pages-v5';
-const INERTIA_CACHE = 'simaq-inertia-v5';
+// SIMAQ PWA Service Worker (v6 - 100% /build/assets/* Precaching, Storage & Full Offline Inertia SPA)
+const STATIC_CACHE = 'simaq-static-v6';
+const PAGES_CACHE = 'simaq-pages-v6';
+const INERTIA_CACHE = 'simaq-inertia-v6';
 const VALID_CACHES = [STATIC_CACHE, PAGES_CACHE, INERTIA_CACHE];
 
 const CORE_STATIC_ASSETS = [
@@ -15,6 +15,7 @@ const CORE_STATIC_ASSETS = [
 // Endpoints that must ALWAYS hit the network and never be cached by the SW
 const NETWORK_ONLY_PREFIXES = [
     '/api/v1/sync/',
+    '/api/v1/pwa/',
     '/api/notifications/',
     '/up',
     '/login',
@@ -35,96 +36,121 @@ self.addEventListener('install', (event) => {
     self.skipWaiting();
 });
 
-// Activate Event: Clean up obsolete caches from older deploys
+// Activate Event: Clean up obsolete caches and immediately precache 100% of /build/assets/*
 self.addEventListener('activate', (event) => {
     event.waitUntil(
-        caches.keys().then((keys) => {
-            return Promise.all(
+        (async () => {
+            const keys = await caches.keys();
+            await Promise.all(
                 keys.map((key) => {
                     if (!VALID_CACHES.includes(key)) {
                         return caches.delete(key);
                     }
                 })
             );
-        })
+            await self.clients.claim();
+            // Fire asset precache immediately so all JS/CSS/icon chunks are cached right after deploy
+            warmupBuildAssets();
+        })()
     );
-    self.clients.claim();
 });
 
-// Warm up ALL Vite build chunks (file, css, imports, dynamicImports, assets) using Promise.allSettled
+let warmupInFlight = null;
+
+// Warm up 100% of compiled Vite assets via /api/v1/pwa/assets (fallback to manifest.json)
 async function warmupBuildAssets() {
-    try {
-        const res = await fetch('/build/manifest.json', { cache: 'no-cache' });
-        if (!res.ok) return;
-        const manifest = await res.json();
-        const assetUrls = new Set();
-
-        const collectEntry = (entry) => {
-            if (!entry || typeof entry !== 'object') return;
-            if (entry.file) {
-                assetUrls.add(`/build/${entry.file}`);
-            }
-            if (Array.isArray(entry.css)) {
-                for (const cssFile of entry.css) {
-                    assetUrls.add(`/build/${cssFile}`);
-                }
-            }
-            if (Array.isArray(entry.assets)) {
-                for (const assetFile of entry.assets) {
-                    assetUrls.add(`/build/${assetFile}`);
-                }
-            }
-            if (Array.isArray(entry.imports)) {
-                for (const impKey of entry.imports) {
-                    if (manifest[impKey]) {
-                        collectEntry(manifest[impKey]);
-                    }
-                }
-            }
-            if (Array.isArray(entry.dynamicImports)) {
-                for (const dynKey of entry.dynamicImports) {
-                    if (manifest[dynKey]) {
-                        collectEntry(manifest[dynKey]);
-                    }
-                }
-            }
-        };
-
-        for (const entry of Object.values(manifest)) {
-            collectEntry(entry);
-        }
-
-        const cache = await caches.open(STATIC_CACHE);
-        const urls = Array.from(assetUrls);
-        const batchSize = 15;
-        let cachedCount = 0;
-
-        for (let i = 0; i < urls.length; i += batchSize) {
-            const batch = urls.slice(i, i + batchSize);
-            await Promise.allSettled(
-                batch.map(async (url) => {
-                    const existing = await cache.match(url, { ignoreVary: true });
-                    if (existing) {
-                        cachedCount++;
-                        return;
-                    }
-                    const assetRes = await fetch(url);
-                    if (assetRes && assetRes.status === 200) {
-                        await cache.put(url, assetRes.clone());
-                        cachedCount++;
-                    }
-                })
-            );
-        }
-
-        // Notify all open tabs that offline asset cache is ready
-        const allClients = await self.clients.matchAll({ includeUncontrolled: true });
-        for (const client of allClients) {
-            client.postMessage({ type: 'WARMUP_COMPLETE', count: cachedCount, total: urls.length });
-        }
-    } catch {
-        // Ignore if offline or manifest unavailable
+    if (warmupInFlight) {
+        return warmupInFlight;
     }
+
+    warmupInFlight = (async () => {
+        try {
+            const assetUrls = new Set(CORE_STATIC_ASSETS);
+
+            // 1. Primary source: backend directory listing of 100% of public/build/assets/*
+            let loadedFromApi = false;
+            try {
+                const apiRes = await fetch('/api/v1/pwa/assets', { cache: 'no-cache' });
+                if (apiRes.ok) {
+                    const data = await apiRes.json();
+                    if (Array.isArray(data.assets) && data.assets.length > 0) {
+                        for (const url of data.assets) {
+                            assetUrls.add(url);
+                        }
+                        loadedFromApi = true;
+                    }
+                }
+            } catch {
+                // Fallback to manifest.json below
+            }
+
+            // 2. Fallback: Vite manifest.json
+            if (!loadedFromApi) {
+                const res = await fetch('/build/manifest.json', { cache: 'no-cache' });
+                if (res.ok) {
+                    const manifest = await res.json();
+                    const collectEntry = (entry) => {
+                        if (!entry || typeof entry !== 'object') return;
+                        if (entry.file) assetUrls.add(`/build/${entry.file}`);
+                        if (Array.isArray(entry.css)) {
+                            for (const cssFile of entry.css) assetUrls.add(`/build/${cssFile}`);
+                        }
+                        if (Array.isArray(entry.assets)) {
+                            for (const assetFile of entry.assets) assetUrls.add(`/build/${assetFile}`);
+                        }
+                        if (Array.isArray(entry.imports)) {
+                            for (const impKey of entry.imports) {
+                                if (manifest[impKey]) collectEntry(manifest[impKey]);
+                            }
+                        }
+                        if (Array.isArray(entry.dynamicImports)) {
+                            for (const dynKey of entry.dynamicImports) {
+                                if (manifest[dynKey]) collectEntry(manifest[dynKey]);
+                            }
+                        }
+                    };
+                    for (const entry of Object.values(manifest)) {
+                        collectEntry(entry);
+                    }
+                }
+            }
+
+            const cache = await caches.open(STATIC_CACHE);
+            const urls = Array.from(assetUrls);
+            const batchSize = 15;
+            let cachedCount = 0;
+
+            for (let i = 0; i < urls.length; i += batchSize) {
+                const batch = urls.slice(i, i + batchSize);
+                await Promise.allSettled(
+                    batch.map(async (url) => {
+                        const existing = await cache.match(url, { ignoreVary: true });
+                        if (existing) {
+                            cachedCount++;
+                            return;
+                        }
+                        const assetRes = await fetch(url);
+                        if (assetRes && assetRes.status === 200) {
+                            await cache.put(url, assetRes.clone());
+                            cachedCount++;
+                        }
+                    })
+                );
+            }
+
+            // Notify all open tabs that offline asset cache is ready
+            const allClients = await self.clients.matchAll({ includeUncontrolled: true });
+            for (const client of allClients) {
+                client.postMessage({ type: 'WARMUP_COMPLETE', count: cachedCount, total: urls.length });
+            }
+        } catch {
+            // Ignore if offline or endpoint unavailable
+        } finally {
+            warmupInFlight = null;
+        }
+    })();
+
+    return warmupInFlight;
 }
 
 // Allow client to trigger immediate activation or build chunk warmup

@@ -180,13 +180,6 @@ export default function SuppliersIndex({ suppliers }: { suppliers: any[] }) {
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (!isOnline) {
-            toast.warning('Modo sin conexión', {
-                description: 'La creación o edición de proveedores desde este módulo requiere conexión activa al servidor.',
-            });
-            return;
-        }
-
         if (editingId) {
             put(`/suppliers/${editingId}`, {
                 onSuccess: () => {
@@ -206,16 +199,21 @@ export default function SuppliersIndex({ suppliers }: { suppliers: any[] }) {
         }
     };
 
+    React.useEffect(() => {
+        const handleQueued = (event: Event) => {
+            const detail = (event as CustomEvent)?.detail;
+            if (detail?.url?.includes('/suppliers')) {
+                setIsOpen(false);
+                reset();
+            }
+        };
+        window.addEventListener('simaq:offline-mutation-queued', handleQueued);
+        return () => window.removeEventListener('simaq:offline-mutation-queued', handleQueued);
+    }, [reset]);
+
     const { confirm, dialogProps } = useConfirmDialog();
 
     const toggleStatus = (id: number) => {
-        if (!isOnline) {
-            toast.warning('Modo sin conexión', {
-                description: 'El cambio de estado de proveedores requiere conexión activa al servidor.',
-            });
-            return;
-        }
-
         confirm({
             title: '¿Cambiar estado del proveedor?',
             description: 'Esta acción activará o desactivará al proveedor para nuevas órdenes de compra en el sistema.',
@@ -497,18 +495,6 @@ export default function SuppliersIndex({ suppliers }: { suppliers: any[] }) {
                     </div>
                 </div>
 
-                {!isOnline && (
-                    <div className="flex items-center gap-3 rounded-lg border border-amber-500/25 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-300">
-                        <WifiOff className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
-                        <div>
-                            <p className="font-semibold text-xs sm:text-sm">Estás trabajando en modo sin conexión</p>
-                            <p className="text-[11px] sm:text-xs text-amber-700 dark:text-amber-400">
-                                La creación, edición y administración de proveedores en el catálogo requiere conexión activa con el servidor.
-                            </p>
-                        </div>
-                    </div>
-                )}
-
                 {/* Filters Row: Search & Status Tabs */}
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
                     <div className="relative flex-1 max-w-sm">
@@ -597,14 +583,6 @@ export default function SuppliersIndex({ suppliers }: { suppliers: any[] }) {
                         </DialogHeader>
 
                         <form onSubmit={submit} className="flex-1 overflow-y-auto p-6 space-y-6">
-                            {!isOnline && (
-                                <div className="flex items-center gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-800 dark:text-amber-300 text-xs">
-                                    <WifiOff className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
-                                    <span>
-                                        <strong>Modo sin conexión:</strong> Para guardar o modificar proveedores en el catálogo general se requiere conexión activa con el servidor.
-                                    </span>
-                                </div>
-                            )}
                             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                                 
                                 {/* Columna Izquierda: Formulario (7 columnas) */}
@@ -935,14 +913,14 @@ export default function SuppliersIndex({ suppliers }: { suppliers: any[] }) {
                                 <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>
                                     Cancelar
                                 </Button>
-                                <Button type="submit" disabled={processing || !isOnline}>
+                                <Button type="submit" disabled={processing}>
                                     {processing ? (
                                         <>
                                             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                                             <span>Guardando...</span>
                                         </>
                                     ) : (
-                                        <span>{isOnline ? (editingId ? 'Actualizar Proveedor' : 'Registrar Proveedor') : 'Conexión requerida'}</span>
+                                        <span>{editingId ? 'Actualizar Proveedor' : 'Registrar Proveedor'}</span>
                                     )}
                                 </Button>
                             </DialogFooter>

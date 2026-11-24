@@ -156,7 +156,16 @@ export async function warmupOfflinePages(explicitVersion?: string | null): Promi
     hasWarmedUpOfflinePages = true;
     const hasCacheApi = typeof caches !== 'undefined';
 
-    // 1. Warm up Inertia JSON payloads FIRST (fast, small JSONs) and write directly to simaq-inertia-v4
+    // 0. Kick off SW precaching of 100% of /build/assets/* immediately in parallel
+    if (navigator.onLine && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.ready
+            .then((reg) => {
+                reg.active?.postMessage({ type: 'WARMUP_BUILD_ASSETS' });
+            })
+            .catch(() => {});
+    }
+
+    // 1. Warm up Inertia JSON payloads and write directly to simaq-inertia-v6
     // Writing directly via window.caches works even if the user did Ctrl+Shift+R (bypassing SW controller)
     const routesToWarmup = [
         '/dashboard',
@@ -200,7 +209,7 @@ export async function warmupOfflinePages(explicitVersion?: string | null): Promi
         'Accept': 'text/html, application/xhtml+xml',
     };
 
-    const inertiaCache = hasCacheApi ? await caches.open('simaq-inertia-v5').catch(() => null) : null;
+    const inertiaCache = hasCacheApi ? await caches.open('simaq-inertia-v6').catch(() => null) : null;
     const batchSize = 4;
 
     for (let i = 0; i < routesToWarmup.length; i += batchSize) {
@@ -220,10 +229,10 @@ export async function warmupOfflinePages(explicitVersion?: string | null): Promi
         );
     }
 
-    // 2. Warm up full HTML shell for /dashboard into simaq-pages-v5 (so F5 offline works cleanly)
+    // 2. Warm up full HTML shell for /dashboard into simaq-pages-v6 (so F5 offline works cleanly)
     if (navigator.onLine && lastServerReachable) {
         try {
-            const pagesCache = hasCacheApi ? await caches.open('simaq-pages-v5').catch(() => null) : null;
+            const pagesCache = hasCacheApi ? await caches.open('simaq-pages-v6').catch(() => null) : null;
             const res = await fetch('/dashboard', {
                 method: 'GET',
                 headers: { Accept: 'text/html' },
@@ -235,15 +244,6 @@ export async function warmupOfflinePages(explicitVersion?: string | null): Promi
         } catch {
             // ignore
         }
-    }
-
-    // 3. Finally ask active Service Worker to pre-cache Vite JS/CSS chunks from /build/manifest.json
-    if (navigator.onLine && 'serviceWorker' in navigator) {
-        navigator.serviceWorker.ready
-            .then((reg) => {
-                reg.active?.postMessage({ type: 'WARMUP_BUILD_ASSETS' });
-            })
-            .catch(() => {});
     }
 }
 
@@ -299,58 +299,142 @@ export async function downloadCatalog(branchId?: number): Promise<CatalogDownloa
     const data = await response.json();
 
     // Store in IndexedDB while preserving pending offline state
-    await db.transaction('rw', [db.products, db.customers, db.paymentMethods, db.offlineSales, db.offlinePurchases], async () => {
-        if (data.products && Array.isArray(data.products)) {
-            // Compute stock delta from still-pending offline sales & purchases so we don't show phantom stock
-            const pendingSales = await db.offlineSales
-                .filter(s => (s.sync_status === 'PENDING' || s.sync_status === 'SYNCING') && s.action !== 'DRAFT')
-                .toArray();
-            const pendingPurchases = await db.offlinePurchases
-                .filter(p => (p.sync_status === 'PENDING' || p.sync_status === 'SYNCING') && p.action === 'CONFIRM')
-                .toArray();
+    await db.transaction(
+        'rw',
+        [
+            db.products,
+            db.customers,
+            db.suppliers,
+            db.brands,
+            db.categories,
+            db.units,
+            db.branches,
+            db.company,
+            db.paymentMethods,
+            db.receivables,
+            db.recentSales,
+            db.recentPurchases,
+            db.recentQuotations,
+            db.recentTransfers,
+            db.offlineSales,
+            db.offlinePurchases,
+        ],
+        async () => {
+            if (data.products && Array.isArray(data.products)) {
+                // Compute stock delta from still-pending offline sales & purchases so we don't show phantom stock
+                const pendingSales = await db.offlineSales
+                    .filter(s => (s.sync_status === 'PENDING' || s.sync_status === 'SYNCING') && s.action !== 'DRAFT')
+                    .toArray();
+                const pendingPurchases = await db.offlinePurchases
+                    .filter(p => (p.sync_status === 'PENDING' || p.sync_status === 'SYNCING') && p.action === 'CONFIRM')
+                    .toArray();
 
-            const stockDeltaByProduct = new Map<number, number>();
-            for (const sale of pendingSales) {
-                for (const line of sale.lines) {
-                    stockDeltaByProduct.set(line.product_id, (stockDeltaByProduct.get(line.product_id) || 0) - Number(line.quantity || 0));
+                const stockDeltaByProduct = new Map<number, number>();
+                for (const sale of pendingSales) {
+                    for (const line of sale.lines) {
+                        stockDeltaByProduct.set(line.product_id, (stockDeltaByProduct.get(line.product_id) || 0) - Number(line.quantity || 0));
+                    }
                 }
-            }
-            for (const purchase of pendingPurchases) {
-                for (const line of purchase.lines) {
-                    stockDeltaByProduct.set(line.product_id, (stockDeltaByProduct.get(line.product_id) || 0) + Number(line.quantity || 0));
+                for (const purchase of pendingPurchases) {
+                    for (const line of purchase.lines) {
+                        stockDeltaByProduct.set(line.product_id, (stockDeltaByProduct.get(line.product_id) || 0) + Number(line.quantity || 0));
+                    }
                 }
+
+                await db.products.clear();
+                await db.products.bulkPut(data.products.map((p: any) => {
+                    const delta = stockDeltaByProduct.get(p.id) || 0;
+                    return {
+                        ...p,
+                        local_stock: Math.max(0, Number(p.local_stock || 0) + delta),
+                        branch_id: data.branch?.id ?? 0,
+                    };
+                }));
             }
 
-            await db.products.clear();
-            await db.products.bulkPut(data.products.map((p: any) => {
-                const delta = stockDeltaByProduct.get(p.id) || 0;
-                return {
-                    ...p,
-                    local_stock: Math.max(0, Number(p.local_stock || 0) + delta),
-                    branch_id: data.branch?.id ?? 0,
-                };
-            }));
+            if (data.customers && Array.isArray(data.customers)) {
+                // Preserve unsynced offline-created customers
+                const offlineCustomers = await db.customers.filter(c => Boolean(c.is_offline)).toArray();
+                const serverDocNumbers = new Set(data.customers.map((c: any) => c.document_number).filter(Boolean));
+                const serverUuids = new Set(data.customers.map((c: any) => c.uuid).filter(Boolean));
+
+                const stillUnsyncedOfflineCustomers = offlineCustomers.filter(
+                    c => !serverUuids.has(c.uuid) && (!c.document_number || !serverDocNumbers.has(c.document_number))
+                );
+
+                await db.customers.clear();
+                await db.customers.bulkPut([...data.customers, ...stillUnsyncedOfflineCustomers]);
+            }
+
+            if (data.suppliers && Array.isArray(data.suppliers)) {
+                const offlineSuppliers = await db.suppliers.filter(s => Boolean(s.is_offline)).toArray();
+                const serverDocNumbers = new Set(data.suppliers.map((s: any) => s.document_number).filter(Boolean));
+                const serverUuids = new Set(data.suppliers.map((s: any) => s.uuid).filter(Boolean));
+
+                const stillUnsyncedOfflineSuppliers = offlineSuppliers.filter(
+                    s => !serverUuids.has(s.uuid) && (!s.document_number || !serverDocNumbers.has(s.document_number))
+                );
+
+                await db.suppliers.clear();
+                await db.suppliers.bulkPut([...data.suppliers, ...stillUnsyncedOfflineSuppliers]);
+            }
+
+            if (data.brands && Array.isArray(data.brands)) {
+                await db.brands.clear();
+                await db.brands.bulkPut(data.brands);
+            }
+
+            if (data.categories && Array.isArray(data.categories)) {
+                await db.categories.clear();
+                await db.categories.bulkPut(data.categories);
+            }
+
+            if (data.units && Array.isArray(data.units)) {
+                await db.units.clear();
+                await db.units.bulkPut(data.units);
+            }
+
+            if (data.branches && Array.isArray(data.branches)) {
+                await db.branches.clear();
+                await db.branches.bulkPut(data.branches);
+            }
+
+            if (data.company && typeof data.company === 'object') {
+                await db.company.clear();
+                await db.company.put(data.company);
+            }
+
+            if (data.payment_methods && Array.isArray(data.payment_methods)) {
+                await db.paymentMethods.clear();
+                await db.paymentMethods.bulkPut(data.payment_methods);
+            }
+
+            if (data.receivables && Array.isArray(data.receivables)) {
+                await db.receivables.clear();
+                await db.receivables.bulkPut(data.receivables);
+            }
+
+            if (data.recent_sales && Array.isArray(data.recent_sales)) {
+                await db.recentSales.clear();
+                await db.recentSales.bulkPut(data.recent_sales);
+            }
+
+            if (data.recent_purchases && Array.isArray(data.recent_purchases)) {
+                await db.recentPurchases.clear();
+                await db.recentPurchases.bulkPut(data.recent_purchases);
+            }
+
+            if (data.recent_quotations && Array.isArray(data.recent_quotations)) {
+                await db.recentQuotations.clear();
+                await db.recentQuotations.bulkPut(data.recent_quotations);
+            }
+
+            if (data.recent_transfers && Array.isArray(data.recent_transfers)) {
+                await db.recentTransfers.clear();
+                await db.recentTransfers.bulkPut(data.recent_transfers);
+            }
         }
-
-        if (data.customers && Array.isArray(data.customers)) {
-            // Preserve unsynced offline-created customers
-            const offlineCustomers = await db.customers.filter(c => Boolean(c.is_offline)).toArray();
-            const serverDocNumbers = new Set(data.customers.map((c: any) => c.document_number).filter(Boolean));
-            const serverUuids = new Set(data.customers.map((c: any) => c.uuid).filter(Boolean));
-
-            const stillUnsyncedOfflineCustomers = offlineCustomers.filter(
-                c => !serverUuids.has(c.uuid) && (!c.document_number || !serverDocNumbers.has(c.document_number))
-            );
-
-            await db.customers.clear();
-            await db.customers.bulkPut([...data.customers, ...stillUnsyncedOfflineCustomers]);
-        }
-
-        if (data.payment_methods && Array.isArray(data.payment_methods)) {
-            await db.paymentMethods.clear();
-            await db.paymentMethods.bulkPut(data.payment_methods);
-        }
-    });
+    );
 
     return {
         productsCount: data.products?.length ?? 0,

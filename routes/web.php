@@ -47,6 +47,7 @@ use Inertia\Inertia;
 use Laravel\Fortify\Features;
 
 Route::inertia('/', 'welcome')->name('home');
+Route::get('/api/v1/pwa/assets', [SyncController::class, 'getPwaAssets'])->name('pwa.assets');
 
 Route::middleware(['auth'])->group(function () {
     Route::get('/init', function (Request $request) {

@@ -103,13 +103,6 @@ export default function QuickSupplierDialog({
         e.preventDefault();
         clearErrors();
 
-        if (!isOnline) {
-            toast.warning('Modo sin conexión', {
-                description: 'La creación de proveedores requiere conexión al servidor para validar datos fiscales. Conéctate a internet o selecciona uno existente.',
-            });
-            return;
-        }
-
         const docType = data.document_type.toUpperCase();
         const docNum = data.document_number.trim();
         const legalName = data.legal_name.trim();
@@ -145,6 +138,18 @@ export default function QuickSupplierDialog({
         });
     };
 
+    React.useEffect(() => {
+        const handleQueued = (event: Event) => {
+            const detail = (event as CustomEvent)?.detail;
+            if (detail?.url?.includes('/suppliers')) {
+                onOpenChange(false);
+                reset();
+            }
+        };
+        window.addEventListener('simaq:offline-mutation-queued', handleQueued);
+        return () => window.removeEventListener('simaq:offline-mutation-queued', handleQueued);
+    }, [onOpenChange, reset]);
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-lg bg-card text-card-foreground border-border shadow-xl">
@@ -165,18 +170,6 @@ export default function QuickSupplierDialog({
                 </DialogHeader>
 
                 <form onSubmit={handleSubmit} className="space-y-4 pt-2">
-                    {!isOnline && (
-                        <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-800 dark:text-amber-300 text-xs">
-                            <WifiOff className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
-                            <div>
-                                <p className="font-semibold">Modo sin conexión</p>
-                                <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
-                                    La creación de proveedores requiere conexión al servidor. Por favor selecciona uno existente o conéctate a internet.
-                                </p>
-                            </div>
-                        </div>
-                    )}
-
                     {/* Alerta inteligente si ya existe el proveedor */}
                     {matchedSupplier && (
                         <div className="flex items-center justify-between p-3 rounded-lg bg-blue-500/10 border border-blue-500/25 text-blue-900 dark:text-blue-300 text-xs">
@@ -347,7 +340,7 @@ export default function QuickSupplierDialog({
                         <Button
                             type="submit"
                             size="sm"
-                            disabled={processing || !isOnline}
+                            disabled={processing}
                             className="h-9 gap-1.5 text-xs font-semibold"
                         >
                             {processing ? (
