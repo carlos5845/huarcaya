@@ -233,7 +233,7 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
         const delayDebounceFn = setTimeout(async () => {
             setIsSearching(true);
 
-            if (!navigator.onLine) {
+            if (!isOnline || !navigator.onLine) {
                 try {
                     const localItems = await searchLocalProducts(searchQuery, userBranchId);
                     setSearchResults(localItems.map(p => ({
@@ -386,7 +386,7 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
         if (chosenAction === 'CONFIRM') {
             for (const line of data.lines) {
                 let availableStock = line.available_quantity;
-                if (!navigator.onLine) {
+                if (!isOnline || !navigator.onLine) {
                     try {
                         const localProd = await db.products.get(line.product_id);
                         if (localProd) {
@@ -405,7 +405,7 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
             }
         }
 
-        if (!navigator.onLine) {
+        if (!isOnline || !navigator.onLine) {
             try {
                 if (editingOfflineUuid) {
                     await discardOfflineSale(editingOfflineUuid);
@@ -415,6 +415,7 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
                 const userBranchId = company_settings?.default_branch_id || 1;
                 const { tempSaleNumber } = await enqueueOfflineSale({
                     customer_id: data.customer_id,
+                    customer_uuid: selectedCustomer?.uuid || undefined,
                     customer_name: selectedCustomer?.legal_name || 'Cliente Venta',
                     sale_type: data.sale_type,
                     payment_type: data.payment_type as 'CASH' | 'CREDIT',

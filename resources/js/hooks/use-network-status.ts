@@ -174,6 +174,13 @@ export function useNetworkStatus(activeBranchId?: number) {
             refreshPendingCount();
         };
 
+        const handleConnectivityChange = (e: Event) => {
+            const detail = (e as CustomEvent<{ online: boolean }>).detail;
+            if (typeof detail?.online === 'boolean') {
+                setIsOnline(detail.online);
+            }
+        };
+
         const handleVisibilityChange = async () => {
             if (document.visibilityState === 'visible') {
                 const reachable = await checkServerConnectivity();
@@ -190,32 +197,39 @@ export function useNetworkStatus(activeBranchId?: number) {
         window.addEventListener('online', handleOnline);
         window.addEventListener('offline', handleOffline);
         window.addEventListener('simaq:sync-finished', handleSyncFinished);
+        window.addEventListener('simaq:connectivity-change', handleConnectivityChange);
         document.addEventListener('visibilitychange', handleVisibilityChange);
 
         // Polling pending operations count every 5s
         const countInterval = setInterval(refreshPendingCount, 5000);
 
-        // Real connectivity check + automatic retry every 30s only when browser reports network available
+        // Lightweight real-connectivity heartbeat every 15s (only when tab is visible)
+        // Automatically switches badge between online/offline even when WiFi router has no internet,
+        // and auto-triggers sync when connection returns.
         const retryInterval = setInterval(async () => {
+            if (typeof document !== 'undefined' && document.hidden) return;
             if (isSyncActive()) return;
+
             if (typeof navigator !== 'undefined' && !navigator.onLine) {
                 setIsOnline(false);
                 return;
             }
-            const pending = await db.syncQueue.filter(q => q.status === 'PENDING').count();
-            if (pending === 0) return;
 
             const reachable = await checkServerConnectivity();
             setIsOnline(reachable);
             if (reachable) {
-                triggerSync();
+                const pending = await db.syncQueue.filter(q => q.status === 'PENDING').count();
+                if (pending > 0) {
+                    triggerSync();
+                }
             }
-        }, 30000);
+        }, 15000);
 
         return () => {
             window.removeEventListener('online', handleOnline);
             window.removeEventListener('offline', handleOffline);
             window.removeEventListener('simaq:sync-finished', handleSyncFinished);
+            window.removeEventListener('simaq:connectivity-change', handleConnectivityChange);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
             clearInterval(countInterval);
             clearInterval(retryInterval);

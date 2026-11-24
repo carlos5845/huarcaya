@@ -435,4 +435,75 @@ test('it can sync an offline purchase with base64 attached document', function (
         ->and($purchase->document_file_path)->not->toBeNull();
 
     Storage::disk('public')->assertExists($purchase->document_file_path);
+
+    // Base64 payload must be stripped from sync_operations after persisting to disk
+    $syncOp = SyncOperation::where('uuid', $syncOpUuid)->firstOrFail();
+    expect($syncOp->payload['document_file']['base64'] ?? null)->toBeNull()
+        ->and($syncOp->payload['document_file_path'] ?? null)->toBe($purchase->document_file_path);
+});
+
+test('it syncs offline customer with non-numeric id and dependent sale in topological order safely on postgresql', function () {
+    $customerUuid = (string) Str::uuid();
+    $customerSyncUuid = (string) Str::uuid();
+    $saleUuid = (string) Str::uuid();
+    $saleSyncUuid = (string) Str::uuid();
+
+    // Send Sale BEFORE Customer intentionally to verify topological ordering (Customer -> Purchase -> Sale)
+    $operations = [
+        [
+            'uuid' => $saleSyncUuid,
+            'entity_type' => 'Sale',
+            'operation_type' => 'CREATE',
+            'payload' => [
+                'uuid' => $saleUuid,
+                'customer_id' => 'offline-'.$customerUuid, // Non-numeric ID that previously crashed PostgreSQL bigint
+                'customer_uuid' => $customerUuid,
+                'sale_type' => 'BOLETA',
+                'payment_type' => 'CASH',
+                'payment_method_id' => $this->paymentMethod->id,
+                'operation_date' => now()->toDateString(),
+                'tax_mode' => 'INCLUDED',
+                'currency_code' => 'PEN',
+                'exchange_rate' => 1.0,
+                'action' => 'CONFIRM',
+                'lines' => [
+                    [
+                        'product_id' => $this->product->id,
+                        'quantity' => 2,
+                        'unit_price' => 50.0,
+                    ],
+                ],
+            ],
+            'client_timestamp' => now()->addSeconds(5)->toIso8601String(),
+        ],
+        [
+            'uuid' => $customerSyncUuid,
+            'entity_type' => 'Customer',
+            'operation_type' => 'CREATE',
+            'payload' => [
+                'uuid' => $customerUuid,
+                'document_type' => 'DNI',
+                'document_number' => '76543210',
+                'legal_name' => 'Cliente Creado Offline',
+            ],
+            'client_timestamp' => now()->toIso8601String(),
+        ],
+    ];
+
+    $response = $this->actingAs($this->user)->postJson(route('sync.batch'), [
+        'branch_id' => $this->branch->id,
+        'operations' => $operations,
+    ]);
+
+    $response->assertOk();
+    $results = collect($response->json('results'));
+
+    expect($results->firstWhere('uuid', $customerSyncUuid)['status'])->toBe('SUCCESS')
+        ->and($results->firstWhere('uuid', $saleSyncUuid)['status'])->toBe('SUCCESS');
+
+    $createdCustomer = Customer::where('uuid', $customerUuid)->firstOrFail();
+    $createdSale = Sale::where('uuid', $saleUuid)->firstOrFail();
+
+    expect($createdSale->customer_id)->toBe($createdCustomer->id)
+        ->and($createdSale->status)->toBe('CONFIRMED');
 });

@@ -177,7 +177,7 @@ export default function PurchaseCreate({
         const delayDebounceFn = setTimeout(async () => {
             setIsSearching(true);
 
-            if (!navigator.onLine) {
+            if (!isOnline || !navigator.onLine) {
                 try {
                     const localItems = await searchLocalProducts(searchQuery);
                     setSearchResults(localItems.map(p => ({
@@ -321,7 +321,7 @@ export default function PurchaseCreate({
             return;
         }
 
-        if (!navigator.onLine) {
+        if (!isOnline || !navigator.onLine) {
             try {
                 if (editingOfflineUuid) {
                     await discardOfflinePurchase(editingOfflineUuid);

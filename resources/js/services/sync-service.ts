@@ -16,6 +16,7 @@ export interface SyncBatchResult {
         status: 'SUCCESS' | 'CONFLICT' | 'FAILED';
         server_id?: number;
         sale_number?: string;
+        purchase_number?: string;
         message?: string;
     }>;
 }
@@ -37,6 +38,17 @@ export function getLastConnectivityStatus(): boolean {
 }
 
 /**
+ * Broadcasts real connectivity changes instantly across the app (badge, forms, notifications).
+ */
+export function notifyConnectivityChange(online: boolean): void {
+    const changed = lastServerReachable !== online;
+    lastServerReachable = online;
+    if (changed && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('simaq:connectivity-change', { detail: { online } }));
+    }
+}
+
+/**
  * Helper to extract the XSRF token from document cookies.
  */
 function getCsrfToken(): string {
@@ -51,7 +63,7 @@ function getCsrfToken(): string {
  */
 export async function checkServerConnectivity(timeoutMs = 3500): Promise<boolean> {
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        lastServerReachable = false;
+        notifyConnectivityChange(false);
         return false;
     }
 
@@ -65,10 +77,10 @@ export async function checkServerConnectivity(timeoutMs = 3500): Promise<boolean
             credentials: 'same-origin',
             signal: controller.signal,
         });
-        lastServerReachable = res.ok;
+        notifyConnectivityChange(res.ok);
         return res.ok;
     } catch {
-        lastServerReachable = false;
+        notifyConnectivityChange(false);
         return false;
     } finally {
         clearTimeout(timer);
@@ -76,8 +88,10 @@ export async function checkServerConnectivity(timeoutMs = 3500): Promise<boolean
 }
 
 /**
- * Silently pre-warms key offline-capable Inertia pages into the Service Worker's INERTIA_CACHE
- * so the user can open Sales, Purchases, and Dashboard even if internet drops before visiting them.
+ * Silently pre-warms:
+ * 1. Vite build JS/CSS chunks via Service Worker (/build/manifest.json)
+ * 2. HTML shell (/dashboard) into PAGES_CACHE so F5 works offline
+ * 3. All main Inertia module pages into INERTIA_CACHE so clicking sidebar links works offline
  */
 export async function warmupOfflinePages(): Promise<void> {
     if (hasWarmedUpOfflinePages || typeof window === 'undefined' || !navigator.onLine) {
@@ -86,6 +100,27 @@ export async function warmupOfflinePages(): Promise<void> {
 
     hasWarmedUpOfflinePages = true;
 
+    // 1. Ask active Service Worker to pre-cache Vite JS/CSS chunks from /build/manifest.json
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.ready
+            .then((reg) => {
+                reg.active?.postMessage({ type: 'WARMUP_BUILD_ASSETS' });
+            })
+            .catch(() => {});
+    }
+
+    // 2. Warm up full HTML shell for /dashboard (so F5 offline works cleanly)
+    try {
+        await fetch('/dashboard', {
+            method: 'GET',
+            headers: { Accept: 'text/html' },
+            credentials: 'same-origin',
+        });
+    } catch {
+        // ignore
+    }
+
+    // 3. Warm up Inertia JSON payloads for all sidebar modules in gentle batches of 3
     let inertiaVersion = '';
     try {
         const appEl = document.getElementById('app');
@@ -104,6 +139,17 @@ export async function warmupOfflinePages(): Promise<void> {
         '/sales/create',
         '/purchases',
         '/purchases/create',
+        '/quotations',
+        '/receivables',
+        '/customer-returns',
+        '/customers',
+        '/suppliers',
+        '/transfers',
+        '/closings',
+        '/inventory',
+        '/catalog/products',
+        '/reports',
+        '/alerts',
     ];
 
     const headers: Record<string, string> = {
@@ -115,17 +161,23 @@ export async function warmupOfflinePages(): Promise<void> {
         headers['X-Inertia-Version'] = inertiaVersion;
     }
 
-    for (const route of routesToWarmup) {
+    const batchSize = 3;
+    for (let i = 0; i < routesToWarmup.length; i += batchSize) {
         if (!navigator.onLine || !lastServerReachable) break;
-        try {
-            await fetch(route, {
-                method: 'GET',
-                headers,
-                credentials: 'same-origin',
-            });
-        } catch {
-            // Silently ignore individual warmup errors (e.g., user lacks permission for a module)
-        }
+        const batch = routesToWarmup.slice(i, i + batchSize);
+        await Promise.all(
+            batch.map(async (route) => {
+                try {
+                    await fetch(route, {
+                        method: 'GET',
+                        headers,
+                        credentials: 'same-origin',
+                    });
+                } catch {
+                    // Silently ignore (e.g., user lacks permission for a module)
+                }
+            })
+        );
     }
 }
 
@@ -247,6 +299,7 @@ export async function downloadCatalog(branchId?: number): Promise<CatalogDownloa
  */
 export async function enqueueOfflineSale(payload: {
     customer_id: number | string;
+    customer_uuid?: string;
     customer_name: string;
     sale_type: string;
     payment_type: 'CASH' | 'CREDIT';
@@ -687,39 +740,71 @@ export async function syncPendingOperations(branchId?: number): Promise<SyncBatc
         return { syncedCount: 0, failedCount: 0, results: [] };
     }
 
+    // Sort by dependency priority (CUSTOMER -> PURCHASE -> SALE) then client_timestamp
+    const priorityMap: Record<string, number> = { CUSTOMER: 1, PURCHASE: 2, SALE: 3 };
+    pendingOps.sort((a, b) => {
+        const pA = priorityMap[a.entity_type] ?? 99;
+        const pB = priorityMap[b.entity_type] ?? 99;
+        if (pA !== pB) return pA - pB;
+        return new Date(a.client_timestamp).getTime() - new Date(b.client_timestamp).getTime();
+    });
+
     isSyncInFlight = true;
 
     // Mark as SYNCING locally
     const ids = pendingOps.map(op => op.id!).filter(Boolean);
     await db.syncQueue.where('id').anyOf(ids).modify({ status: 'SYNCING' });
 
-    // Prepare payload formatted for Laravel SyncController
-    const operationsPayload = pendingOps.map(op => ({
-        uuid: op.uuid,
-        entity_type: op.entity_type === 'SALE' ? 'Sale' : op.entity_type === 'PURCHASE' ? 'Purchase' : op.entity_type === 'CUSTOMER' ? 'Customer' : op.entity_type,
-        operation_type: op.operation_type,
-        payload: op.payload,
-        client_timestamp: op.client_timestamp,
-    }));
+    // Split into safe micro-batches: operations with base64 file attachments go 1-by-1 to avoid Nginx 413
+    const chunks: SyncQueueItem[][] = [];
+    let currentLightweightChunk: SyncQueueItem[] = [];
 
-    const postBatch = async () => {
-        return fetch('/api/v1/sync/batch', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-XSRF-TOKEN': getCsrfToken(),
-            },
-            credentials: 'same-origin',
-            body: JSON.stringify({
-                branch_id: branchId,
-                operations: operationsPayload,
-            }),
-        });
-    };
+    for (const op of pendingOps) {
+        const hasHeavyFile = Boolean(op.payload?.document_file?.base64);
+        if (hasHeavyFile) {
+            if (currentLightweightChunk.length > 0) {
+                chunks.push(currentLightweightChunk);
+                currentLightweightChunk = [];
+            }
+            chunks.push([op]);
+        } else {
+            currentLightweightChunk.push(op);
+            if (currentLightweightChunk.length >= 20) {
+                chunks.push(currentLightweightChunk);
+                currentLightweightChunk = [];
+            }
+        }
+    }
+    if (currentLightweightChunk.length > 0) {
+        chunks.push(currentLightweightChunk);
+    }
 
-    try {
+    const sendChunk = async (chunkOps: SyncQueueItem[]) => {
+        const operationsPayload = chunkOps.map(op => ({
+            uuid: op.uuid,
+            entity_type: op.entity_type === 'SALE' ? 'Sale' : op.entity_type === 'PURCHASE' ? 'Purchase' : op.entity_type === 'CUSTOMER' ? 'Customer' : op.entity_type,
+            operation_type: op.operation_type,
+            payload: op.payload,
+            client_timestamp: op.client_timestamp,
+        }));
+
+        const postBatch = async () => {
+            return fetch('/api/v1/sync/batch', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-XSRF-TOKEN': getCsrfToken(),
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({
+                    branch_id: branchId,
+                    operations: operationsPayload,
+                }),
+            });
+        };
+
         let response = await postBatch();
 
         // Auto-recover from expired CSRF token (419) after long offline periods
@@ -741,7 +826,18 @@ export async function syncPendingOperations(branchId?: number): Promise<SyncBatc
         }
 
         const data = await response.json();
-        const results = data.results || [];
+        return data.results || [];
+    };
+
+    try {
+        const allResults: SyncBatchResult['results'] = [];
+
+        for (const chunk of chunks) {
+            const chunkResults = await sendChunk(chunk);
+            allResults.push(...chunkResults);
+        }
+
+        const results = allResults;
 
         let syncedCount = 0;
         let failedCount = 0;
@@ -760,7 +856,7 @@ export async function syncPendingOperations(branchId?: number): Promise<SyncBatc
 
                     // Also mark offlineSale
                     const saleUuid = queueItem.payload?.uuid;
-                    if (saleUuid) {
+                    if (saleUuid && queueItem.entity_type === 'SALE') {
                         await db.offlineSales.where('uuid').equals(saleUuid).modify({
                             sync_status: 'SYNCED',
                             sale_number: res.sale_number || queueItem.payload.temp_sale_number,
@@ -769,10 +865,10 @@ export async function syncPendingOperations(branchId?: number): Promise<SyncBatc
 
                     // Also mark offlinePurchase
                     const purchaseUuid = queueItem.payload?.uuid;
-                    if (purchaseUuid) {
+                    if (purchaseUuid && queueItem.entity_type === 'PURCHASE') {
                         await db.offlinePurchases.where('uuid').equals(purchaseUuid).modify({
                             sync_status: 'SYNCED',
-                            temp_purchase_number: res.sale_number || queueItem.payload.temp_purchase_number,
+                            temp_purchase_number: res.purchase_number || res.sale_number || queueItem.payload.temp_purchase_number,
                         });
                     }
                 } else {
@@ -785,13 +881,13 @@ export async function syncPendingOperations(branchId?: number): Promise<SyncBatc
 
                     // Also mark offlineSale / offlinePurchase as FAILED
                     const saleUuid = queueItem.payload?.uuid;
-                    if (saleUuid) {
+                    if (saleUuid && queueItem.entity_type === 'SALE') {
                         await db.offlineSales.where('uuid').equals(saleUuid).modify({
                             sync_status: 'FAILED',
                         });
                     }
                     const purchaseUuid = queueItem.payload?.uuid;
-                    if (purchaseUuid) {
+                    if (purchaseUuid && queueItem.entity_type === 'PURCHASE') {
                         await db.offlinePurchases.where('uuid').equals(purchaseUuid).modify({
                             sync_status: 'FAILED',
                         });
@@ -812,8 +908,8 @@ export async function syncPendingOperations(branchId?: number): Promise<SyncBatc
 
         return { syncedCount, failedCount, results };
     } catch (err: any) {
-        // Rollback SYNCING status to PENDING
-        await db.syncQueue.where('id').anyOf(ids).modify({
+        // Rollback remaining SYNCING items to PENDING
+        await db.syncQueue.where('id').anyOf(ids).filter(q => q.status === 'SYNCING').modify({
             status: 'PENDING',
             error_message: err.message,
         });

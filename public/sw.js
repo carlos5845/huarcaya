@@ -1,7 +1,7 @@
-// SIMAQ PWA Service Worker (v3 - Production VPS & Inertia SPA Ready)
-const STATIC_CACHE = 'simaq-static-v3';
-const PAGES_CACHE = 'simaq-pages-v3';
-const INERTIA_CACHE = 'simaq-inertia-v3';
+// SIMAQ PWA Service Worker (v4 - Full Offline Shell, Vite Chunks, Storage & Inertia SPA)
+const STATIC_CACHE = 'simaq-static-v4';
+const PAGES_CACHE = 'simaq-pages-v4';
+const INERTIA_CACHE = 'simaq-inertia-v4';
 const VALID_CACHES = [STATIC_CACHE, PAGES_CACHE, INERTIA_CACHE];
 
 const CORE_STATIC_ASSETS = [
@@ -51,10 +51,61 @@ self.addEventListener('activate', (event) => {
     self.clients.claim();
 });
 
-// Allow client to trigger immediate activation after deploy
+// Warm up Vite build chunks from /build/manifest.json in gentle batches
+async function warmupBuildAssets() {
+    try {
+        const res = await fetch('/build/manifest.json', { cache: 'no-cache' });
+        if (!res.ok) return;
+        const manifest = await res.json();
+        const assetUrls = new Set();
+
+        for (const entry of Object.values(manifest)) {
+            if (entry && typeof entry === 'object') {
+                if (entry.file) {
+                    assetUrls.add(`/build/${entry.file}`);
+                }
+                if (Array.isArray(entry.css)) {
+                    for (const cssFile of entry.css) {
+                        assetUrls.add(`/build/${cssFile}`);
+                    }
+                }
+            }
+        }
+
+        const cache = await caches.open(STATIC_CACHE);
+        const urls = Array.from(assetUrls);
+        const batchSize = 6;
+
+        for (let i = 0; i < urls.length; i += batchSize) {
+            const batch = urls.slice(i, i + batchSize);
+            await Promise.all(
+                batch.map(async (url) => {
+                    try {
+                        const existing = await cache.match(url);
+                        if (!existing) {
+                            const assetRes = await fetch(url);
+                            if (assetRes && assetRes.status === 200) {
+                                await cache.put(url, assetRes.clone());
+                            }
+                        }
+                    } catch {
+                        // Ignore individual asset failures
+                    }
+                })
+            );
+        }
+    } catch {
+        // Ignore if offline or manifest unavailable
+    }
+}
+
+// Allow client to trigger immediate activation or build chunk warmup
 self.addEventListener('message', (event) => {
-    if (event.data && event.data.type === 'SKIP_WAITING') {
+    if (!event.data) return;
+    if (event.data.type === 'SKIP_WAITING') {
         self.skipWaiting();
+    } else if (event.data.type === 'WARMUP_BUILD_ASSETS') {
+        event.waitUntil(warmupBuildAssets());
     }
 });
 
@@ -63,29 +114,26 @@ function isNetworkOnly(pathname) {
     return NETWORK_ONLY_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(prefix));
 }
 
-// Helper: check if URL is an immutable/static asset
+// Helper: check if URL is an immutable/static asset or uploaded storage file
 function isStaticAsset(pathname) {
     return (
         pathname.startsWith('/build/') ||
         pathname.startsWith('/icons/') ||
+        pathname.startsWith('/storage/') ||
         pathname.endsWith('.js') ||
         pathname.endsWith('.css') ||
         pathname.endsWith('.png') ||
         pathname.endsWith('.svg') ||
         pathname.endsWith('.webp') ||
         pathname.endsWith('.jpg') ||
+        pathname.endsWith('.jpeg') ||
+        pathname.endsWith('.pdf') ||
         pathname.endsWith('.woff2') ||
         pathname.endsWith('.woff')
     );
 }
 
-// Fetch Event:
-// - Non-GET / Network-only -> Network directly
-// - Static assets -> Cache First (fast offline boot)
-// - Inertia SPA requests (X-Inertia: true) -> Network First with dedicated INERTIA_CACHE (JSON)
-//   If uncached & offline, return Response.error() so Inertia triggers clean networkError handler
-//   instead of showing the plain-JSON modal.
-// - Full HTML page navigations -> Network First with dedicated PAGES_CACHE (HTML)
+// Fetch Event: ALWAYS resolve to a valid Response (never undefined)
 self.addEventListener('fetch', (event) => {
     const request = event.request;
     const url = new URL(request.url);
@@ -95,7 +143,7 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Skip non-HTTP(S) schemes (e.g., chrome-extension://) and cross-origin requests
+    // Skip non-HTTP(S) schemes and cross-origin requests
     if (!url.protocol.startsWith('http') || url.origin !== self.location.origin) {
         return;
     }
@@ -105,24 +153,25 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // 1. Static assets (Vite build chunks, icons, fonts, images): Cache First
+    // 1. Static assets (Vite build chunks, icons, fonts, images, uploaded /storage/ files): Cache First
     if (isStaticAsset(url.pathname)) {
         event.respondWith(
-            caches.open(STATIC_CACHE).then((cache) =>
-                cache.match(request).then((cachedResponse) => {
-                    if (cachedResponse) {
-                        return cachedResponse;
+            (async () => {
+                const cache = await caches.open(STATIC_CACHE);
+                const cached = await cache.match(request);
+                if (cached) {
+                    return cached;
+                }
+                try {
+                    const networkResponse = await fetch(request);
+                    if (networkResponse && networkResponse.status === 200) {
+                        await cache.put(request, networkResponse.clone());
                     }
-                    return fetch(request)
-                        .then((networkResponse) => {
-                            if (networkResponse && networkResponse.status === 200) {
-                                cache.put(request, networkResponse.clone());
-                            }
-                            return networkResponse;
-                        })
-                        .catch(() => Response.error());
-                })
-            )
+                    return networkResponse;
+                } catch {
+                    return Response.error();
+                }
+            })()
         );
         return;
     }
@@ -132,65 +181,67 @@ self.addEventListener('fetch', (event) => {
         const fullKey = url.pathname + url.search;
         const baseKey = url.pathname;
         event.respondWith(
-            caches.open(INERTIA_CACHE).then((cache) =>
-                fetch(request)
-                    .then((networkResponse) => {
-                        const contentType = networkResponse.headers.get('content-type') || '';
-                        const isInertiaResp = networkResponse.headers.get('X-Inertia') === 'true' || contentType.includes('application/json');
-                        if (networkResponse && networkResponse.status === 200 && isInertiaResp) {
-                            cache.put(fullKey, networkResponse.clone());
-                            if (fullKey !== baseKey) {
-                                cache.put(baseKey, networkResponse.clone());
-                            }
+            (async () => {
+                const cache = await caches.open(INERTIA_CACHE);
+                try {
+                    const networkResponse = await fetch(request);
+                    const contentType = networkResponse.headers.get('content-type') || '';
+                    const isInertiaResp =
+                        networkResponse.headers.get('X-Inertia') === 'true' ||
+                        contentType.includes('application/json');
+
+                    if (networkResponse && networkResponse.status === 200 && isInertiaResp) {
+                        await cache.put(fullKey, networkResponse.clone());
+                        if (fullKey !== baseKey) {
+                            await cache.put(baseKey, networkResponse.clone());
                         }
-                        return networkResponse;
-                    })
-                    .catch(() =>
-                        cache.match(fullKey).then((exactMatch) => {
-                            if (exactMatch) {
-                                return exactMatch;
-                            }
-                            return cache.match(baseKey).then((baseMatch) => {
-                                if (baseMatch) {
-                                    return baseMatch;
-                                }
-                                // Return network error so Inertia triggers router.on('networkError') cleanly
-                                return Response.error();
-                            });
-                        })
-                    )
-            )
+                    }
+                    return networkResponse;
+                } catch {
+                    const exactMatch = await cache.match(fullKey);
+                    if (exactMatch) return exactMatch;
+                    const baseMatch = await cache.match(baseKey);
+                    if (baseMatch) return baseMatch;
+                    return Response.error();
+                }
+            })()
         );
         return;
     }
 
-    // 3. Full HTML page navigations (F5 / direct URL): Network First -> PAGES_CACHE
-    if (request.mode === 'navigate') {
+    // 3. Full HTML page navigations (F5 / direct URL / PWA launch): Network First -> PAGES_CACHE
+    if (request.mode === 'navigate' || (request.headers.get('Accept') || '').includes('text/html')) {
         const cacheKey = url.pathname + url.search;
         event.respondWith(
-            caches.open(PAGES_CACHE).then((cache) =>
-                fetch(request)
-                    .then((networkResponse) => {
-                        const contentType = networkResponse.headers.get('content-type') || '';
-                        if (
-                            networkResponse &&
-                            networkResponse.status === 200 &&
-                            contentType.includes('text/html') &&
-                            !networkResponse.url.includes('/login')
-                        ) {
-                            cache.put(cacheKey, networkResponse.clone());
+            (async () => {
+                const cache = await caches.open(PAGES_CACHE);
+                try {
+                    const networkResponse = await fetch(request);
+                    const contentType = networkResponse.headers.get('content-type') || '';
+                    if (
+                        networkResponse &&
+                        networkResponse.status === 200 &&
+                        contentType.includes('text/html') &&
+                        !networkResponse.url.includes('/login')
+                    ) {
+                        await cache.put(cacheKey, networkResponse.clone());
+                        if (cacheKey !== url.pathname) {
+                            await cache.put(url.pathname, networkResponse.clone());
                         }
-                        return networkResponse;
-                    })
-                    .catch(() =>
-                        cache.match(cacheKey).then((cachedResponse) => {
-                            if (cachedResponse) {
-                                return cachedResponse;
-                            }
-                            return cache.match('/dashboard').then((dash) => dash || cache.match('/') || Response.error());
-                        })
-                    )
-            )
+                    }
+                    return networkResponse;
+                } catch {
+                    const exact = await cache.match(cacheKey);
+                    if (exact) return exact;
+                    const base = await cache.match(url.pathname);
+                    if (base) return base;
+                    const dash = await cache.match('/dashboard');
+                    if (dash) return dash;
+                    const root = await cache.match('/');
+                    if (root) return root;
+                    return Response.error();
+                }
+            })()
         );
         return;
     }

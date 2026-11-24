@@ -3,6 +3,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { initializeTheme } from '@/hooks/use-appearance';
+import { notifyConnectivityChange } from '@/services/sync-service';
 import AppLayout from '@/layouts/app-layout';
 import AuthLayout from '@/layouts/auth-layout';
 import SettingsLayout from '@/layouts/settings/layout';
@@ -45,6 +46,7 @@ if (typeof window !== 'undefined') {
     router.on('networkError', (event) => {
         // Prevent uncaught promise rejection and Inertia error modal when offline
         event.preventDefault();
+        notifyConnectivityChange(false);
         toast.warning('Módulo no disponible sin conexión', {
             id: 'global-network-error',
             description: 'Esta pantalla requiere conexión a internet. Puedes seguir registrando Ventas y Compras en modo offline.',
@@ -56,10 +58,17 @@ if (typeof window !== 'undefined') {
         const status = event.detail.response?.status;
         if (!navigator.onLine || status === 502 || status === 503 || status === 504) {
             event.preventDefault();
+            notifyConnectivityChange(false);
             toast.warning('Sin conexión con el servidor', {
                 id: 'global-network-error',
                 description: 'Este módulo no está disponible sin internet. Puedes seguir registrando Ventas y Compras en modo offline.',
             });
+        }
+    });
+
+    router.on('success', () => {
+        if (navigator.onLine) {
+            notifyConnectivityChange(true);
         }
     });
 

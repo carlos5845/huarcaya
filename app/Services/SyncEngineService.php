@@ -35,8 +35,20 @@ class SyncEngineService
     {
         $results = [];
 
-        // Sort by client_timestamp if available to preserve chronological intent
-        usort($operations, function ($a, $b) {
+        // Sort by dependency priority (Customer -> Purchase -> Sale) then client_timestamp
+        $priorityMap = [
+            'Customer' => 1,
+            'Purchase' => 2,
+            'Sale' => 3,
+        ];
+
+        usort($operations, function ($a, $b) use ($priorityMap) {
+            $pA = $priorityMap[$a['entity_type'] ?? ''] ?? 99;
+            $pB = $priorityMap[$b['entity_type'] ?? ''] ?? 99;
+            if ($pA !== $pB) {
+                return $pA <=> $pB;
+            }
+
             $tA = isset($a['client_timestamp']) ? strtotime($a['client_timestamp']) : 0;
             $tB = isset($b['client_timestamp']) ? strtotime($b['client_timestamp']) : 0;
 
@@ -229,13 +241,19 @@ class SyncEngineService
 
         DB::beginTransaction();
         try {
-            // 1. Resolve Customer
+            // 1. Resolve Customer (safe for PostgreSQL: only query bigint id when numeric)
             $customer = null;
-            if (! empty($payload['customer_id'])) {
-                $customer = Customer::find($payload['customer_id']);
+            if (! empty($payload['customer_id']) && is_numeric($payload['customer_id'])) {
+                $customer = Customer::find((int) $payload['customer_id']);
             }
             if (! $customer && ! empty($payload['customer_uuid'])) {
                 $customer = Customer::where('uuid', $payload['customer_uuid'])->first();
+            }
+            if (! $customer && ! empty($payload['customer_id']) && ! is_numeric($payload['customer_id'])) {
+                $cleanUuid = str_replace('offline-', '', (string) $payload['customer_id']);
+                $customer = Customer::where('uuid', $cleanUuid)
+                    ->orWhere('uuid', (string) $payload['customer_id'])
+                    ->first();
             }
             if (! $customer) {
                 // Fallback to generic customer
@@ -447,12 +465,20 @@ class SyncEngineService
                 }
             }
 
+            // Strip heavy base64 data from sync_operations payload once persisted to disk
+            $sanitizedPayload = $payload;
+            if (isset($sanitizedPayload['document_file']) && is_array($sanitizedPayload['document_file'])) {
+                unset($sanitizedPayload['document_file']['base64']);
+                $sanitizedPayload['document_file']['stored_path'] = $purchase->document_file_path;
+            }
+
             $syncOp->update([
                 'status' => 'SUCCESS',
                 'processed_at' => now(),
-                'payload' => array_merge($payload, [
+                'payload' => array_merge($sanitizedPayload, [
                     'server_id' => $purchase->id,
                     'purchase_number' => $purchase->purchase_number,
+                    'document_file_path' => $purchase->document_file_path,
                 ]),
             ]);
 
@@ -467,7 +493,9 @@ class SyncEngineService
 
         DB::beginTransaction();
         try {
-            $supplier = Supplier::find($payload['supplier_id']);
+            $supplier = (! empty($payload['supplier_id']) && is_numeric($payload['supplier_id']))
+                ? Supplier::find((int) $payload['supplier_id'])
+                : null;
             if (! $supplier) {
                 throw new Exception('Proveedor no encontrado en el sistema.');
             }
@@ -602,12 +630,20 @@ class SyncEngineService
 
             DB::commit();
 
+            // Strip heavy base64 data from sync_operations payload once persisted to disk
+            $sanitizedPayload = $payload;
+            if (isset($sanitizedPayload['document_file']) && is_array($sanitizedPayload['document_file'])) {
+                unset($sanitizedPayload['document_file']['base64']);
+                $sanitizedPayload['document_file']['stored_path'] = $documentFilePath;
+            }
+
             $syncOp->update([
                 'status' => 'SUCCESS',
                 'processed_at' => now(),
-                'payload' => array_merge($payload, [
+                'payload' => array_merge($sanitizedPayload, [
                     'server_id' => $purchase->id,
                     'purchase_number' => $purchase->purchase_number,
+                    'document_file_path' => $documentFilePath,
                 ]),
             ]);
 
