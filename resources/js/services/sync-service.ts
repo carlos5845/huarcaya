@@ -154,28 +154,10 @@ export async function warmupOfflinePages(explicitVersion?: string | null): Promi
     }
 
     hasWarmedUpOfflinePages = true;
+    const hasCacheApi = typeof caches !== 'undefined';
 
-    // 1. Ask active Service Worker to pre-cache Vite JS/CSS chunks from /build/manifest.json
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.ready
-            .then((reg) => {
-                reg.active?.postMessage({ type: 'WARMUP_BUILD_ASSETS' });
-            })
-            .catch(() => {});
-    }
-
-    // 2. Warm up full HTML shell for /dashboard (so F5 offline works cleanly)
-    try {
-        await fetch('/dashboard', {
-            method: 'GET',
-            headers: { Accept: 'text/html' },
-            credentials: 'same-origin',
-        });
-    } catch {
-        // ignore
-    }
-
-    // 3. Warm up Inertia JSON payloads for all sidebar modules in gentle batches of 3
+    // 1. Warm up Inertia JSON payloads FIRST (fast, small JSONs) and write directly to simaq-inertia-v4
+    // Writing directly via window.caches works even if the user did Ctrl+Shift+R (bypassing SW controller)
     const routesToWarmup = [
         '/dashboard',
         '/sales',
@@ -202,23 +184,54 @@ export async function warmupOfflinePages(explicitVersion?: string | null): Promi
         'Accept': 'text/html, application/xhtml+xml',
     };
 
-    const batchSize = 3;
+    const inertiaCache = hasCacheApi ? await caches.open('simaq-inertia-v4').catch(() => null) : null;
+    const batchSize = 4;
+
     for (let i = 0; i < routesToWarmup.length; i += batchSize) {
         if (!navigator.onLine || !lastServerReachable) break;
         const batch = routesToWarmup.slice(i, i + batchSize);
         await Promise.all(
             batch.map(async (route) => {
                 try {
-                    await fetch(route, {
+                    const res = await fetch(route, {
                         method: 'GET',
                         headers,
                         credentials: 'same-origin',
                     });
+                    if (res.ok && inertiaCache) {
+                        await inertiaCache.put(route, res.clone());
+                    }
                 } catch {
-                    // Silently ignore (e.g., user lacks permission for a module)
+                    // Silently ignore (e.g., user lacks permission or went offline mid-warmup)
                 }
             })
         );
+    }
+
+    // 2. Warm up full HTML shell for /dashboard into simaq-pages-v4 (so F5 offline works cleanly)
+    if (navigator.onLine && lastServerReachable) {
+        try {
+            const pagesCache = hasCacheApi ? await caches.open('simaq-pages-v4').catch(() => null) : null;
+            const res = await fetch('/dashboard', {
+                method: 'GET',
+                headers: { Accept: 'text/html' },
+                credentials: 'same-origin',
+            });
+            if (res.ok && pagesCache && !res.url.includes('/login')) {
+                await pagesCache.put('/dashboard', res.clone());
+            }
+        } catch {
+            // ignore
+        }
+    }
+
+    // 3. Finally ask active Service Worker to pre-cache Vite JS/CSS chunks from /build/manifest.json
+    if (navigator.onLine && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.ready
+            .then((reg) => {
+                reg.active?.postMessage({ type: 'WARMUP_BUILD_ASSETS' });
+            })
+            .catch(() => {});
     }
 }
 
