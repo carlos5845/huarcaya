@@ -231,10 +231,12 @@ return;
                                                     <td className="px-3 py-2">
                                                         <Input 
                                                             type="number" 
-                                                            min="0.01" 
-                                                            step="0.01" 
+                                                            min="1" 
+                                                            step="1" 
+                                                            placeholder="1"
                                                             className="h-8 text-xs px-2"
                                                             value={line.quantity}
+                                                            onFocus={e => e.target.select()}
                                                             onChange={e => updateLine(idx, 'quantity', e.target.value)}
                                                         />
                                                     </td>
@@ -244,8 +246,10 @@ return;
                                                                 type="number" 
                                                                 min="0" 
                                                                 step="0.01" 
+                                                                placeholder="0.00"
                                                                 className="h-8 text-xs px-2"
                                                                 value={line.unit_cost}
+                                                                onFocus={e => e.target.select()}
                                                                 onChange={e => updateLine(idx, 'unit_cost', e.target.value)}
                                                             />
                                                         </td>

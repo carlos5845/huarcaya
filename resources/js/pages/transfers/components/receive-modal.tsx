@@ -368,7 +368,9 @@ export function ReceiveModal({ isOpen, onClose, transfer }: ReceiveModalProps) {
                                                             type="number" 
                                                             min="0"
                                                             step="1"
+                                                            placeholder="0"
                                                             value={line.received_quantity}
+                                                            onFocus={(e) => e.target.select()}
                                                             onChange={(e) => handleLineChange(idx, 'received_quantity', e.target.value)}
                                                             className="h-10 text-center font-bold text-sm bg-background border-emerald-500/40 focus-visible:ring-emerald-500 text-emerald-700 dark:text-emerald-400"
                                                         />
@@ -381,7 +383,9 @@ export function ReceiveModal({ isOpen, onClose, transfer }: ReceiveModalProps) {
                                                         type="number" 
                                                         min="0"
                                                         step="1"
+                                                        placeholder="0"
                                                         value={line.damaged_quantity}
+                                                        onFocus={(e) => e.target.select()}
                                                         onChange={(e) => handleLineChange(idx, 'damaged_quantity', e.target.value)}
                                                         className="h-10 text-center font-semibold text-sm bg-background border-orange-500/40 focus-visible:ring-orange-500 text-orange-700 dark:text-orange-400"
                                                     />
@@ -393,7 +397,9 @@ export function ReceiveModal({ isOpen, onClose, transfer }: ReceiveModalProps) {
                                                         type="number" 
                                                         min="0"
                                                         step="1"
+                                                        placeholder="0"
                                                         value={line.missing_quantity}
+                                                        onFocus={(e) => e.target.select()}
                                                         onChange={(e) => handleLineChange(idx, 'missing_quantity', e.target.value)}
                                                         className="h-10 text-center font-semibold text-sm bg-background border-rose-500/40 focus-visible:ring-rose-500 text-rose-700 dark:text-rose-400"
                                                     />

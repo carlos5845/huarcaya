@@ -101,7 +101,7 @@ export default function SaleEdit({
         external_document_series: sale.external_document_series || '',
         external_document_number: sale.external_document_number || '',
         currency_code: sale.currency_code || 'PEN',
-        exchange_rate: sale.exchange_rate ? parseFloat(sale.exchange_rate) : (sale.currency_code === 'USD' ? globalExchangeRate : 1.0),
+        exchange_rate: (sale.exchange_rate ? parseFloat(sale.exchange_rate) : (sale.currency_code === 'USD' ? globalExchangeRate : 1.0)) as number | string,
         notes: sale.notes || '',
         tax_mode: initialTaxMode,
         lines: (sale.lines || []).map((l: any) => ({
@@ -110,7 +110,7 @@ export default function SaleEdit({
             internal_code: l.product_reference_snapshot || l.product?.primary_reference || l.product?.internal_code || 'S/C',
             quantity: Number(l.quantity) || 1,
             unit_price: Number(l.unit_price) || 0
-        })) as { product_id: number; product_name: string; internal_code: string; quantity: number; unit_price: number; available_quantity?: number }[],
+        })) as { product_id: number; product_name: string; internal_code: string; quantity: number | string; unit_price: number | string; available_quantity?: number }[],
     });
 
     useEffect(() => {
@@ -170,7 +170,7 @@ export default function SaleEdit({
 
         const existingIndex = data.lines.findIndex(l => l.product_id === product.id);
         if (existingIndex >= 0) {
-            const newQty = data.lines[existingIndex].quantity + 1;
+            const newQty = (Number(data.lines[existingIndex].quantity) || 0) + 1;
             if (newQty > available) {
                 toast.error(`No es posible agregar más unidades de "${product.name}". Stock disponible: ${available}.`);
                 return;
@@ -211,7 +211,7 @@ export default function SaleEdit({
     const hasValidRuc = customerDocType === 'RUC' && /^\d{11}$/.test(customerDocNumber) && customerDocNumber !== '00000000000' && !isGenericOrEmptyDoc;
 
     // Financial calculations
-    const rawSubtotal = data.lines.reduce((sum, line) => sum + (line.quantity * line.unit_price), 0);
+    const rawSubtotal = data.lines.reduce((sum, line) => sum + ((Number(line.quantity) || 0) * (Number(line.unit_price) || 0)), 0);
     let subtotalAmount = rawSubtotal;
     let taxAmount = 0;
     let finalTotal = rawSubtotal;
@@ -262,7 +262,7 @@ export default function SaleEdit({
 
         if (chosenAction === 'CONFIRM') {
             for (const line of data.lines) {
-                if (line.available_quantity !== undefined && line.quantity > line.available_quantity) {
+                if (line.available_quantity !== undefined && (Number(line.quantity) || 0) > line.available_quantity) {
                     toast.error(
                         `No es posible confirmar la venta. Stock insuficiente para "${line.product_name}". Stock disponible: ${line.available_quantity}, Solicitado: ${line.quantity}.`,
                         { duration: 6000 }
@@ -426,7 +426,12 @@ export default function SaleEdit({
                                             min="0.01" 
                                             placeholder="3.80"
                                             value={data.exchange_rate} 
-                                            onChange={e => setData('exchange_rate', parseFloat(e.target.value) || 1)} 
+                                            onFocus={e => e.target.select()}
+                                            onChange={e => setData('exchange_rate', e.target.value)} 
+                                            onBlur={() => {
+                                                const parsed = parseFloat(String(data.exchange_rate));
+                                                setData('exchange_rate', isNaN(parsed) || parsed <= 0 ? globalExchangeRate : parsed);
+                                            }}
                                             className="w-20 h-9 font-mono text-right" 
                                             required 
                                         />
@@ -566,19 +571,30 @@ export default function SaleEdit({
                                                                 type="number" 
                                                                 min="1" 
                                                                 step="1" 
+                                                                placeholder="1"
                                                                 value={line.quantity} 
-                                                                onChange={e => updateLine(idx, 'quantity', parseInt(e.target.value) || 0)} 
+                                                                onFocus={e => e.target.select()}
+                                                                onChange={e => {
+                                                                    const raw = e.target.value;
+                                                                    updateLine(idx, 'quantity', raw === '' ? '' : parseInt(raw, 10));
+                                                                }}
+                                                                onBlur={() => {
+                                                                    const parsed = parseInt(String(line.quantity), 10);
+                                                                    if (isNaN(parsed) || parsed < 1) {
+                                                                        updateLine(idx, 'quantity', 1);
+                                                                    }
+                                                                }}
                                                                 className={`h-8 text-center font-semibold ${
-                                                                    line.available_quantity !== undefined && line.quantity > line.available_quantity
+                                                                    line.available_quantity !== undefined && (Number(line.quantity) || 0) > line.available_quantity
                                                                         ? 'border-rose-500 bg-rose-50 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300 ring-1 ring-rose-500'
                                                                         : ''
                                                                 }`}
                                                             />
                                                             {line.available_quantity !== undefined && (
                                                                 <span className={`text-[10px] block mt-0.5 font-medium ${
-                                                                    line.quantity > line.available_quantity ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-muted-foreground'
+                                                                    (Number(line.quantity) || 0) > line.available_quantity ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-muted-foreground'
                                                                 }`}>
-                                                                    {line.quantity > line.available_quantity ? `Excede Disp: ${line.available_quantity}` : `Disp: ${line.available_quantity}`}
+                                                                    {(Number(line.quantity) || 0) > line.available_quantity ? `Excede Disp: ${line.available_quantity}` : `Disp: ${line.available_quantity}`}
                                                                 </span>
                                                             )}
                                                         </TableCell>
@@ -587,13 +603,19 @@ export default function SaleEdit({
                                                                 type="number" 
                                                                 min="0" 
                                                                 step="0.01" 
+                                                                placeholder="0.00"
                                                                 value={line.unit_price} 
-                                                                onChange={e => updateLine(idx, 'unit_price', parseFloat(e.target.value) || 0)} 
+                                                                onFocus={e => e.target.select()}
+                                                                onChange={e => updateLine(idx, 'unit_price', e.target.value)}
+                                                                onBlur={() => {
+                                                                    const parsed = parseFloat(String(line.unit_price));
+                                                                    updateLine(idx, 'unit_price', isNaN(parsed) || parsed < 0 ? 0 : parsed);
+                                                                }}
                                                                 className="h-8 text-right font-mono"
                                                             />
                                                         </TableCell>
                                                         <TableCell className="text-right font-semibold text-sm">
-                                                            {currencySymbol} {(line.quantity * line.unit_price).toFixed(2)}
+                                                            {currencySymbol} {((Number(line.quantity) || 0) * (Number(line.unit_price) || 0)).toFixed(2)}
                                                         </TableCell>
                                                         <TableCell className="text-center">
                                                             <Button 

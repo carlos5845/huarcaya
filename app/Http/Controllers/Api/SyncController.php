@@ -14,6 +14,17 @@ use Illuminate\Http\Request;
 class SyncController extends Controller
 {
     /**
+     * Lightweight authenticated health check that also refreshes the XSRF-TOKEN cookie.
+     */
+    public function ping(): JsonResponse
+    {
+        return response()->json([
+            'ok' => true,
+            'server_time' => now()->toIso8601String(),
+        ]);
+    }
+
+    /**
      * Download the branch catalog for offline local storage (IndexedDB).
      */
     public function getCatalog(Request $request): JsonResponse

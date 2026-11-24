@@ -486,9 +486,11 @@ export default function TransfersCreate({
                                                                 <div className="space-y-1">
                                                                     <Input 
                                                                         type="number" 
-                                                                        min="0.01" 
+                                                                        min="1" 
                                                                         step="1" 
+                                                                        placeholder="1"
                                                                         value={line.requested_quantity} 
+                                                                        onFocus={e => e.target.select()}
                                                                         onChange={e => updateLineQty(idx, e.target.value)} 
                                                                         className={cn(
                                                                             "h-8 text-center font-bold font-mono",

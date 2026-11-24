@@ -796,11 +796,12 @@ export default function ProductForm({
                                                         <Input
                                                             id="initial_stock"
                                                             type="number"
-                                                            step="any"
-                                                            min="0.01"
+                                                            step="1"
+                                                            min="1"
                                                             placeholder="0"
                                                             className="font-mono text-base"
                                                             value={data.initial_stock}
+                                                            onFocus={(e) => e.target.select()}
                                                             onChange={(e) => setData('initial_stock', e.target.value)}
                                                             required={data.has_initial_stock}
                                                         />

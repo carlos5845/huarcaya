@@ -89,7 +89,7 @@ export default function PurchaseEdit({
         document_date: purchase.document_date ? purchase.document_date.split('T')[0] : getLocalDateString(),
         tax_mode: initialTaxMode as 'INCLUDED' | 'PLUS_TAX' | 'EXEMPT',
         currency_code: purchase.currency_code || 'PEN',
-        exchange_rate: Number(purchase.exchange_rate) || globalExchangeRate,
+        exchange_rate: (Number(purchase.exchange_rate) || globalExchangeRate) as number | string,
         notes: purchase.notes || '',
         document_file: null as File | null,
         action: 'DRAFT' as 'DRAFT' | 'CONFIRM',
@@ -107,8 +107,8 @@ export default function PurchaseEdit({
             internal_code: string;
             brand_name?: string | null;
             unit_code?: string;
-            quantity: number;
-            unit_cost: number;
+            quantity: number | string;
+            unit_cost: number | string;
         }>,
     });
 
@@ -166,7 +166,7 @@ export default function PurchaseEdit({
     const addProduct = (product: any) => {
         if (data.lines.some(l => l.product_id === product.id)) {
             const updated = data.lines.map(l => 
-                l.product_id === product.id ? { ...l, quantity: l.quantity + 1 } : l
+                l.product_id === product.id ? { ...l, quantity: (Number(l.quantity) || 0) + 1 } : l
             );
             setData('lines', updated);
         } else {
@@ -187,11 +187,11 @@ export default function PurchaseEdit({
         setSearchResults([]);
     };
 
-    const updateLine = (index: number, field: 'quantity' | 'unit_cost', value: number) => {
+    const updateLine = (index: number, field: 'quantity' | 'unit_cost', value: number | string) => {
         const newLines = [...data.lines];
         newLines[index] = { 
             ...newLines[index], 
-            [field]: Math.max(0, value) 
+            [field]: value === '' ? '' : (typeof value === 'number' ? Math.max(0, value) : value)
         };
         setData('lines', newLines);
     };
@@ -585,8 +585,19 @@ export default function PurchaseEdit({
                                                                 type="number" 
                                                                 min="1" 
                                                                 step="1" 
+                                                                placeholder="1"
                                                                 value={line.quantity} 
-                                                                onChange={e => updateLine(idx, 'quantity', parseInt(e.target.value, 10) || 0)} 
+                                                                onFocus={e => e.target.select()}
+                                                                onChange={e => {
+                                                                    const raw = e.target.value;
+                                                                    updateLine(idx, 'quantity', raw === '' ? '' : parseInt(raw, 10));
+                                                                }}
+                                                                onBlur={() => {
+                                                                    const parsed = parseInt(String(line.quantity), 10);
+                                                                    if (isNaN(parsed) || parsed < 1) {
+                                                                        updateLine(idx, 'quantity', 1);
+                                                                    }
+                                                                }}
                                                                 className="h-10 text-center font-bold text-sm bg-background border-input"
                                                             />
                                                         </TableCell>
@@ -598,9 +609,15 @@ export default function PurchaseEdit({
                                                                 <Input 
                                                                     type="number" 
                                                                     min="0" 
-                                                                    step="0.001" 
+                                                                    step="0.01" 
+                                                                    placeholder="0.00"
                                                                     value={line.unit_cost} 
-                                                                    onChange={e => updateLine(idx, 'unit_cost', parseFloat(e.target.value) || 0)} 
+                                                                    onFocus={e => e.target.select()}
+                                                                    onChange={e => updateLine(idx, 'unit_cost', e.target.value)}
+                                                                    onBlur={() => {
+                                                                        const parsed = parseFloat(String(line.unit_cost));
+                                                                        updateLine(idx, 'unit_cost', isNaN(parsed) || parsed < 0 ? 0 : parsed);
+                                                                    }}
                                                                     className="h-10 pl-7 text-right font-semibold text-sm bg-background border-input"
                                                                 />
                                                             </div>
@@ -692,7 +709,12 @@ export default function PurchaseEdit({
                                         min="0.01" 
                                         disabled={data.currency_code === 'PEN'}
                                         value={data.exchange_rate} 
-                                        onChange={e => setData('exchange_rate', parseFloat(e.target.value) || 1)} 
+                                        onFocus={e => e.target.select()}
+                                        onChange={e => setData('exchange_rate', e.target.value)} 
+                                        onBlur={() => {
+                                            const parsed = parseFloat(String(data.exchange_rate));
+                                            setData('exchange_rate', isNaN(parsed) || parsed <= 0 ? globalExchangeRate : parsed);
+                                        }}
                                         className="bg-background border-input font-mono text-center disabled:opacity-60"
                                     />
                                 </div>

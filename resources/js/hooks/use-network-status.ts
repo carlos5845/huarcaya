@@ -6,6 +6,8 @@ import {
     reconcileSyncQueue,
     retryQueueOperation,
     discardQueueOperation,
+    checkServerConnectivity,
+    isSyncActive,
 } from '@/services/sync-service';
 
 export interface FailedSyncOperation {
@@ -28,7 +30,9 @@ export function useNetworkStatus(activeBranchId?: number) {
 
     const refreshPendingCount = useCallback(async () => {
         try {
-            await reconcileSyncQueue();
+            if (!isSyncActive()) {
+                await reconcileSyncQueue();
+            }
 
             const allQueue = await db.syncQueue.filter(q => q.status !== 'SYNCED').toArray();
             const pending = allQueue.filter(q => q.status === 'PENDING' || q.status === 'SYNCING').length;
@@ -118,17 +122,44 @@ export function useNetworkStatus(activeBranchId?: number) {
 
         refreshPendingCount();
 
-        // Always sync local catalog with server when online to wipe phantom stocks and keep data fresh
-        if (typeof navigator !== 'undefined' && navigator.onLine) {
-            downloadCatalog(activeBranchId).catch(err => {
-                console.error('Error actualizando catálogo offline:', err);
-            });
-        }
+        // Initial real-connectivity check & catalog/sync boot
+        const runOnlineBootstrap = async () => {
+            const reachable = await checkServerConnectivity();
+            setIsOnline(reachable);
+            if (!reachable) return;
 
-        const handleOnline = () => {
-            setIsOnline(true);
-            triggerSync();
-            downloadCatalog(activeBranchId).catch(() => {});
+            const pending = await db.syncQueue
+                .filter(q => q.status === 'PENDING' || q.status === 'FAILED')
+                .count();
+
+            if (pending > 0) {
+                // triggerSync() automatically refreshes the catalog after syncing
+                await triggerSync();
+            } else {
+                downloadCatalog(activeBranchId).catch(err => {
+                    console.error('Error actualizando catálogo offline:', err);
+                });
+            }
+        };
+
+        runOnlineBootstrap();
+
+        const handleOnline = async () => {
+            // Brief delay to allow DNS/routing to stabilize after WiFi reconnects
+            await new Promise(resolve => setTimeout(resolve, 800));
+            const reachable = await checkServerConnectivity();
+            setIsOnline(reachable);
+            if (!reachable) return;
+
+            const pending = await db.syncQueue
+                .filter(q => q.status === 'PENDING' || q.status === 'FAILED')
+                .count();
+
+            if (pending > 0) {
+                await triggerSync();
+            } else {
+                downloadCatalog(activeBranchId).catch(() => {});
+            }
         };
 
         const handleOffline = () => {
@@ -139,20 +170,49 @@ export function useNetworkStatus(activeBranchId?: number) {
             refreshPendingCount();
         };
 
+        const handleVisibilityChange = async () => {
+            if (document.visibilityState === 'visible') {
+                const reachable = await checkServerConnectivity();
+                setIsOnline(reachable);
+                if (reachable && !isSyncActive()) {
+                    const pending = await db.syncQueue.filter(q => q.status === 'PENDING').count();
+                    if (pending > 0) {
+                        triggerSync();
+                    }
+                }
+            }
+        };
+
         window.addEventListener('online', handleOnline);
         window.addEventListener('offline', handleOffline);
         window.addEventListener('simaq:sync-finished', handleSyncFinished);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
 
-        // Polling pending operations count periodically
-        const interval = setInterval(refreshPendingCount, 5000);
+        // Polling pending operations count every 5s
+        const countInterval = setInterval(refreshPendingCount, 5000);
+
+        // Real connectivity check + automatic retry every 30s if pending operations exist
+        const retryInterval = setInterval(async () => {
+            if (isSyncActive()) return;
+            const reachable = await checkServerConnectivity();
+            setIsOnline(reachable);
+            if (reachable) {
+                const pending = await db.syncQueue.filter(q => q.status === 'PENDING').count();
+                if (pending > 0) {
+                    triggerSync();
+                }
+            }
+        }, 30000);
 
         return () => {
             window.removeEventListener('online', handleOnline);
             window.removeEventListener('offline', handleOffline);
             window.removeEventListener('simaq:sync-finished', handleSyncFinished);
-            clearInterval(interval);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            clearInterval(countInterval);
+            clearInterval(retryInterval);
         };
-    }, [refreshPendingCount, triggerSync]);
+    }, [activeBranchId, refreshPendingCount, triggerSync]);
 
     return {
         isMounted,

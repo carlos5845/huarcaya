@@ -635,11 +635,19 @@ export default function ConflictShow({ conflict, serverContext }: ConflictProps)
                                                     type="number"
                                                     min="0"
                                                     step="1"
+                                                    placeholder="0"
                                                     value={line.quantity}
+                                                    onFocus={(e) => e.target.select()}
                                                     onChange={(e) => {
-                                                        const val = Number(e.target.value);
+                                                        const raw = e.target.value;
                                                         const updated = [...correctedLines];
-                                                        updated[idx].quantity = val;
+                                                        updated[idx].quantity = raw === '' ? '' : parseInt(raw, 10);
+                                                        setCorrectedLines(updated);
+                                                    }}
+                                                    onBlur={() => {
+                                                        const parsed = parseInt(String(line.quantity), 10);
+                                                        const updated = [...correctedLines];
+                                                        updated[idx].quantity = isNaN(parsed) || parsed < 0 ? 0 : parsed;
                                                         setCorrectedLines(updated);
                                                     }}
                                                     className="h-8 text-xs text-center w-20 mx-auto"
@@ -651,11 +659,18 @@ export default function ConflictShow({ conflict, serverContext }: ConflictProps)
                                                     type="number"
                                                     min="0"
                                                     step="0.01"
+                                                    placeholder="0.00"
                                                     value={line.unit_price}
+                                                    onFocus={(e) => e.target.select()}
                                                     onChange={(e) => {
-                                                        const val = Number(e.target.value);
                                                         const updated = [...correctedLines];
-                                                        updated[idx].unit_price = val;
+                                                        updated[idx].unit_price = e.target.value;
+                                                        setCorrectedLines(updated);
+                                                    }}
+                                                    onBlur={() => {
+                                                        const parsed = parseFloat(String(line.unit_price));
+                                                        const updated = [...correctedLines];
+                                                        updated[idx].unit_price = isNaN(parsed) || parsed < 0 ? 0 : parsed;
                                                         setCorrectedLines(updated);
                                                     }}
                                                     className="h-8 text-xs text-right w-24 ml-auto"

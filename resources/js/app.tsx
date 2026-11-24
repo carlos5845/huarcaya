@@ -88,9 +88,15 @@ if (typeof window !== 'undefined') {
 // Register PWA Service Worker
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').catch((err) => {
-            console.warn('[PWA] ServiceWorker registration failed:', err);
-        });
+        navigator.serviceWorker
+            .register('/sw.js', { updateViaCache: 'none' })
+            .then((registration) => {
+                // Check for SW updates periodically when online
+                registration.update().catch(() => {});
+            })
+            .catch((err) => {
+                console.warn('[PWA] ServiceWorker registration failed:', err);
+            });
     });
 }
 

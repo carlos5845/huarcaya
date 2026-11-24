@@ -20,6 +20,13 @@ export interface SyncBatchResult {
     }>;
 }
 
+// In-memory lock to prevent concurrent batch syncs or premature SYNCING resets
+let isSyncInFlight = false;
+
+export function isSyncActive(): boolean {
+    return isSyncInFlight;
+}
+
 /**
  * Helper to extract the XSRF token from document cookies.
  */
@@ -30,7 +37,66 @@ function getCsrfToken(): string {
 }
 
 /**
+ * Lightweight real-connectivity check against the server (/up) with short timeout.
+ * Prevents false positives when WiFi is connected to a router without internet access.
+ */
+export async function checkServerConnectivity(timeoutMs = 3500): Promise<boolean> {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        return false;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+        const res = await fetch('/up', {
+            method: 'GET',
+            cache: 'no-store',
+            credentials: 'same-origin',
+            signal: controller.signal,
+        });
+        return res.ok;
+    } catch {
+        return false;
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+/**
+ * Refreshes the XSRF-TOKEN cookie and checks whether the user's session is still valid.
+ */
+export async function refreshCsrfSession(): Promise<'ok' | 'unauthenticated' | 'offline'> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+
+    try {
+        const res = await fetch('/api/v1/sync/ping', {
+            method: 'GET',
+            cache: 'no-store',
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            credentials: 'same-origin',
+            signal: controller.signal,
+        });
+
+        if (res.status === 401 || res.status === 403 || res.redirected) {
+            return 'unauthenticated';
+        }
+
+        return res.ok ? 'ok' : 'offline';
+    } catch {
+        return 'offline';
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+/**
  * Downloads full catalog and branch inventory to store in IndexedDB.
+ * Preserves unsynced offline customers and adjusts local stock for pending offline sales/purchases.
  */
 export async function downloadCatalog(branchId?: number): Promise<CatalogDownloadResult> {
     const url = branchId ? `/api/v1/sync/catalog?branch_id=${branchId}` : '/api/v1/sync/catalog';
@@ -48,19 +114,52 @@ export async function downloadCatalog(branchId?: number): Promise<CatalogDownloa
 
     const data = await response.json();
 
-    // Store in IndexedDB
-    await db.transaction('rw', [db.products, db.customers, db.paymentMethods], async () => {
+    // Store in IndexedDB while preserving pending offline state
+    await db.transaction('rw', [db.products, db.customers, db.paymentMethods, db.offlineSales, db.offlinePurchases], async () => {
         if (data.products && Array.isArray(data.products)) {
+            // Compute stock delta from still-pending offline sales & purchases so we don't show phantom stock
+            const pendingSales = await db.offlineSales
+                .filter(s => (s.sync_status === 'PENDING' || s.sync_status === 'SYNCING') && s.action !== 'DRAFT')
+                .toArray();
+            const pendingPurchases = await db.offlinePurchases
+                .filter(p => (p.sync_status === 'PENDING' || p.sync_status === 'SYNCING') && p.action === 'CONFIRM')
+                .toArray();
+
+            const stockDeltaByProduct = new Map<number, number>();
+            for (const sale of pendingSales) {
+                for (const line of sale.lines) {
+                    stockDeltaByProduct.set(line.product_id, (stockDeltaByProduct.get(line.product_id) || 0) - Number(line.quantity || 0));
+                }
+            }
+            for (const purchase of pendingPurchases) {
+                for (const line of purchase.lines) {
+                    stockDeltaByProduct.set(line.product_id, (stockDeltaByProduct.get(line.product_id) || 0) + Number(line.quantity || 0));
+                }
+            }
+
             await db.products.clear();
-            await db.products.bulkPut(data.products.map((p: any) => ({
-                ...p,
-                branch_id: data.branch?.id ?? 0,
-            })));
+            await db.products.bulkPut(data.products.map((p: any) => {
+                const delta = stockDeltaByProduct.get(p.id) || 0;
+                return {
+                    ...p,
+                    local_stock: Math.max(0, Number(p.local_stock || 0) + delta),
+                    branch_id: data.branch?.id ?? 0,
+                };
+            }));
         }
 
         if (data.customers && Array.isArray(data.customers)) {
+            // Preserve unsynced offline-created customers
+            const offlineCustomers = await db.customers.filter(c => Boolean(c.is_offline)).toArray();
+            const serverDocNumbers = new Set(data.customers.map((c: any) => c.document_number).filter(Boolean));
+            const serverUuids = new Set(data.customers.map((c: any) => c.uuid).filter(Boolean));
+
+            const stillUnsyncedOfflineCustomers = offlineCustomers.filter(
+                c => !serverUuids.has(c.uuid) && (!c.document_number || !serverDocNumbers.has(c.document_number))
+            );
+
             await db.customers.clear();
-            await db.customers.bulkPut(data.customers);
+            await db.customers.bulkPut([...data.customers, ...stillUnsyncedOfflineCustomers]);
         }
 
         if (data.payment_methods && Array.isArray(data.payment_methods)) {
@@ -358,8 +457,10 @@ export async function discardOfflinePurchase(purchaseUuid: string): Promise<bool
 export async function reconcileSyncQueue(): Promise<void> {
     try {
         await db.transaction('rw', [db.syncQueue, db.offlineSales, db.offlinePurchases], async () => {
-            // 1. Reset stale SYNCING items to PENDING
-            await db.syncQueue.where('status').equals('SYNCING').modify({ status: 'PENDING' });
+            // 1. Only reset stale SYNCING items to PENDING when no sync batch is actively in flight
+            if (!isSyncInFlight) {
+                await db.syncQueue.where('status').equals('SYNCING').modify({ status: 'PENDING' });
+            }
 
             const queueItems = await db.syncQueue.toArray();
             const queueSaleUuids = new Set(
@@ -425,7 +526,7 @@ export async function reconcileSyncQueue(): Promise<void> {
                             supplier_document_series: purchase.supplier_document_series,
                             supplier_document_number: purchase.supplier_document_number,
                             document_date: purchase.document_date,
-                            tax_mode: 'EXONERATED',
+                            tax_mode: 'EXEMPT',
                             currency_code: purchase.currency_code,
                             exchange_rate: 1,
                             action: purchase.action,
@@ -504,6 +605,10 @@ export async function discardQueueOperation(queueId: number): Promise<boolean> {
  * Synchronize all pending and failed operations to the server batch endpoint.
  */
 export async function syncPendingOperations(branchId?: number): Promise<SyncBatchResult> {
+    if (isSyncInFlight) {
+        return { syncedCount: 0, failedCount: 0, results: [] };
+    }
+
     // 1. Reconcile any missing queue items and unstick frozen SYNCING states
     await reconcileSyncQueue();
 
@@ -515,6 +620,8 @@ export async function syncPendingOperations(branchId?: number): Promise<SyncBatc
     if (pendingOps.length === 0) {
         return { syncedCount: 0, failedCount: 0, results: [] };
     }
+
+    isSyncInFlight = true;
 
     // Mark as SYNCING locally
     const ids = pendingOps.map(op => op.id!).filter(Boolean);
@@ -529,8 +636,8 @@ export async function syncPendingOperations(branchId?: number): Promise<SyncBatc
         client_timestamp: op.client_timestamp,
     }));
 
-    try {
-        const response = await fetch('/api/v1/sync/batch', {
+    const postBatch = async () => {
+        return fetch('/api/v1/sync/batch', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -544,6 +651,24 @@ export async function syncPendingOperations(branchId?: number): Promise<SyncBatc
                 operations: operationsPayload,
             }),
         });
+    };
+
+    try {
+        let response = await postBatch();
+
+        // Auto-recover from expired CSRF token (419) after long offline periods
+        if (response.status === 419) {
+            const sessionState = await refreshCsrfSession();
+            if (sessionState === 'ok') {
+                response = await postBatch();
+            } else if (sessionState === 'unauthenticated') {
+                throw new Error('Tu sesión expiró mientras estabas sin internet. Inicia sesión nuevamente para sincronizar tus operaciones pendientes.');
+            }
+        }
+
+        if (response.status === 401 || response.status === 403) {
+            throw new Error('Tu sesión expiró mientras estabas sin internet. Inicia sesión nuevamente para sincronizar tus operaciones pendientes.');
+        }
 
         if (!response.ok) {
             throw new Error(`Error en sincronización (${response.status}): ${response.statusText}`);
@@ -627,6 +752,8 @@ export async function syncPendingOperations(branchId?: number): Promise<SyncBatc
             error_message: err.message,
         });
         throw err;
+    } finally {
+        isSyncInFlight = false;
     }
 }
 

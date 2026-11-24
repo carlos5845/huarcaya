@@ -44,6 +44,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
+use Laravel\Fortify\Features;
 
 Route::inertia('/', 'welcome')->name('home');
 
@@ -280,6 +281,7 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/api/notifications/read-all', [NotificationController::class, 'markAllAsRead'])->name('notifications.readAll');
 
     // Offline Sync Endpoints
+    Route::get('/api/v1/sync/ping', [SyncController::class, 'ping'])->name('sync.ping');
     Route::get('/api/v1/sync/catalog', [SyncController::class, 'getCatalog'])->name('sync.catalog');
     Route::post('/api/v1/sync/batch', [SyncController::class, 'syncBatch'])->name('sync.batch');
 
@@ -294,6 +296,8 @@ Route::post('/auth/reset-password-otp', [OtpPasswordResetController::class, 'res
 Route::middleware('guest')->group(function () {
     Route::inertia('/login', 'auth/login')->name('login');
     Route::inertia('/forgot-password', 'auth/forgot-password')->name('password.request');
-    Route::inertia('/two-factor-challenge', 'auth/two-factor-challenge')->name('two-factor.login');
+    if (Features::enabled(Features::twoFactorAuthentication())) {
+        Route::inertia('/two-factor-challenge', 'auth/two-factor-challenge')->name('two-factor.login');
+    }
 
 });

@@ -66,9 +66,9 @@ type QuotationLineState = {
     product_name: string;
     unit_code: string;
     current_stock: number;
-    quantity: number;
-    unit_price: number;
-    discount_amount: number;
+    quantity: number | string;
+    unit_price: number | string;
+    discount_amount: number | string;
     delivery_time_line: string;
     notes: string;
 };
@@ -132,7 +132,7 @@ export default function QuotationsCreate({ branches, default_branch_id, tentativ
         branch_id: default_branch_id ? String(default_branch_id) : (branches[0]?.id ? String(branches[0].id) : ''),
         customer_id: '',
         operation_date: todayStr,
-        validity_days: 15,
+        validity_days: 15 as number | string,
         currency_code: 'PEN',
         exchange_rate: exchange_rate || 3.80,
         tax_mode: 'INCLUDED',
@@ -180,7 +180,7 @@ export default function QuotationsCreate({ branches, default_branch_id, tentativ
 
         if (existingIdx >= 0) {
             const updatedLines = [...data.lines];
-            updatedLines[existingIdx].quantity += 1;
+            updatedLines[existingIdx].quantity = (Number(updatedLines[existingIdx].quantity) || 0) + 1;
             setData('lines', updatedLines);
             toast.info(`Cantidad actualizada para ${prod.name}`);
         } else {
@@ -390,8 +390,20 @@ export default function QuotationsCreate({ branches, default_branch_id, tentativ
                                             type="number"
                                             min={1}
                                             max={180}
+                                            step="1"
+                                            placeholder="15"
                                             value={data.validity_days}
-                                            onChange={(e) => setData('validity_days', Number(e.target.value))}
+                                            onFocus={(e) => e.target.select()}
+                                            onChange={(e) => {
+                                                const raw = e.target.value;
+                                                setData('validity_days', raw === '' ? '' : parseInt(raw, 10));
+                                            }}
+                                            onBlur={() => {
+                                                const parsed = parseInt(String(data.validity_days), 10);
+                                                if (isNaN(parsed) || parsed < 1) {
+                                                    setData('validity_days', 15);
+                                                }
+                                            }}
                                             className="h-9"
                                         />
                                     </div>
@@ -626,7 +638,7 @@ export default function QuotationsCreate({ branches, default_branch_id, tentativ
                                             ) : (
                                                 data.lines.map((line, idx) => {
                                                     const isSpecial = line.current_stock <= 0;
-                                                    const lineTotal = Math.max(0, (line.quantity * line.unit_price) - (line.discount_amount || 0));
+                                                    const lineTotal = Math.max(0, ((Number(line.quantity) || 0) * (Number(line.unit_price) || 0)) - (Number(line.discount_amount) || 0));
                                                     return (
                                                         <tr key={idx} className={isSpecial ? 'bg-amber-50/30 dark:bg-amber-950/10' : ''}>
                                                             <td className="py-2.5 px-3 space-y-1">
@@ -658,10 +670,21 @@ export default function QuotationsCreate({ branches, default_branch_id, tentativ
                                                             <td className="py-2.5 px-3 text-center">
                                                                 <Input
                                                                     type="number"
-                                                                    min={0.01}
-                                                                    step="any"
+                                                                    min={1}
+                                                                    step="1"
+                                                                    placeholder="1"
                                                                     value={line.quantity}
-                                                                    onChange={(e) => handleUpdateLine(idx, 'quantity', Number(e.target.value))}
+                                                                    onFocus={(e) => e.target.select()}
+                                                                    onChange={(e) => {
+                                                                        const raw = e.target.value;
+                                                                        handleUpdateLine(idx, 'quantity', raw === '' ? '' : parseInt(raw, 10));
+                                                                    }}
+                                                                    onBlur={() => {
+                                                                        const parsed = parseInt(String(line.quantity), 10);
+                                                                        if (isNaN(parsed) || parsed < 1) {
+                                                                            handleUpdateLine(idx, 'quantity', 1);
+                                                                        }
+                                                                    }}
                                                                     className="h-8 text-center text-xs"
                                                                 />
                                                             </td>
@@ -670,8 +693,14 @@ export default function QuotationsCreate({ branches, default_branch_id, tentativ
                                                                     type="number"
                                                                     min={0}
                                                                     step="0.01"
+                                                                    placeholder="0.00"
                                                                     value={line.unit_price}
-                                                                    onChange={(e) => handleUpdateLine(idx, 'unit_price', Number(e.target.value))}
+                                                                    onFocus={(e) => e.target.select()}
+                                                                    onChange={(e) => handleUpdateLine(idx, 'unit_price', e.target.value)}
+                                                                    onBlur={() => {
+                                                                        const parsed = parseFloat(String(line.unit_price));
+                                                                        handleUpdateLine(idx, 'unit_price', isNaN(parsed) || parsed < 0 ? 0 : parsed);
+                                                                    }}
                                                                     className="h-8 text-right text-xs"
                                                                 />
                                                             </td>
@@ -680,8 +709,14 @@ export default function QuotationsCreate({ branches, default_branch_id, tentativ
                                                                     type="number"
                                                                     min={0}
                                                                     step="0.01"
+                                                                    placeholder="0.00"
                                                                     value={line.discount_amount}
-                                                                    onChange={(e) => handleUpdateLine(idx, 'discount_amount', Number(e.target.value))}
+                                                                    onFocus={(e) => e.target.select()}
+                                                                    onChange={(e) => handleUpdateLine(idx, 'discount_amount', e.target.value)}
+                                                                    onBlur={() => {
+                                                                        const parsed = parseFloat(String(line.discount_amount));
+                                                                        handleUpdateLine(idx, 'discount_amount', isNaN(parsed) || parsed < 0 ? 0 : parsed);
+                                                                    }}
                                                                     className="h-8 text-right text-xs"
                                                                 />
                                                             </td>

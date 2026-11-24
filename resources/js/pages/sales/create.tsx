@@ -130,7 +130,7 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
         external_document_series: '',
         external_document_number: '',
         currency_code: 'PEN',
-        exchange_rate: globalExchangeRate,
+        exchange_rate: globalExchangeRate as number | string,
         notes: '',
         tax_mode: 'INCLUDED',
         from_quotation_id: from_quotation?.id || null,
@@ -138,8 +138,8 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
             product_id: number;
             product_name: string;
             internal_code: string;
-            quantity: number;
-            unit_price: number;
+            quantity: number | string;
+            unit_price: number | string;
             available_quantity?: number;
         }[],
     });
@@ -197,8 +197,8 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
                         product_id: l.product_id,
                         product_name: l.product_name,
                         internal_code: '-',
-                        quantity: l.quantity,
-                        unit_price: l.unit_price,
+                        quantity: Number(l.quantity) || 0,
+                        unit_price: Number(l.unit_price) || 0,
                     })),
                 });
                 setEditingOfflineUuid(offlineUuid);
@@ -316,7 +316,7 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
         searchResults.length = 0;
     };
 
-    const updateLine = (index: number, field: string, value: number) => {
+    const updateLine = (index: number, field: string, value: number | string) => {
         const newLines = [...data.lines];
         newLines[index] = { ...newLines[index], [field]: value };
         setData('lines', newLines);
@@ -326,7 +326,7 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
         setData('lines', data.lines.filter((_, i) => i !== index));
     };
 
-    const total = data.lines.reduce((acc, line) => acc + (line.quantity * line.unit_price), 0);
+    const total = data.lines.reduce((acc, line) => acc + ((Number(line.quantity) || 0) * (Number(line.unit_price) || 0)), 0);
     const subtotalAmount = data.tax_mode === 'INCLUDED' 
         ? (total / 1.18) 
         : total;
@@ -354,7 +354,7 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
     const changeAmount = Math.max(0, (parseFloat(data.amount_received) || 0) - finalTotal);
     const initialPay = parseFloat(data.initial_payment_amount || '0');
     const debtAmount = Math.max(0, finalTotal - initialPay);
-    const hasStockDeficit = data.lines.some(l => l.available_quantity !== undefined && l.quantity > l.available_quantity);
+    const hasStockDeficit = data.lines.some(l => l.available_quantity !== undefined && (Number(l.quantity) || 0) > l.available_quantity);
 
     const handleFormSubmit = async (chosenAction: 'CONFIRM' | 'DRAFT') => {
         if (data.lines.length === 0) {
@@ -395,7 +395,7 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
                     } catch {}
                 }
 
-                if (availableStock !== undefined && line.quantity > availableStock) {
+                if (availableStock !== undefined && (Number(line.quantity) || 0) > availableStock) {
                     toast.error(
                         `No es posible confirmar la venta. Stock insuficiente para "${line.product_name}". Stock disponible: ${availableStock}, Solicitado: ${line.quantity}.`,
                         { duration: 6000 }
@@ -432,8 +432,8 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
                         product_id: l.product_id,
                         product_name: l.product_name,
                         internal_code: l.internal_code,
-                        quantity: l.quantity,
-                        unit_price: l.unit_price,
+                        quantity: Number(l.quantity) || 0,
+                        unit_price: Number(l.unit_price) || 0,
                     })),
                 });
 
@@ -614,7 +614,12 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
                                             min="0.01" 
                                             placeholder="3.80"
                                             value={data.exchange_rate} 
-                                            onChange={e => setData('exchange_rate', parseFloat(e.target.value) || 1)} 
+                                            onFocus={e => e.target.select()}
+                                            onChange={e => setData('exchange_rate', e.target.value)} 
+                                            onBlur={() => {
+                                                const parsed = parseFloat(String(data.exchange_rate));
+                                                setData('exchange_rate', isNaN(parsed) || parsed <= 0 ? globalExchangeRate : parsed);
+                                            }}
                                             className="w-20 h-9 font-mono text-right" 
                                             required 
                                         />
@@ -761,19 +766,30 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
                                                                 type="number" 
                                                                 min="1" 
                                                                 step="1" 
+                                                                placeholder="1"
                                                                 value={line.quantity} 
-                                                                onChange={e => updateLine(idx, 'quantity', parseInt(e.target.value) || 0)} 
+                                                                onFocus={e => e.target.select()}
+                                                                onChange={e => {
+                                                                    const raw = e.target.value;
+                                                                    updateLine(idx, 'quantity', raw === '' ? '' : parseInt(raw, 10));
+                                                                }}
+                                                                onBlur={() => {
+                                                                    const parsed = parseInt(String(line.quantity), 10);
+                                                                    if (isNaN(parsed) || parsed < 1) {
+                                                                        updateLine(idx, 'quantity', 1);
+                                                                    }
+                                                                }}
                                                                 className={`h-8 text-center font-semibold ${
-                                                                    line.available_quantity !== undefined && line.quantity > line.available_quantity
+                                                                    line.available_quantity !== undefined && (Number(line.quantity) || 0) > line.available_quantity
                                                                         ? 'border-rose-500 bg-rose-50 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300 ring-1 ring-rose-500'
                                                                         : ''
                                                                 }`}
                                                             />
                                                             {line.available_quantity !== undefined && (
                                                                 <span className={`text-[10px] block mt-0.5 font-medium ${
-                                                                    line.quantity > line.available_quantity ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-muted-foreground'
+                                                                    (Number(line.quantity) || 0) > line.available_quantity ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-muted-foreground'
                                                                 }`}>
-                                                                    {line.quantity > line.available_quantity ? `Excede Disp: ${line.available_quantity}` : `Disp: ${line.available_quantity}`}
+                                                                    {(Number(line.quantity) || 0) > line.available_quantity ? `Excede Disp: ${line.available_quantity}` : `Disp: ${line.available_quantity}`}
                                                                 </span>
                                                             )}
                                                         </TableCell>
@@ -782,13 +798,19 @@ export default function SaleCreate({ customers, generic_customer_id, payment_met
                                                                 type="number" 
                                                                 min="0" 
                                                                 step="0.01" 
+                                                                placeholder="0.00"
                                                                 value={line.unit_price} 
-                                                                onChange={e => updateLine(idx, 'unit_price', parseFloat(e.target.value) || 0)} 
+                                                                onFocus={e => e.target.select()}
+                                                                onChange={e => updateLine(idx, 'unit_price', e.target.value)}
+                                                                onBlur={() => {
+                                                                    const parsed = parseFloat(String(line.unit_price));
+                                                                    updateLine(idx, 'unit_price', isNaN(parsed) || parsed < 0 ? 0 : parsed);
+                                                                }}
                                                                 className="h-8 text-right font-mono"
                                                             />
                                                         </TableCell>
                                                         <TableCell className="text-right font-semibold text-sm">
-                                                            {currencySymbol} {(line.quantity * line.unit_price).toFixed(2)}
+                                                            {currencySymbol} {((Number(line.quantity) || 0) * (Number(line.unit_price) || 0)).toFixed(2)}
                                                         </TableCell>
                                                         <TableCell className="text-center">
                                                             <Button 
