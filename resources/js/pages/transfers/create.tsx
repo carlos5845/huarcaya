@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
+import { getLastConnectivityStatus, searchLocalProducts } from '@/services/sync-service';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -70,18 +71,49 @@ export default function TransfersCreate({
             return;
         }
 
-        const delayDebounceFn = setTimeout(() => {
+        const delayDebounceFn = setTimeout(async () => {
             setIsSearching(true);
+
+            const loadLocal = async () => {
+                const localItems = await searchLocalProducts(searchQuery, data.source_branch_id ? Number(data.source_branch_id) : undefined);
+                setSearchResults(
+                    localItems.map((p: any) => ({
+                        id: p.id,
+                        name: p.name,
+                        primary_reference: p.primary_reference,
+                        internal_code: p.barcode,
+                        available_quantity: p.local_stock,
+                        unit: { code: p.unit_code || 'NIU' },
+                        brand: p.brand_name ? { name: p.brand_name } : null,
+                    }))
+                );
+            };
+
+            if (!navigator.onLine || !getLastConnectivityStatus()) {
+                try {
+                    await loadLocal();
+                } finally {
+                    setIsSearching(false);
+                }
+                return;
+            }
+
             const branchQuery = data.source_branch_id ? `&branch_id=${data.source_branch_id}` : '';
-            fetch(`/products/search?q=${encodeURIComponent(searchQuery)}${branchQuery}`, {
-                headers: { 'Accept': 'application/json' }
-            })
-            .then(res => res.json())
-            .then(resultData => {
-                setSearchResults(resultData);
+            try {
+                const res = await fetch(`/products/search?q=${encodeURIComponent(searchQuery)}${branchQuery}`, {
+                    headers: { 'Accept': 'application/json' }
+                });
+                if (res.ok) {
+                    const resultData = await res.json();
+                    setSearchResults(resultData);
+                } else {
+                    await loadLocal();
+                }
+            } catch {
+                await loadLocal().catch(() => {});
+            } finally {
                 setIsSearching(false);
-            })
-            .catch(() => setIsSearching(false));
+            }
         }, 300);
 
         return () => clearTimeout(delayDebounceFn);

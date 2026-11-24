@@ -1,4 +1,5 @@
 import { Head, Link, router } from '@inertiajs/react';
+import { getLastConnectivityStatus, searchLocalProducts } from '@/services/sync-service';
 import { 
     useReactTable, 
     getCoreRowModel, 
@@ -85,11 +86,31 @@ const columnLabels: Record<string, string> = {
 
 export default function ProductsIndex({ products, filters, flash }: Props) {
     const [searchTerm, setSearchTerm] = useState(filters.search || '');
+    const [offlineResults, setOfflineResults] = useState<Product[] | null>(null);
     const [sorting, setSorting] = useState<SortingState>([]);
     const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
 
-    const handleSearch = (e: React.FormEvent) => {
+    const handleSearch = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!navigator.onLine || !getLastConnectivityStatus()) {
+            const localItems = await searchLocalProducts(searchTerm, undefined, 50);
+            setOfflineResults(
+                localItems.map((p: any) => ({
+                    id: p.id,
+                    uuid: p.uuid,
+                    primary_reference: p.primary_reference || '-',
+                    internal_code: p.barcode || null,
+                    name: p.name,
+                    product_type: p.product_type || 'SIMPLE',
+                    status: 'ACTIVE',
+                    brand: p.brand_name ? { id: 0, name: p.brand_name } : null,
+                    category: p.category_name ? { id: 0, name: p.category_name } : null,
+                    unit: p.unit_code ? { id: 0, name: p.unit_code, symbol: p.unit_code } : null,
+                }))
+            );
+            return;
+        }
+        setOfflineResults(null);
         router.get('/products', { search: searchTerm }, { preserveState: true });
     };
 
@@ -121,7 +142,7 @@ export default function ProductsIndex({ products, filters, flash }: Props) {
         }
     };
 
-    const productList = useMemo(() => products.data || [], [products.data]);
+    const productList = useMemo(() => offlineResults ?? (products.data || []), [offlineResults, products.data]);
 
     const columns = useMemo<ColumnDef<Product>[]>(() => [
         {

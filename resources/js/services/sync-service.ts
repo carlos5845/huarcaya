@@ -165,16 +165,32 @@ export async function warmupOfflinePages(explicitVersion?: string | null): Promi
         '/purchases',
         '/purchases/create',
         '/quotations',
+        '/quotations/create',
         '/receivables',
         '/customer-returns',
+        '/customer-returns/create',
         '/customers',
         '/suppliers',
         '/transfers',
+        '/transfers/create',
         '/closings',
+        '/closings/create',
         '/inventory',
+        '/inventory/adjustments',
+        '/inventory/adjustments/create',
         '/products',
+        '/products/create',
+        '/kardex',
+        '/catalog/import',
+        '/catalog/brands',
+        '/catalog/categories',
+        '/catalog/units',
         '/reports',
         '/alerts',
+        '/company',
+        '/users',
+        '/branches',
+        '/conflicts',
     ];
 
     const headers: Record<string, string> = {
@@ -1225,12 +1241,16 @@ export async function syncPendingOperations(branchId?: number): Promise<SyncBatc
  * Searches products in local IndexedDB by name, reference code, barcode, brand, or category.
  * Uses accent-insensitive, case-insensitive, and tokenized multi-word search.
  */
-export async function searchLocalProducts(query: string, branchId?: number): Promise<any[]> {
-    if (!query || query.trim().length < 2) {
+export async function searchLocalProducts(query: string, branchId?: number, limit = 20): Promise<any[]> {
+    const trimmed = (query || '').trim();
+    if (!trimmed) {
+        return await db.products.limit(limit).toArray();
+    }
+    if (trimmed.length < 2) {
         return [];
     }
 
-    const clean = normalizeSearch(query).trim();
+    const clean = normalizeSearch(trimmed).trim();
     if (!clean) return [];
 
     const tokens = clean.split(/\s+/).filter(t => t.length > 0);
@@ -1258,6 +1278,6 @@ export async function searchLocalProducts(query: string, branchId?: number): Pro
 
             return true;
         })
-        .limit(20)
+        .limit(limit)
         .toArray();
 }

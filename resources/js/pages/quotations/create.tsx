@@ -1,4 +1,5 @@
 import { Head, Link, useForm, router } from '@inertiajs/react';
+import { getLastConnectivityStatus, searchLocalProducts } from '@/services/sync-service';
 import { 
     Calculator, 
     ArrowLeft, 
@@ -152,6 +153,35 @@ export default function QuotationsCreate({ branches, default_branch_id, tentativ
 
         const delayDebounce = setTimeout(async () => {
             setIsSearching(true);
+
+            const loadLocal = async () => {
+                const localItems = await searchLocalProducts(searchQuery, data.branch_id ? Number(data.branch_id) : undefined);
+                setSearchResults(
+                    localItems.map((p: any) => ({
+                        id: p.id,
+                        name: p.name,
+                        primary_reference: p.primary_reference,
+                        internal_code: p.barcode,
+                        suggested_price: p.sale_price,
+                        unit_price: p.sale_price,
+                        current_stock: p.local_stock,
+                        available_quantity: p.local_stock,
+                        unit: { code: p.unit_code || 'NIU' },
+                        brand: p.brand_name ? { name: p.brand_name } : null,
+                    }))
+                );
+                setIsSearchOpen(true);
+            };
+
+            if (!navigator.onLine || !getLastConnectivityStatus()) {
+                try {
+                    await loadLocal();
+                } finally {
+                    setIsSearching(false);
+                }
+                return;
+            }
+
             try {
                 const url = data.branch_id 
                     ? `/products/search?q=${encodeURIComponent(searchQuery)}&branch_id=${data.branch_id}`
@@ -162,9 +192,11 @@ export default function QuotationsCreate({ branches, default_branch_id, tentativ
                     const items = Array.isArray(result) ? result : (result.data || []);
                     setSearchResults(items);
                     setIsSearchOpen(true);
+                } else {
+                    await loadLocal();
                 }
-            } catch (err) {
-                console.error('Error buscando repuestos:', err);
+            } catch {
+                await loadLocal().catch(() => {});
             } finally {
                 setIsSearching(false);
             }

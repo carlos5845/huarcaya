@@ -1,4 +1,5 @@
 import { Head, Link, useForm, router } from '@inertiajs/react';
+import { getLastConnectivityStatus, searchLocalProducts } from '@/services/sync-service';
 import { ClipboardList, Plus, Trash2, ArrowLeft, Search, Save } from 'lucide-react';
 import React, { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
@@ -27,12 +28,33 @@ return;
 
         setIsSearching(true);
 
+        const loadLocal = async () => {
+            const localItems = await searchLocalProducts(searchQuery, data.branch_id ? Number(data.branch_id) : undefined);
+            setSearchResults(
+                localItems.map((p: any) => ({
+                    id: p.id,
+                    name: p.name,
+                    primary_reference: p.primary_reference,
+                    internal_code: p.barcode,
+                    available_quantity: p.local_stock,
+                }))
+            );
+        };
+
         try {
+            if (!navigator.onLine || !getLastConnectivityStatus()) {
+                await loadLocal();
+                return;
+            }
             const res = await fetch(`/products/search?q=${encodeURIComponent(searchQuery)}`);
-            const json = await res.json();
-            setSearchResults(Array.isArray(json) ? json : (json.data || []));
-        } catch (error) {
-            console.error(error);
+            if (res.ok) {
+                const json = await res.json();
+                setSearchResults(Array.isArray(json) ? json : (json.data || []));
+            } else {
+                await loadLocal();
+            }
+        } catch {
+            await loadLocal().catch(() => {});
         } finally {
             setIsSearching(false);
         }
